@@ -7,6 +7,14 @@ export type ProviderId =
   | "quandela"
   | "quantum-inspire";
 
+/** A single credential input (for providers that need more than one value, e.g. AWS). */
+export interface CredentialField {
+  key: string;
+  label: string;
+  placeholder?: string;
+  type?: "text" | "password";
+}
+
 /** Static, public-facing description of a provider (shown in Settings). */
 export interface ProviderDefinition {
   id: ProviderId;
@@ -15,21 +23,34 @@ export interface ProviderDefinition {
   description: string;
   /** Where to obtain an API key. */
   docsUrl: string;
-  /** Placeholder shown in the key input. */
+  /** Placeholder shown in the (single) key input. */
   keyPlaceholder: string;
   /** QPUs this provider contributes to the index. */
   covers: string[];
+  /**
+   * Multi-field credentials. When present the Settings form renders these inputs
+   * and stores them as an encrypted JSON object. Omit for a single key.
+   */
+  fields?: CredentialField[];
+  /** Whether a "Test connection" button is shown (adapter implements testConnection). */
+  testable?: boolean;
 }
 
-/** A provider adapter: definition + a function to pull its metrics. */
+export interface ProviderTestResult {
+  ok: boolean;
+  message: string;
+  /** Human-readable lines (e.g. discovered devices). */
+  details?: string[];
+}
+
+/** A provider adapter: definition + functions to pull/verify its data. */
 export interface ProviderAdapter extends ProviderDefinition {
   /**
    * Fetch normalized-ready raw metrics for this provider's QPUs.
-   *
-   * SCAFFOLD: real provider APIs do not expose QV/CLOPS/queue via a single key,
-   * so today this returns the benchmark defaults (with small deterministic daily
-   * drift) whenever a key is present — making the pipeline genuinely "live" the
-   * moment a key is saved. Replace the body with real API calls per provider.
+   * `apiKey` is the decrypted secret — a plain token for single-key providers,
+   * or a JSON string of the credential fields for multi-field providers.
    */
   fetchMetrics(apiKey: string, date?: Date): Promise<RawQpuMetrics[]>;
+  /** Optional: verify the credentials work and report what was found. */
+  testConnection?(apiKey: string): Promise<ProviderTestResult>;
 }

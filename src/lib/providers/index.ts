@@ -18,13 +18,15 @@ export const PROVIDERS: ProviderAdapter[] = [
 
 /** Public, key-free metadata for rendering the Settings page. */
 export const PROVIDER_DEFINITIONS: ProviderDefinition[] = PROVIDERS.map(
-  ({ id, name, description, docsUrl, keyPlaceholder, covers }) => ({
+  ({ id, name, description, docsUrl, keyPlaceholder, covers, fields, testable }) => ({
     id,
     name,
     description,
     docsUrl,
     keyPlaceholder,
     covers,
+    fields,
+    testable,
   }),
 );
 
