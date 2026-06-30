@@ -106,8 +106,9 @@ export default async function PricingPage() {
             <PriceChart data={series} pollMs={60000} />
           </div>
           <p className="mono-label mt-4 normal-case tracking-normal text-[var(--muted-dim)]">
-            Showing sample data. The chart switches to live values automatically once provider API
-            keys are added in the dashboard.
+            {latest.source === "sample"
+              ? "Showing sample data. The chart switches to live values automatically once provider API keys are added in the dashboard."
+              : ""}
           </p>
         </div>
       </section>
