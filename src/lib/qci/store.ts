@@ -9,8 +9,8 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { sampleSeries, sampleSnapshot, type SamplePoint } from "./sample";
 import type { QciSnapshot, QpuComponent } from "./types";
 
-/** Minimum live rows before we prefer real data over the sample series. */
-const MIN_LIVE_ROWS = 2;
+/** How many recorded snapshots to chart (plenty of headroom for daily points). */
+const SERIES_LIMIT = 1000;
 
 interface SnapshotRow {
   ts: string;
@@ -49,7 +49,11 @@ export async function getLatestSnapshot(): Promise<QciSnapshot> {
   }
 }
 
-/** Daily QCI series for the chart (live if we have enough rows, else sample). */
+/**
+ * QCI history for the chart, as UNIX-second points.
+ * Uses REAL recorded snapshots as soon as there is at least one; only falls back
+ * to the deterministic sample series when nothing has been recorded yet.
+ */
 export async function getSeries(days = 120): Promise<SamplePoint[]> {
   if (!isSupabaseConfigured()) return sampleSeries(days);
   try {
@@ -57,19 +61,20 @@ export async function getSeries(days = 120): Promise<SamplePoint[]> {
     const { data, error } = await supabase
       .from("qci_snapshots")
       .select("ts, price")
-      .order("ts", { ascending: false })
-      .limit(days);
-    if (error || !data || data.length < MIN_LIVE_ROWS) return sampleSeries(days);
+      .order("ts", { ascending: true })
+      .limit(SERIES_LIMIT);
+    if (error || !data || data.length === 0) return sampleSeries(days);
 
-    // De-dupe to one point per calendar day, ascending.
-    const byDay = new Map<string, number>();
+    // Every recorded snapshot becomes a point (de-dupe identical timestamps).
+    const seen = new Set<number>();
+    const points: SamplePoint[] = [];
     for (const row of data as Array<{ ts: string; price: number }>) {
-      const day = row.ts.slice(0, 10);
-      if (!byDay.has(day)) byDay.set(day, Number(row.price));
+      const t = Math.floor(new Date(row.ts).getTime() / 1000);
+      if (seen.has(t)) continue;
+      seen.add(t);
+      points.push({ time: t, value: Number(row.price) });
     }
-    return Array.from(byDay.entries())
-      .map(([time, value]) => ({ time, value }))
-      .sort((a, b) => a.time.localeCompare(b.time));
+    return points;
   } catch {
     return sampleSeries(days);
   }

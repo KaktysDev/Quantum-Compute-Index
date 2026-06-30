@@ -65,7 +65,7 @@ export default async function DashboardOverview() {
             )}
           </div>
           <div className="h-[320px] w-full sm:h-[380px]">
-            <PriceChart data={series} />
+            <PriceChart data={series} pollMs={60000} />
           </div>
         </GlassCard>
       </div>

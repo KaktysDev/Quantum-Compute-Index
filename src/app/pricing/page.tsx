@@ -103,7 +103,7 @@ export default async function PricingPage() {
             </span>
           </div>
           <div className="h-[320px] w-full sm:h-[400px]">
-            <PriceChart data={series} />
+            <PriceChart data={series} pollMs={60000} />
           </div>
           <p className="mono-label mt-4 normal-case tracking-normal text-[var(--muted-dim)]">
             Showing sample data. The chart switches to live values automatically once provider API

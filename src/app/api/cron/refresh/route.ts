@@ -44,11 +44,11 @@ async function run(req: Request) {
   const now = new Date();
   const et = nowEt(now);
 
-  // Two crons fire (13:30 & 14:30 UTC) to stay correct across DST; only the one
-  // that lands on 9:30 ET should actually compute. Skip the other.
-  if (!force && !(et.hour === 9 && et.minute >= 25 && et.minute <= 40)) {
-    return NextResponse.json({ skipped: true, reason: `not 9:30 ET (now ${et.hour}:${et.minute} ET)` });
-  }
+  // The cron is scheduled for the morning ET, but Vercel fires crons on a
+  // best-effort schedule (can drift by many minutes), so we DON'T gate on the
+  // exact time. Instead we compute at most once per ET calendar day
+  // (idempotency below) — whenever the job actually fires that day, it records
+  // the day's snapshot. `force=true` bypasses the once-a-day guard.
 
   let supabase;
   try {

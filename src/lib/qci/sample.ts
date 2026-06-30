@@ -1,11 +1,9 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // Deterministic sample data.
 //
-// Until real provider API keys produce live snapshots, the app shows a realistic
-// simulated QCI series so the price, chart, and animations look alive. Everything
-// here is CLEARLY LABELLED source: "sample" and is fully deterministic (anchored
-// to a fixed inception date) — so server and client render identical values and
-// the price is stable across reloads, advancing once per day.
+// Shown only when there are NO live snapshots yet. Fully deterministic (anchored
+// to a fixed inception date) so server and client render identical values.
+// Times are UNIX seconds (UTCTimestamp) to match the live series.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { computeQci } from "./compute";
@@ -13,11 +11,12 @@ import { SEED_QPUS } from "./seed";
 import type { QciSnapshot } from "./types";
 
 export interface SamplePoint {
-  time: string; // 'YYYY-MM-DD'
+  time: number; // UNIX seconds (UTCTimestamp)
   value: number;
 }
 
 const MS_PER_DAY = 86_400_000;
+const SEC_PER_DAY = 86_400;
 const INCEPTION = "2025-01-01";
 
 /** Small, fast, deterministic PRNG. */
@@ -47,10 +46,6 @@ function dayIndex(dateStr: string): number {
   return Math.floor(Date.UTC(y, m - 1, d) / MS_PER_DAY);
 }
 
-function dateStr(idx: number): string {
-  return new Date(idx * MS_PER_DAY).toISOString().slice(0, 10);
-}
-
 function round(n: number, dp = 2): number {
   const f = 10 ** dp;
   return Math.round(n * f) / f;
@@ -72,7 +67,7 @@ export function sampleSeries(days = 120, now: Date = new Date()): SamplePoint[] 
     const cycle = Math.sin(i / 22) * 0.0008; // gentle multi-week cycle
     const drift = 0.0005; // slow uptrend — growing quantum demand
     logLevel += drift + 0.012 * noise + cycle;
-    points.push({ time: dateStr(i), value: round(1000 * Math.exp(logLevel)) });
+    points.push({ time: i * SEC_PER_DAY, value: round(1000 * Math.exp(logLevel)) });
   }
 
   return points.slice(Math.max(0, points.length - days));
@@ -90,7 +85,8 @@ export function sampleSnapshot(now: Date = new Date()): QciSnapshot {
   const scale = latest.value / (base.price || 1);
 
   return {
-    ts: new Date(`${latest.time}T13:30:00.000Z`).toISOString(),
+    // 13:30 UTC of the latest day (≈ 9:30 AM ET)
+    ts: new Date((latest.time + 48_600) * 1000).toISOString(),
     price: latest.value,
     changePct: prev.value > 0 ? round(((latest.value - prev.value) / prev.value) * 100, 3) : 0,
     vwap: base.vwap,
