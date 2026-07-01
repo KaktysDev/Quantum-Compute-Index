@@ -130,7 +130,7 @@ function TimelineItem({ point, index }: { point: TimelinePoint; index: number })
     >
       {/* node on the track */}
       <span className="absolute left-4 top-6 z-10 -translate-x-1/2 sm:left-1/2">
-        <span className="block h-3 w-3 animate-pulse-soft rounded-full bg-white shadow-[0_0_22px_rgba(255,255,255,0.7)]" />
+        <span className="block h-3 w-3 rounded-full border-2 border-white/70 bg-[var(--bg)]" />
       </span>
 
       {left ? (
@@ -163,7 +163,7 @@ export default function Timeline({ points }: { points: TimelinePoint[] }) {
       {/* filled portion driven by scroll */}
       <motion.div
         style={{ height: lineHeight }}
-        className="absolute left-4 top-0 w-px bg-white/70 shadow-[0_0_16px_rgba(255,255,255,0.5)] sm:left-1/2"
+        className="absolute left-4 top-0 w-px bg-white/55 sm:left-1/2"
       />
 
       <div className="flex flex-col gap-16 sm:gap-28">

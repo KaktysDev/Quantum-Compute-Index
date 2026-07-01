@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Inter, Instrument_Serif, JetBrains_Mono } from "next/font/google";
-import CursorGlow from "@/components/CursorGlow";
 import "./globals.css";
 
 const sans = Inter({
@@ -34,14 +33,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable} ${serif.variable}`}>
       <body>
-        {/* Fluted glass-curtain background (light lives behind the glass) */}
         <div className="curtain" />
-        <div className="bg-orb bg-orb-a" />
-        <div className="bg-orb bg-orb-b" />
-        <CursorGlow />
-        <div className="curtain-sweep" />
-        <div className="curtain-flutes" />
-        <div className="curtain-vignette" />
         {children}
       </body>
     </html>
