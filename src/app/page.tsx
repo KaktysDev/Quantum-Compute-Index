@@ -1,144 +1,182 @@
 import Link from "next/link";
-import AnimatedTitle from "@/components/AnimatedTitle";
-import BarsGraphic from "@/components/BarsGraphic";
-import PriceDisplay from "@/components/PriceDisplay";
+import Logo from "@/components/Logo";
 import SiteFooter from "@/components/SiteFooter";
-import SiteHeader from "@/components/SiteHeader";
 import { getLatestSnapshot } from "@/lib/qci/store";
 
 export const dynamic = "force-dynamic";
 
-const FEATURES = [
+const WORKFLOWS = [
   {
-    title: "Comparable by design",
-    body: "One normalized price across providers, architectures, and billing models.",
+    number: "01",
+    eyebrow: "Normalize",
+    title: "One market language",
+    body: "Provider rates are converted into a consistent unit before they enter the index.",
+    metric: "8 provider feeds unified",
+    visual: (
+      <div className="qci-mini-list">
+        {["Per shot", "Per task", "Per minute", "Reserved"].map((item) => (
+          <div key={item}><span>›</span>{item}</div>
+        ))}
+      </div>
+    ),
   },
   {
-    title: "Performance adjusted",
-    body: "Weighted by throughput, fidelity, and usable quantum volume.",
+    number: "02",
+    eyebrow: "Adjust",
+    title: "Quality-aware pricing",
+    body: "Capability, throughput, and fidelity determine how each system contributes.",
+    metric: "Performance weighted daily",
+    visual: (
+      <div className="qci-mini-table">
+        <span>QPU</span><span>RATE</span><span>WEIGHT</span>
+        <b>A-01</b><b>$1.62</b><i>32%</i>
+        <b>B-08</b><b>$2.14</b><i>41%</i>
+        <b>C-04</b><b>$0.98</b><i>27%</i>
+      </div>
+    ),
   },
   {
-    title: "Provider sourced",
-    body: "Direct market inputs with a transparent, repeatable methodology.",
+    number: "03",
+    eyebrow: "Benchmark",
+    title: "A durable index level",
+    body: "A repeatable methodology creates a comparable time series across market cycles.",
+    metric: "120-day market history",
+    visual: (
+      <div className="qci-mini-flow">
+        <span>Rates</span><b>→</b><span>Quality</span><b>→</b><span>QCI</span>
+      </div>
+    ),
+  },
+  {
+    number: "04",
+    eyebrow: "Decide",
+    title: "Built for real decisions",
+    body: "Give finance, procurement, and infrastructure teams one defensible reference point.",
+    metric: "One source of market truth",
+    visual: (
+      <div className="qci-mini-files">
+        <span><i className="bg-emerald-400" />Board report <b>↓</b></span>
+        <span><i className="bg-white/50" />Pricing brief <b>↓</b></span>
+        <span><i className="bg-emerald-700" />Market data <b>↓</b></span>
+      </div>
+    ),
+  },
+];
+
+const METRICS = [
+  {
+    value: "8+",
+    label: "Quantum cloud providers tracked across the market",
+    before: "Fragmented rates",
+    after: "one normalized index",
+    tag: "Coverage",
+  },
+  {
+    value: "24h",
+    label: "Refresh cadence for a current view of compute pricing",
+    before: "Manual research",
+    after: "daily market signal",
+    tag: "Freshness",
+  },
+  {
+    value: "1",
+    label: "Comparable benchmark for infrastructure decisions",
+    before: "Many price models",
+    after: "one reference point",
+    tag: "Clarity",
   },
 ];
 
 export default async function LandingPage() {
   const latest = await getLatestSnapshot();
-
   const asOf = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
-    day: "2-digit",
     month: "short",
+    day: "numeric",
     year: "numeric",
-  })
-    .format(new Date(latest.ts))
-    .toUpperCase();
+  }).format(new Date(latest.ts));
 
   return (
-    <main className="relative mx-auto w-full max-w-7xl px-6 sm:px-10">
-      <SiteHeader />
-      <div className="hairline" />
-
-      <section className="grid min-h-[76vh] items-center gap-14 py-16 lg:grid-cols-[1.2fr_0.8fr] lg:py-24">
-        <div className="flex flex-col gap-8">
-          <div className="flex items-center gap-2.5">
-            <span className="h-2 w-2 rounded-full bg-emerald-400" />
-            <p className="mono-label text-white/65">QCI benchmark · Daily at 9:30 AM ET</p>
+    <main className="qci-landing">
+      <section className="qci-hero">
+        <header className="qci-hero-nav">
+          <Link href="/" className="qci-brand-pill" aria-label="QuantumForge home"><Logo /></Link>
+          <div className="qci-nav-actions">
+            <Link href="/pricing" className="qci-simple-link">Methodology</Link>
+            <Link href="/dashboard" className="qci-simple-link">Sign in</Link>
+            <Link href="/contact" className="qci-pill qci-pill-light">Request access</Link>
           </div>
+        </header>
 
-          <AnimatedTitle />
-
-          <div className="flex flex-col gap-7">
-            <p className="max-w-xl text-lg leading-relaxed text-[var(--muted)] sm:text-xl">
-              A performance-adjusted benchmark for the cost of quantum computing—built for teams
-              making infrastructure, investment, and procurement decisions.
-            </p>
-            <div className="flex flex-wrap items-center gap-4">
-              <Link href="/contact" className="btn btn-solid">
-                Request access
-              </Link>
-              <Link
-                href="/pricing"
-                className="inline-flex items-center gap-2 text-sm font-medium text-white/75 transition-colors hover:text-white"
-              >
-                View methodology <span aria-hidden="true">→</span>
-              </Link>
+        <div className="qci-hero-content">
+          <p className="qci-kicker"><span>✦</span> The market standard for quantum compute</p>
+          <h1>The financial layer for<br />quantum computing.</h1>
+          <div className="qci-hero-lower">
+            <div className="qci-hero-copy">
+              <p>A performance-adjusted benchmark for comparing the true cost of quantum compute across providers and architectures.</p>
+              <div>
+                <Link href="/contact" className="qci-pill qci-pill-light">Request access</Link>
+                <Link href="/pricing" className="qci-text-link">Explore the index <span>→</span></Link>
+              </div>
+            </div>
+            <div className="qci-index-line">
+              <span><i /> QCI · {latest.source === "sample" ? "SAMPLE" : "LIVE"}</span>
+              <strong>${latest.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              <em>{latest.changePct >= 0 ? "+" : ""}{latest.changePct.toFixed(2)}%</em>
             </div>
           </div>
         </div>
-
-        <div className="flex justify-center lg:justify-end">
-          <div className="glass-panel w-full max-w-md rounded-[1.4rem] p-7 sm:p-9">
-            <div className="mb-6 flex items-center justify-between">
-              <span className="mono-label">Market overview</span>
-              <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/55">
-                {latest.source === "sample" ? "Sample" : "Live"}
-              </span>
-            </div>
-            <PriceDisplay
-              price={latest.price}
-              changePct={latest.changePct}
-              source={latest.source}
-              asOf={asOf}
-              size="panel"
-            />
-          </div>
-        </div>
+        <p className="qci-asof">Updated {asOf} · 9:30 AM ET</p>
       </section>
 
-      <div className="hairline" />
-
-      <section id="about" className="scroll-mt-10 py-20 sm:py-28">
-        <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
-          <div>
-            <p className="mono-label mb-4">A market standard</p>
-            <h2 className="max-w-2xl text-4xl font-semibold leading-[1.08] tracking-[-0.035em] text-white sm:text-5xl">
-              A credible reference point for quantum compute.
-            </h2>
-          </div>
-          <p className="max-w-sm text-sm leading-relaxed text-[var(--muted)]">
-            QCI turns fragmented provider pricing into a consistent benchmark that can be tracked
-            over time.
-          </p>
+      <section id="workflows" className="qci-workflows">
+        <div className="qci-section-heading">
+          <p>How the index works</p>
+          <h2>The market decisions<br />teams can make faster.</h2>
         </div>
-
-        <div className="mt-12 grid gap-4 md:grid-cols-3">
-          {FEATURES.map((f, index) => (
-            <div
-              key={f.title}
-              className="glass glass-hover flex min-h-48 flex-col justify-between rounded-2xl p-6"
-            >
-              <div className="flex items-center justify-between">
-                <span className="tabular text-xs text-[var(--muted-dim)]">0{index + 1}</span>
-                <div className="h-8 w-12 opacity-50">
-                  <BarsGraphic />
-                </div>
+        <div className="qci-workflow-grid">
+          {WORKFLOWS.map((item) => (
+            <article key={item.number} className="qci-workflow-card">
+              <div className="qci-card-visual">{item.visual}</div>
+              <div className="qci-card-copy">
+                <div className="qci-metric-pill"><span>◷</span>{item.metric}</div>
+                <span className="qci-card-number">{item.number} · {item.eyebrow}</span>
+                <h3>{item.title}</h3>
+                <p>{item.body}</p>
               </div>
-              <div>
-                <h3 className="text-lg font-medium text-white">{f.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">{f.body}</p>
-              </div>
-            </div>
+            </article>
           ))}
         </div>
       </section>
 
-      <section className="pb-24">
-        <div className="glass-panel flex flex-col items-start justify-between gap-8 rounded-[1.4rem] px-7 py-10 sm:flex-row sm:items-center sm:px-10 sm:py-12">
-          <div>
-            <p className="mono-label mb-3">Private preview</p>
-            <h2 className="max-w-2xl text-3xl font-semibold tracking-[-0.03em] text-white sm:text-4xl">
-              Bring a market view to quantum infrastructure.
-            </h2>
-          </div>
-          <Link href="/contact" className="btn btn-solid shrink-0">
-            Request access
-          </Link>
+      <section className="qci-outcomes">
+        <div className="qci-section-heading qci-section-heading-split">
+          <div><p>Built for comparison</p><h2>From scattered pricing<br />to a market view.</h2></div>
+          <span>QCI gives teams a consistent basis for evaluating providers, tracking cost, and planning quantum infrastructure.</span>
+        </div>
+        <div className="qci-metric-grid">
+          {METRICS.map((metric) => (
+            <article key={metric.tag} className="qci-outcome-card">
+              <div className="qci-outcome-top">
+                <strong>{metric.value}</strong>
+                <p>{metric.label}</p>
+              </div>
+              <div className="qci-outcome-bottom">
+                <div><span>Before</span><span>with QCI</span><em>{metric.tag}</em></div>
+                <p>{metric.before}<br /><strong>{metric.after}</strong></p>
+              </div>
+            </article>
+          ))}
         </div>
       </section>
 
-      <SiteFooter />
+      <section className="qci-closing">
+        <p>Private access · 2026</p>
+        <h2>One index for the<br />quantum compute market.</h2>
+        <Link href="/contact" className="qci-pill qci-pill-light">Request access <span>→</span></Link>
+      </section>
+
+      <div className="qci-footer-wrap"><SiteFooter /></div>
     </main>
   );
 }
