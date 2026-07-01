@@ -40,20 +40,20 @@ export default async function PricingPage() {
   const [latest, series] = await Promise.all([getLatestSnapshot(), getSeries(120)]);
 
   return (
-    <main className="relative mx-auto w-full max-w-7xl px-6 sm:px-10">
+    <main className="qci-subpage relative mx-auto w-full max-w-7xl px-6 sm:px-10">
       <SiteHeader />
       <div className="hairline" />
 
       {/* hero */}
-      <section className="py-16 sm:py-20">
+      <section className="qci-subpage-hero py-16 sm:py-20">
         <p className="mono-label flex items-center gap-2 text-white/70">
           <span className="inline-block h-1.5 w-1.5 bg-white" />
           Pricing
         </p>
-        <h1 className="text-glow-strong mt-5 max-w-3xl text-5xl font-semibold leading-[1.02] tracking-tight text-white sm:text-7xl">
+        <h1 className="qci-subpage-title mt-5 max-w-4xl text-white">
           How the index is priced
         </h1>
-        <p className="mt-6 max-w-xl text-lg leading-relaxed text-[var(--muted)]">
+        <p className="qci-subpage-lede mt-6 max-w-xl">
           The Quantum Compute Index answers one question: how expensive and how useful is an hour of
           quantum compute, right now? Here&apos;s how we work it out — in plain terms.
         </p>

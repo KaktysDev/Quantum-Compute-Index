@@ -162,8 +162,21 @@ export default async function LandingPage() {
                 <p>{metric.label}</p>
               </div>
               <div className="qci-outcome-bottom">
-                <div><span>Before</span><span>with QCI</span><em>{metric.tag}</em></div>
-                <p>{metric.before}<br /><strong>{metric.after}</strong></p>
+                <div className="qci-comparison-heading">
+                  <span>Measured impact</span>
+                  <em>{metric.tag}</em>
+                </div>
+                <div className="qci-comparison">
+                  <div className="qci-comparison-before">
+                    <span>Before</span>
+                    <p>{metric.before}</p>
+                  </div>
+                  <b aria-hidden="true">→</b>
+                  <div className="qci-comparison-after">
+                    <span>With QCI</span>
+                    <p>{metric.after}</p>
+                  </div>
+                </div>
               </div>
             </article>
           ))}

@@ -44,7 +44,7 @@ export default function ContactForm() {
 
   const remaining = MAX_MESSAGE - form.message.length;
   const inputClass =
-    "tabular w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none placeholder:text-[var(--muted)] focus:border-white/40";
+    "tabular w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none placeholder:text-[var(--muted)] focus:border-emerald-400/60";
 
   return (
     <form onSubmit={onSubmit} className="glass-panel flex flex-col gap-4 rounded-3xl p-7 sm:p-9">

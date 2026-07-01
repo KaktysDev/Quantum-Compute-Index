@@ -22,7 +22,7 @@ export default function DashboardNav({
   ];
 
   return (
-    <header className="sticky top-0 z-20 border-b border-white/5 bg-[rgba(5,5,5,0.6)] backdrop-blur-xl">
+    <header className="sticky top-0 z-20 border-b border-white/10 bg-[rgba(5,9,7,0.88)] bg-[repeating-linear-gradient(90deg,transparent_0_52px,rgba(34,190,127,0.025)_52px_54px)] backdrop-blur-xl">
       <div className="mx-auto flex max-w-6xl flex-col gap-3 px-5 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-8">
         <div className="flex items-center gap-6">
           <Link href="/">
@@ -40,7 +40,7 @@ export default function DashboardNav({
                   key={t.href}
                   href={t.href}
                   className={`relative rounded-lg px-3.5 py-1.5 text-sm transition-colors ${
-                    active ? "bg-white/10 text-white" : "text-[var(--muted)] hover:text-white"
+                    active ? "bg-emerald-400/10 text-emerald-300" : "text-[var(--muted)] hover:text-white"
                   }`}
                 >
                   {t.label}
