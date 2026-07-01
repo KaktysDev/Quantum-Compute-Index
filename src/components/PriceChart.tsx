@@ -8,12 +8,21 @@ import {
   type ISeriesApi,
   type Time,
 } from "lightweight-charts";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export interface ChartPoint {
   time: number; // UNIX seconds (UTCTimestamp)
   value: number;
 }
+
+const RANGES: Array<{ label: string; sec: number }> = [
+  { label: "1D", sec: 86_400 },
+  { label: "7D", sec: 7 * 86_400 },
+  { label: "30D", sec: 30 * 86_400 },
+  { label: "90D", sec: 90 * 86_400 },
+  { label: "1Y", sec: 365 * 86_400 },
+  { label: "ALL", sec: Infinity },
+];
 
 export default function PriceChart({
   data,
@@ -27,11 +36,20 @@ export default function PriceChart({
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Area"> | null>(null);
   const [points, setPoints] = useState<ChartPoint[]>(data);
+  const [range, setRange] = useState<string>("ALL");
 
   // keep in sync if the server passes new initial data
   useEffect(() => {
     setPoints(data);
   }, [data]);
+
+  const visible = useMemo(() => {
+    const r = RANGES.find((x) => x.label === range);
+    if (!r || r.sec === Infinity) return points;
+    const cutoff = Date.now() / 1000 - r.sec;
+    const filtered = points.filter((p) => p.time >= cutoff);
+    return filtered.length > 0 ? filtered : points.slice(-1);
+  }, [points, range]);
 
   // create the chart once
   useEffect(() => {
@@ -88,14 +106,14 @@ export default function PriceChart({
     };
   }, []);
 
-  // push data whenever points change (no flicker, no chart re-create)
+  // push the visible slice whenever it changes (no flicker, no chart re-create)
   useEffect(() => {
-    if (!seriesRef.current || points.length === 0) return;
+    if (!seriesRef.current || visible.length === 0) return;
     seriesRef.current.setData(
-      points.map((d) => ({ time: d.time as Time, value: d.value })) as AreaData[],
+      visible.map((d) => ({ time: d.time as Time, value: d.value })) as AreaData[],
     );
     chartRef.current?.timeScale().fitContent();
-  }, [points]);
+  }, [visible]);
 
   // optional live polling
   useEffect(() => {
@@ -112,5 +130,24 @@ export default function PriceChart({
     return () => clearInterval(id);
   }, [pollMs]);
 
-  return <div ref={ref} className="h-full w-full" />;
+  return (
+    <div className="flex h-full w-full flex-col">
+      <div className="mb-2 flex shrink-0 items-center gap-1">
+        {RANGES.map((r) => (
+          <button
+            key={r.label}
+            onClick={() => setRange(r.label)}
+            className={`rounded-md px-2.5 py-1 text-xs font-medium tracking-wide transition-colors ${
+              range === r.label
+                ? "bg-white/10 text-white"
+                : "text-[var(--muted)] hover:text-white"
+            }`}
+          >
+            {r.label}
+          </button>
+        ))}
+      </div>
+      <div ref={ref} className="min-h-0 w-full flex-1" />
+    </div>
+  );
 }

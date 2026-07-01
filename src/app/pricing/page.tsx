@@ -89,7 +89,7 @@ export default async function PricingPage() {
         <div className="glass-panel rounded-3xl p-6 sm:p-8">
           <div className="mb-5 flex items-center justify-between">
             <div>
-              <p className="mono-label">QCI · trailing 120 days</p>
+              <p className="mono-label">QCI</p>
               <p className="serif mt-2 text-4xl text-white sm:text-5xl">
                 <span className="align-top text-xl text-[var(--muted)] sm:text-2xl">$</span>
                 {latest.price.toLocaleString(undefined, {

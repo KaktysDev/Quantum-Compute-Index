@@ -103,17 +103,24 @@ async function run(req: Request) {
     });
   }
 
-  // Previous price for % change.
+  // Previous snapshot for chain-linking (price + vwap + basket).
   const { data: prev } = await supabase
     .from("qci_snapshots")
-    .select("price")
+    .select("price, vwap, components")
     .order("ts", { ascending: false })
     .limit(1);
-  const previousPrice = prev && prev.length > 0 ? Number(prev[0].price) : undefined;
+  const previous =
+    prev && prev.length > 0
+      ? {
+          price: Number(prev[0].price),
+          vwap: Number(prev[0].vwap),
+          components: (prev[0].components ?? []) as Array<{ provider: string }>,
+        }
+      : null;
 
   const snapshot = computeQci(rawMetrics, {
     ts: now.toISOString(),
-    previousPrice,
+    previous,
     source: "live",
   });
 

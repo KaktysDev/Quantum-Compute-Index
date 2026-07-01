@@ -56,7 +56,7 @@ export default async function DashboardOverview() {
         <GlassCard className="p-6 lg:col-span-2">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-sm font-medium uppercase tracking-[0.18em] text-[var(--muted)]">
-              QCI · trailing 180 days
+              QCI
             </h3>
             {latest.source === "sample" && (
               <span className="mono-label rounded-full border border-white/15 bg-white/5 px-2.5 py-0.5">
