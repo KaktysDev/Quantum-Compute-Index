@@ -46,9 +46,9 @@ export default function PriceDisplay({
       <div className="hairline" />
 
       <div className="mt-6 flex items-end justify-between gap-6">
-        <div className="serif leading-[0.85] text-white">
+        <div className="leading-[0.9] tracking-[-0.045em] text-white">
           <span className={`align-top text-[var(--muted)] ${dollar}`}>$</span>
-          <span className={big}>
+          <span className={`tabular font-medium ${big}`}>
             {animated.toLocaleString(undefined, {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2,
@@ -58,11 +58,11 @@ export default function PriceDisplay({
 
         <div className="flex flex-col items-start gap-2 pb-2">
           <span className="mono-label flex items-center gap-1.5">
-            <span className="inline-block h-1.5 w-1.5 animate-pulse-soft bg-white" />
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-white/60" />
             QCI Index
           </span>
-          <span className="tabular text-sm text-[var(--muted)]">
-            {up ? "▲" : "▼"} {Math.abs(changePct).toFixed(2)}%
+          <span className="tabular text-sm text-white/75">
+            {up ? "+" : "−"}{Math.abs(changePct).toFixed(2)}%
           </span>
         </div>
       </div>
@@ -71,8 +71,8 @@ export default function PriceDisplay({
         <p className="mono-label">
           {source === "sample" ? "Sample · Index Updated" : "Index Updated"}
         </p>
-        <p className="tabular mt-1.5 text-sm text-[var(--muted)]">
-          &lt;&nbsp;&nbsp;{asOf} · 9:30 AM ET&nbsp;&nbsp;&gt;
+        <p className="tabular mt-1.5 text-xs text-[var(--muted)]">
+          {asOf} · 9:30 AM ET
         </p>
       </div>
     </div>

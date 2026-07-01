@@ -2,24 +2,26 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ════════════════════════════════════════════════════════════════════════
-   QuantumForge — monochrome glass system. Black / grey / white only.
-   ════════════════════════════════════════════════════════════════════════ */
-
 :root {
-  --bg: #000000;
-  --fg: #f4f4f4;
-  --muted: #8a8a8a;
-  --muted-dim: #565656;
-  --line: rgba(255, 255, 255, 0.1);
-  --glass: rgba(255, 255, 255, 0.045);
+  --bg: #08090b;
+  --surface: #101216;
+  --surface-raised: #15181d;
+  --fg: #f5f5f7;
+  --muted: #9298a3;
+  --muted-dim: #656b75;
+  --line: rgba(255, 255, 255, 0.09);
+  --glass: rgba(18, 20, 24, 0.92);
   --glass-border: rgba(255, 255, 255, 0.1);
-  /* legacy alias kept monochrome so old references stay grey/white */
-  --accent: #d6d6d6;
+  --accent: #a9c2ff;
 }
 
 * {
   box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+  scroll-behavior: smooth;
 }
 
 html,
@@ -28,7 +30,7 @@ body {
   padding: 0;
   background: var(--bg);
   color: var(--fg);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -38,322 +40,143 @@ body {
   overflow-x: hidden;
 }
 
-/* ── The fluted "glass curtain" background ───────────────────────────────
-   Layering (back → front):
-     .curtain        solid black base
-     .curtain-glow   white flashlight that follows the cursor (moved by JS)
-     .curtain-flutes vertical glass slats that carve the glow into streaks
-     .curtain-vignette  darkens the edges
-   Content sits above all of these, so text stays crisp while the light
-   lives *behind the glass*. */
+a,
+button,
+input,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+/* A single static atmospheric layer. It adds depth without competing with data. */
 .curtain {
-  position: fixed;
-  inset: 0;
-  z-index: -5;
-  background:
-    radial-gradient(120% 80% at 50% -10%, rgba(255, 255, 255, 0.05), transparent 55%),
-    #000;
-}
-
-/* A big spotlight that follows the cursor. Size is set in CursorGlow.tsx
-   (a fraction of the viewport); these vw/vh values are just the pre-JS default. */
-.curtain-glow {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 50vw;
-  height: 50vh;
-  z-index: -4;
-  pointer-events: none;
-  will-change: transform, opacity;
-  opacity: 0.95;
-  background: radial-gradient(
-    ellipse at center,
-    rgba(255, 255, 255, 0.4) 0%,
-    rgba(255, 255, 255, 0.22) 16%,
-    rgba(255, 255, 255, 0.08) 38%,
-    transparent 64%
-  );
-}
-
-/* constantly drifting frosted-glass blobs — ambient background motion */
-.bg-orb {
-  position: fixed;
-  z-index: -3;
-  pointer-events: none;
-  border-radius: 9999px;
-  filter: blur(80px);
-  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.07), transparent 70%);
-  will-change: transform;
-}
-.bg-orb-a {
-  width: 46vw;
-  height: 46vw;
-  top: -8vh;
-  left: -6vw;
-  animation: float-a 26s ease-in-out infinite;
-}
-.bg-orb-b {
-  width: 38vw;
-  height: 38vw;
-  bottom: -10vh;
-  right: -6vw;
-  animation: float-b 32s ease-in-out infinite;
-}
-@keyframes float-a {
-  0%, 100% {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  50% {
-    transform: translate3d(7vw, 5vh, 0) scale(1.08);
-  }
-}
-@keyframes float-b {
-  0%, 100% {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  50% {
-    transform: translate3d(-6vw, -5vh, 0) scale(1.12);
-  }
-}
-
-/* slow light band drifting across the curtain — ambient background motion */
-.curtain-sweep {
-  position: fixed;
-  inset: 0;
-  z-index: -3;
-  pointer-events: none;
-  background: linear-gradient(
-    100deg,
-    transparent 28%,
-    rgba(255, 255, 255, 0.04) 46%,
-    rgba(255, 255, 255, 0.09) 50%,
-    rgba(255, 255, 255, 0.04) 54%,
-    transparent 72%
-  );
-  background-size: 260% 100%;
-  mix-blend-mode: screen;
-  animation: sweep 16s linear infinite;
-}
-
-.curtain-flutes {
-  position: fixed;
-  inset: 0;
-  z-index: -2;
-  pointer-events: none;
-  background-image:
-    /* specular highlight on the leading edge of each slat */
-    repeating-linear-gradient(
-      90deg,
-      rgba(255, 255, 255, 0.05) 0px,
-      rgba(255, 255, 255, 0) 1.5px,
-      rgba(255, 255, 255, 0) 25px
-    ),
-    /* dark seams between slats — these block the glow into vertical streaks */
-      repeating-linear-gradient(
-        90deg,
-        rgba(0, 0, 0, 0) 0px,
-        rgba(0, 0, 0, 0) 14px,
-        rgba(0, 0, 0, 0.55) 22px,
-        rgba(0, 0, 0, 0) 25px
-      );
-  background-size: 25px 100%;
-  mask-image: linear-gradient(180deg, transparent 0%, #000 8%, #000 92%, transparent 100%);
-  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 8%, #000 92%, transparent 100%);
-}
-
-.curtain-vignette {
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background: radial-gradient(
-    130% 110% at 50% 40%,
-    transparent 55%,
-    rgba(0, 0, 0, 0.55) 100%
-  );
+  background:
+    radial-gradient(900px 520px at 72% -8%, rgba(91, 124, 190, 0.13), transparent 68%),
+    radial-gradient(700px 480px at 10% 22%, rgba(255, 255, 255, 0.035), transparent 70%),
+    linear-gradient(180deg, #0a0b0e 0%, #08090b 48%, #07080a 100%);
 }
 
-/* Cursor spotlight rendered ON TOP of the page (screen-blend = lightens only,
-   never darkens, leaves white text untouched). High z-index so it can never be
-   hidden behind the content. Size is set in CursorGlow.tsx. */
-.cursor-spot {
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 60;
-  pointer-events: none;
-  width: 45vw;
-  height: 45vh;
-  will-change: transform;
-  mix-blend-mode: screen;
-  background: radial-gradient(
-    ellipse at center,
-    rgba(255, 255, 255, 0.18) 0%,
-    rgba(255, 255, 255, 0.08) 30%,
-    rgba(255, 255, 255, 0.02) 48%,
-    transparent 64%
-  );
-}
-
-@keyframes sweep {
-  0% {
-    background-position: 210% 0;
-  }
-  100% {
-    background-position: -60% 0;
-  }
-}
-
-/* ── Glassmorphism ───────────────────────────────────────────────────────── */
-.glass {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--glass-border);
-  backdrop-filter: blur(16px) saturate(115%);
-  -webkit-backdrop-filter: blur(16px) saturate(115%);
-  box-shadow:
-    0 10px 40px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-}
-
-.glass-strong {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.13);
-  backdrop-filter: blur(26px) saturate(125%);
-  -webkit-backdrop-filter: blur(26px) saturate(125%);
-  box-shadow:
-    0 14px 60px rgba(0, 0, 0, 0.6),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
-}
-
-/* hero/feature glass panel — extra blur + glossy inner highlight */
+/* Restrained, mostly opaque surfaces. Blur is reserved for navigation chrome. */
+.glass,
+.glass-strong,
 .glass-panel {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(30px) saturate(135%);
-  -webkit-backdrop-filter: blur(30px) saturate(135%);
-  box-shadow:
-    0 24px 80px rgba(0, 0, 0, 0.62),
-    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  background: var(--surface);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.025), 0 16px 48px rgba(0, 0, 0, 0.18);
+}
+
+.glass-strong,
+.glass-panel {
+  background: linear-gradient(180deg, rgba(22, 25, 30, 0.98), rgba(15, 17, 21, 0.98));
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .glass-hover {
-  transition: transform 0.3s ease, border-color 0.3s ease, background 0.3s ease;
-}
-.glass-hover:hover {
-  transform: translateY(-2px);
-  border-color: rgba(255, 255, 255, 0.25);
-  background: rgba(255, 255, 255, 0.06);
+  transition: border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
 }
 
-/* glossy sheen that sweeps across on hover */
+.glass-hover:hover {
+  background: var(--surface-raised);
+  border-color: rgba(255, 255, 255, 0.17);
+  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.24);
+}
+
+/* Legacy class retained without the attention-seeking sweep. */
 .sheen {
   position: relative;
-  overflow: hidden;
-}
-.sheen::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    100deg,
-    transparent 30%,
-    rgba(255, 255, 255, 0.12) 50%,
-    transparent 70%
-  );
-  transform: translateX(-120%);
-  transition: transform 0.7s ease;
-  pointer-events: none;
-}
-.sheen:hover::after {
-  transform: translateX(120%);
 }
 
-/* ── Buttons ─────────────────────────────────────────────────────────────── */
 .btn {
   display: inline-flex;
+  min-height: 2.5rem;
   align-items: center;
   justify-content: center;
-  gap: 0.55rem;
+  gap: 0.5rem;
   border-radius: 9999px;
-  font-weight: 500;
+  border: 1px solid transparent;
+  padding-inline: 1.1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1;
   cursor: pointer;
-  transition: all 0.22s ease;
   white-space: nowrap;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease,
+    box-shadow 160ms ease, transform 160ms ease;
 }
 
-/* small glass pill — used for Sign in (top-right) */
-.btn-glass {
-  padding: 0.5rem 1.05rem;
-  font-size: 0.875rem;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: var(--fg);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+.btn:active:not(:disabled) {
+  transform: scale(0.98);
 }
+
+.btn:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid rgba(169, 194, 255, 0.9);
+  outline-offset: 3px;
+}
+
+.btn-glass {
+  background: rgba(255, 255, 255, 0.055);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--fg);
+}
+
 .btn-glass:hover {
   background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.18);
 }
 
-/* solid white pill — primary CTA (Ornn "Talk to our team" style) */
 .btn-solid {
-  padding: 0.6rem 1.25rem;
-  font-size: 0.9rem;
-  background: #f3f4f6;
-  color: #000;
-  border: 1px solid transparent;
-  font-weight: 600;
+  background: #f5f5f7;
+  color: #090a0c;
+  border-color: #f5f5f7;
 }
+
 .btn-solid:hover {
   background: #fff;
-  box-shadow: 0 0 30px rgba(255, 255, 255, 0.18);
+  border-color: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
 }
 
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.48;
   cursor: not-allowed;
 }
 
-/* ── Typography helpers ──────────────────────────────────────────────────── */
 .serif {
   font-family: var(--font-serif), Georgia, serif;
 }
 
 .tabular {
   font-variant-numeric: tabular-nums;
-  font-family: var(--font-mono), ui-monospace, monospace;
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
 }
 
-/* metallic silver text (neutral greyscale) */
-.text-silver {
-  background: linear-gradient(180deg, #ffffff 0%, #d2d2d2 55%, #909090 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-/* legacy class names retained but recolored neutral greyscale */
+.text-silver,
 .text-gradient {
-  background: linear-gradient(180deg, #ffffff 0%, #cccccc 60%, #8e8e8e 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--fg);
 }
-.text-glow {
-  text-shadow: 0 0 26px rgba(255, 255, 255, 0.18);
-}
+
+.text-glow,
 .text-glow-strong {
-  text-shadow:
-    0 0 30px rgba(255, 255, 255, 0.38),
-    0 0 90px rgba(255, 255, 255, 0.16);
+  text-shadow: none;
 }
 
 .mono-label {
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 0.6875rem;
-  letter-spacing: 0.22em;
+  font-weight: 600;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
   color: var(--muted);
 }
@@ -364,9 +187,8 @@ body {
   background: var(--line);
 }
 
-/* ── Misc ────────────────────────────────────────────────────────────────── */
 ::selection {
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(169, 194, 255, 0.28);
   color: #fff;
 }
 
@@ -374,29 +196,34 @@ body {
   width: 10px;
   height: 10px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.14);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
 }
 
-@media (pointer: coarse) {
-  .curtain-glow,
-  .cursor-spot {
-    display: none;
-  }
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.24);
+  border: 3px solid transparent;
+  background-clip: padding-box;
 }
 
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
   *,
   *::before,
   *::after {
     animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
 }
