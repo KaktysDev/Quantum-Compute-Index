@@ -8,10 +8,12 @@
 // Quandela's cloud has NO list-all endpoint, so we probe known platform names:
 //   GET /api/platforms/{name}/processor        (new; falls back to
 //   GET /api/platform/{name}                    legacy on 404)
-// A platform payload is { status, type, specs.constraints, perfs }. Photonic
+// A platform payload is { status, type, specs.constraints, perfs } — shape
+// confirmed against the Perceval SDK (remote_processor.fetch_data). Photonic
 // hardware has no qubit count, no quantum-volume, and no price in the API, so:
 //   • capacity   ← specs.constraints.max_mode_count (photonic "width")
-//   • fid2q      ← perfs["HOM (%)"]/100 (indistinguishability — closest analogue)
+//   • fid2q      ← perfs HOM/indistinguishability (closest analogue), scanned
+//                  tolerantly because the exact key varies ("HOM", "HOM (%)"…).
 //   • qv/clops/price keep documented representative values.
 // Only physical QPUs (not simulators) feed the index.
 //
@@ -21,13 +23,22 @@
 import type { RawQpuMetrics } from "@/lib/qci/types";
 import type { ProviderAdapter, ProviderTestResult } from "./types";
 
-const QUANDELA_API = "https://api.cloud.quandela.com";
+const QUANDELA_API = (process.env.QUANDELA_API_BASE || "https://api.cloud.quandela.com").replace(
+  /\/+$/,
+  "",
+);
 
 // No list-all endpoint exists — platforms are fetched by name. Update these as
-// Quandela publishes/renames platforms (dashboard shows the current set).
-const QUANDELA_QPUS = ["qpu:belenos", "qpu:ascella"];
-const QUANDELA_SIMS = ["sim:belenos", "sim:slos", "sim:ascella"];
-const QUANDELA_ALL = [...QUANDELA_QPUS, ...QUANDELA_SIMS];
+// Quandela publishes/renames platforms (the dashboard shows the current set), or
+// set QUANDELA_PLATFORMS="qpu:foo,qpu:bar" to add names without a redeploy.
+const ENV_PLATFORMS = (process.env.QUANDELA_PLATFORMS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+const DEFAULT_QPUS = ["qpu:belenos", "qpu:ascella", "qpu:altair"];
+const QUANDELA_QPUS = [...new Set([...DEFAULT_QPUS, ...ENV_PLATFORMS.filter((p) => /^qpu:/i.test(p))])];
+const QUANDELA_SIMS = ["sim:belenos", "sim:slos", "sim:ascella", "sim:altair"];
+const QUANDELA_ALL = [...new Set([...QUANDELA_QPUS, ...QUANDELA_SIMS, ...ENV_PLATFORMS])];
 
 // The API returns neither pricing nor a quantum-volume figure for photonic
 // hardware, so those keep documented representative values; live calls refine
@@ -93,14 +104,28 @@ function displayName(platformName: string): string {
   return bare.charAt(0).toUpperCase() + bare.slice(1);
 }
 
+/**
+ * Pull a HOM / single-photon indistinguishability figure from `perfs` without
+ * assuming the exact key (Quandela has used "HOM", "HOM (%)", "indistinguishability").
+ * Accepts a 0–1 fraction or a 0–100 percentage. Returns null if none is present.
+ */
+function extractHomFidelity(perfs?: Record<string, number>): number | null {
+  if (!perfs) return null;
+  for (const [k, v] of Object.entries(perfs)) {
+    if (typeof v !== "number") continue;
+    const key = k.toLowerCase();
+    if (key.includes("hom") || key.includes("indistinguish")) {
+      const f = v > 1 ? v / 100 : v; // percentage → fraction
+      if (f > 0 && f <= 1) return Math.max(0, Math.min(0.9999, f));
+    }
+  }
+  return null;
+}
+
 function mapPlatformToMetrics(p: QuandelaPlatform): RawQpuMetrics {
   const c = p.specs?.constraints;
   const capacity = Number(c?.max_mode_count ?? c?.max_photon_count ?? 12) || 12;
-  const hom = p.perfs?.["HOM (%)"];
-  const fid2q =
-    typeof hom === "number"
-      ? Math.max(0, Math.min(0.9999, hom / 100))
-      : QUANDELA_DEFAULT_FID2Q;
+  const fid2q = extractHomFidelity(p.perfs) ?? QUANDELA_DEFAULT_FID2Q;
   return {
     provider: "Quandela",
     qpu: displayName(p.name),
