@@ -37,6 +37,7 @@ export default function ProviderKeyForm() {
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [tests, setTests] = useState<Record<string, TestResult>>({});
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -165,6 +166,35 @@ export default function ProviderKeyForm() {
     }
   }
 
+  async function refresh() {
+    setRefreshing(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await fetch("/api/refresh", { method: "POST" });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || "Refresh failed");
+      if (j.wrote) {
+        const list = Array.isArray(j.constituents) ? j.constituents.join(", ") : "";
+        setNotice(
+          `Live index updated — ${j.qpus} constituent${j.qpus === 1 ? "" : "s"}${
+            list ? `: ${list}` : ""
+          }. Open the Dashboard to view.`,
+        );
+      } else {
+        setNotice(
+          `No live snapshot written${
+            j.reason ? ` — ${j.reason}` : ""
+          }. Make sure the provider is enabled and its key is valid (try “Test connection”).`,
+        );
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Refresh failed");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   if (loading) return <p className="text-sm text-[var(--muted)]">Loading providers…</p>;
 
   const inputClass =
@@ -182,6 +212,20 @@ export default function ProviderKeyForm() {
           {notice}
         </div>
       )}
+
+      {/* Recompute the index on demand (e.g. right after adding a key). */}
+      <div className="glass flex flex-wrap items-center justify-between gap-3 rounded-2xl p-5">
+        <div>
+          <h3 className="text-base font-medium text-white">Live index</h3>
+          <p className="mt-1 text-sm text-[var(--muted)]">
+            Recompute the QCI now from all enabled providers — use this after adding or updating a
+            key. It also refreshes automatically at 9:30 AM ET daily.
+          </p>
+        </div>
+        <button onClick={refresh} disabled={refreshing} className="btn btn-solid !py-2 !text-sm">
+          {refreshing ? "Refreshing…" : "Refresh index now"}
+        </button>
+      </div>
 
       {providers.map((p) => {
         const t = tests[p.id];

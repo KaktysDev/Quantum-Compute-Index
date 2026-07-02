@@ -17,9 +17,11 @@ export default function SettingsPage() {
         <h2 className="text-sm font-medium text-white">Provider API keys</h2>
         <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">
           Paste each provider&apos;s API key below. Keys are encrypted at rest and never shown
-          again. The index recomputes automatically at <span className="text-white">9:30 AM ET</span>{" "}
-          each day using all enabled providers. Until at least one key is added, the exchange shows
-          clearly-labeled <span className="text-white">sample data</span>.
+          again. After adding a key, click <span className="text-white">Refresh index now</span> to
+          recompute immediately — otherwise the index recomputes automatically at{" "}
+          <span className="text-white">9:30 AM ET</span> each day using all enabled providers. Until
+          at least one key produces data, the exchange shows clearly-labeled{" "}
+          <span className="text-white">sample data</span>.
         </p>
       </GlassCard>
 
