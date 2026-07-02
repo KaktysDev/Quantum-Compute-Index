@@ -53,6 +53,7 @@ export function normalize(m: RawQpuMetrics): NormalizedQpuMetrics {
     qv: m.qv,
     clops: m.clops,
     fid2q: m.fid2q,
+    capacity: m.capacity,
     // Volume proxy: capacity scaled by a demand signal (defaults to neutral 1.0).
     volume: m.capacity * demand,
     queueSeconds: m.queueSeconds,

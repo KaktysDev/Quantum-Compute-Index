@@ -38,6 +38,8 @@ export interface NormalizedQpuMetrics {
   qv: number;
   clops: number;
   fid2q: number;
+  /** Qubit count / width — carried through from the raw metrics for display. */
+  capacity: number;
   /** Volume proxy V_trans = capacity × demand signal. */
   volume: number;
   queueSeconds?: number;
