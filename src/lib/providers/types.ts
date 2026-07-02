@@ -3,6 +3,7 @@ import type { RawQpuMetrics } from "@/lib/qci/types";
 export type ProviderId =
   | "ibm"
   | "braket"
+  | "iqm"
   | "xanadu"
   | "quandela"
   | "quantum-inspire";

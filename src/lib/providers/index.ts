@@ -3,6 +3,7 @@
 import type { RawQpuMetrics } from "@/lib/qci/types";
 import { braket } from "./braket";
 import { ibm } from "./ibm";
+import { iqm } from "./iqm";
 import { quandela } from "./quandela";
 import { quantumInspire } from "./quantumInspire";
 import type { ProviderAdapter, ProviderDefinition, ProviderId } from "./types";
@@ -11,6 +12,7 @@ import { xanadu } from "./xanadu";
 export const PROVIDERS: ProviderAdapter[] = [
   ibm,
   braket,
+  iqm,
   xanadu,
   quandela,
   quantumInspire,
