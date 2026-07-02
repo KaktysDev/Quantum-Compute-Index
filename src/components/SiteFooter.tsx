@@ -3,7 +3,7 @@ import Logo from "./Logo";
 
 export default function SiteFooter() {
   return (
-    <footer className="flex flex-col items-center justify-between gap-5 border-t border-white/[0.08] py-8 sm:flex-row">
+    <footer className="qci-site-footer">
       <Link href="/" aria-label="QuantumForge home">
         <Logo size={22} />
       </Link>

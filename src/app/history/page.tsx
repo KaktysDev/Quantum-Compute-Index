@@ -38,20 +38,20 @@ const POINTS: TimelinePoint[] = [
 
 export default function HistoryPage() {
   return (
-    <main className="relative mx-auto w-full max-w-7xl px-6 sm:px-10">
+    <main className="qci-subpage relative mx-auto w-full max-w-7xl px-6 sm:px-10">
       <SiteHeader />
       <div className="hairline" />
 
       {/* hero */}
-      <section className="py-16 sm:py-20">
+      <section className="qci-subpage-hero py-16 sm:py-20">
         <p className="mono-label flex items-center gap-2 text-white/70">
           <span className="inline-block h-1.5 w-1.5 bg-white" />
           History
         </p>
-        <h1 className="text-glow-strong mt-5 max-w-3xl text-5xl font-semibold leading-[1.02] tracking-tight text-white sm:text-7xl">
+        <h1 className="qci-subpage-title mt-5 max-w-4xl text-white">
           The road to the compute of the future
         </h1>
-        <p className="mt-6 max-w-xl text-lg leading-relaxed text-[var(--muted)]">
+        <p className="qci-subpage-lede mt-6 max-w-xl">
           Four decades from a physicist&apos;s thought experiment to a market in the making.
         </p>
       </section>
@@ -67,7 +67,7 @@ export default function HistoryPage() {
 
       {/* closing */}
       <section className="py-24 text-center">
-        <h2 className="text-glow-strong mx-auto max-w-3xl text-4xl font-medium tracking-tight text-white sm:text-6xl">
+        <h2 className="serif mx-auto max-w-3xl text-4xl font-normal tracking-[-0.04em] text-white sm:text-6xl">
           A technology this important deserves a market.
         </h2>
         <p className="mx-auto mt-6 max-w-xl text-[var(--muted)]">

@@ -32,7 +32,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable} ${serif.variable}`}>
-      <body>
+      <body suppressHydrationWarning>
         <div className="curtain" />
         {children}
       </body>

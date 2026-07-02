@@ -4,7 +4,7 @@ import Logo from "@/components/Logo";
 
 export default function AccessDeniedPage() {
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col items-center justify-center px-5">
+    <main className="qci-subpage mx-auto flex min-h-screen max-w-3xl flex-col items-center justify-center px-5">
       <GlassCard strong className="w-full max-w-md p-10 text-center">
         <div className="mb-6 flex justify-center">
           <Logo />

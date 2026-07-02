@@ -77,17 +77,17 @@ export default function PriceChart({
       },
       crosshair: {
         mode: 0,
-        vertLine: { color: "rgba(169,194,255,0.38)", labelBackgroundColor: "#15181d" },
-        horzLine: { color: "rgba(169,194,255,0.38)", labelBackgroundColor: "#15181d" },
+        vertLine: { color: "rgba(101,217,165,0.38)", labelBackgroundColor: "#15181d" },
+        horzLine: { color: "rgba(101,217,165,0.38)", labelBackgroundColor: "#15181d" },
       },
       width: el.clientWidth,
       height: el.clientHeight || 320,
     });
     chartRef.current = chart;
     seriesRef.current = chart.addAreaSeries({
-      lineColor: "#a9c2ff",
-      topColor: "rgba(133,166,237,0.2)",
-      bottomColor: "rgba(133,166,237,0.0)",
+      lineColor: "#65d9a5",
+      topColor: "rgba(62,190,133,0.2)",
+      bottomColor: "rgba(62,190,133,0.0)",
       lineWidth: 2,
       priceLineVisible: false,
       priceFormat: { type: "price", precision: 2, minMove: 0.01 },

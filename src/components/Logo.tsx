@@ -5,7 +5,7 @@ export default function Logo({ size = 26 }: { size?: number }) {
         <defs>
           <linearGradient id="qf" x1="0" y1="0" x2="32" y2="32">
             <stop offset="0" stopColor="#ffffff" />
-            <stop offset="1" stopColor="#9a9da6" />
+            <stop offset="1" stopColor="#65d9a5" />
           </linearGradient>
         </defs>
         {/* stacked bars — a quiet nod to a market depth ladder */}
