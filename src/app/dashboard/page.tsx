@@ -6,6 +6,31 @@ import { getLatestSnapshot, getSeries } from "@/lib/qci/store";
 
 export const dynamic = "force-dynamic";
 
+/** Small freshness badge for a constituent (fresh pull / carried-forward / sample). */
+function ConstituentStatus({
+  status,
+  source,
+}: {
+  status?: "active" | "stale";
+  source: "live" | "sample";
+}) {
+  const kind = source === "sample" ? "sample" : status === "stale" ? "stale" : "active";
+  const meta = {
+    active: { label: "Live", dot: "var(--accent)", cls: "text-[var(--accent)]" },
+    stale: { label: "Cached", dot: "#f5b544", cls: "text-[#f5b544]" },
+    sample: { label: "Sample", dot: "var(--muted-dim)", cls: "text-[var(--muted)]" },
+  }[kind];
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-sans">
+      <span
+        className="inline-block h-1.5 w-1.5 rounded-full"
+        style={{ backgroundColor: meta.dot }}
+      />
+      <span className={`text-xs ${meta.cls}`}>{meta.label}</span>
+    </span>
+  );
+}
+
 export default async function DashboardOverview() {
   const [latest, series] = await Promise.all([getLatestSnapshot(), getSeries(180)]);
 
@@ -123,11 +148,23 @@ export default async function DashboardOverview() {
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-left text-sm">
+            <table className="w-full min-w-[1000px] text-left text-sm">
               <thead className="text-xs uppercase tracking-wider text-[var(--muted)]">
                 <tr className="border-b border-white/10">
                   <th className="py-2.5 pr-4 font-medium">Provider</th>
                   <th className="py-2.5 pr-4 font-medium">QPU</th>
+                  <th className="py-2.5 pr-4 font-medium">
+                    <span className="inline-flex items-center">
+                      Status
+                      <InfoTip title="Data status">
+                        <b className="text-white">Live</b> — metrics pulled fresh this refresh.{" "}
+                        <b className="text-white">Cached</b> — the provider&apos;s feed was
+                        unavailable, so its last good data is carried forward to keep the price
+                        stable until it comes back online. <b className="text-white">Sample</b> —
+                        illustrative data (no live key yet).
+                      </InfoTip>
+                    </span>
+                  </th>
                   <th className="py-2.5 pr-4 text-right font-medium">
                     <span className="inline-flex items-center">
                       Qubits
@@ -218,6 +255,9 @@ export default async function DashboardOverview() {
                   <tr key={`${c.provider}-${c.qpu}-${i}`} className="border-b border-white/5">
                     <td className="py-2.5 pr-4 font-sans text-white">{c.provider}</td>
                     <td className="py-2.5 pr-4 font-sans text-[var(--muted)]">{c.qpu}</td>
+                    <td className="py-2.5 pr-4">
+                      <ConstituentStatus status={c.status} source={latest.source} />
+                    </td>
                     <td className="py-2.5 pr-4 text-right text-white">
                       {c.capacity ? c.capacity.toLocaleString() : "—"}
                     </td>

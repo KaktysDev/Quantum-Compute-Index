@@ -47,12 +47,21 @@ export interface NormalizedQpuMetrics {
   stockReturn?: number;
 }
 
+/** Data freshness of a constituent on the refresh that produced it. */
+export type ProviderDataStatus = "active" | "stale";
+
 /** Per-QPU contribution returned alongside the computed index (for the dashboard breakdown). */
 export interface QpuComponent extends NormalizedQpuMetrics {
   pqf: number;
   weight: number; // V_trans · PQF
   /** Share of the final index this QPU contributed (0..1). */
   share: number;
+  /**
+   * Whether this constituent's metrics were pulled fresh this refresh ("active")
+   * or carried forward from the last successful pull because the provider was
+   * offline ("stale"). Absent on snapshots recorded before this was tracked.
+   */
+  status?: ProviderDataStatus;
 }
 
 /** A computed QCI data point. */

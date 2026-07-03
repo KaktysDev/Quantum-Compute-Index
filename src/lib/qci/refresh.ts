@@ -11,7 +11,9 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptSecret } from "@/lib/crypto";
 import { fetchAllMetrics } from "@/lib/providers";
+import { mergeWithCarryForward } from "./carryForward";
 import { computeQci } from "./compute";
+import type { QpuComponent } from "./types";
 
 export interface RefreshResult {
   wrote: boolean;
@@ -27,6 +29,8 @@ export interface RefreshResult {
   qpus?: number;
   /** Human-readable "Provider · QPU" list for UI feedback. */
   constituents?: string[];
+  /** Providers whose data was carried forward this run (offline / failed pull). */
+  stale?: string[];
 }
 
 /** Current calendar date in America/New_York (for the once-per-day guard). */
@@ -89,8 +93,31 @@ export async function computeAndStoreSnapshot(
 
   const rawMetrics = await fetchAllMetrics(keys, now);
 
-  // No keys / no live data yet → keep showing sample data. Nothing to write.
-  if (rawMetrics.length === 0) {
+  // Previous snapshot: chain-link anchor AND the last-known-good store per
+  // provider (its components double as the carry-forward source).
+  const { data: prev } = await supabase
+    .from("qci_snapshots")
+    .select("price, vwap, components")
+    .order("ts", { ascending: false })
+    .limit(1);
+  const prevComponents = (
+    prev && prev.length > 0 ? prev[0].components ?? [] : []
+  ) as QpuComponent[];
+  const previous =
+    prev && prev.length > 0
+      ? { price: Number(prev[0].price), vwap: Number(prev[0].vwap), components: prevComponents }
+      : null;
+
+  // Carry forward any provider that went dark so its feed dropping out doesn't
+  // change the basket and crash the VWAP.
+  const { metrics: mergedMetrics, statusByProvider } = mergeWithCarryForward(
+    rawMetrics,
+    prevComponents,
+    Object.keys(keys),
+  );
+
+  // Nothing live AND nothing to carry → keep the last snapshot / sample data.
+  if (mergedMetrics.length === 0) {
     return {
       wrote: false,
       source: "sample",
@@ -102,26 +129,17 @@ export async function computeAndStoreSnapshot(
     };
   }
 
-  // Previous snapshot for chain-linking (price + vwap + basket).
-  const { data: prev } = await supabase
-    .from("qci_snapshots")
-    .select("price, vwap, components")
-    .order("ts", { ascending: false })
-    .limit(1);
-  const previous =
-    prev && prev.length > 0
-      ? {
-          price: Number(prev[0].price),
-          vwap: Number(prev[0].vwap),
-          components: (prev[0].components ?? []) as Array<{ provider: string }>,
-        }
-      : null;
-
-  const snapshot = computeQci(rawMetrics, {
+  const snapshot = computeQci(mergedMetrics, {
     ts: now.toISOString(),
     previous,
     source: "live",
   });
+
+  // Tag each constituent's data freshness (fresh pull vs carried-forward).
+  snapshot.components = snapshot.components.map((c) => ({
+    ...c,
+    status: statusByProvider[c.provider] ?? "active",
+  }));
 
   const { error: insErr } = await supabase.from("qci_snapshots").insert({
     ts: snapshot.ts,
@@ -156,5 +174,6 @@ export async function computeAndStoreSnapshot(
     providers: Object.keys(keys),
     qpus: snapshot.components.length,
     constituents: snapshot.components.map((c) => `${c.provider} · ${c.qpu}`),
+    stale: snapshot.components.filter((c) => c.status === "stale").map((c) => c.provider),
   };
 }
