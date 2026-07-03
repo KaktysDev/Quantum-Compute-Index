@@ -14,7 +14,7 @@ const S = { fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap:
 const COMPANIES: Company[] = [
   {
     name: "IBM Quantum",
-    sub: "Eagle / Osprey",
+    sub: "Heron · Eagle",
     mark: (
       <svg viewBox="0 0 48 48" className="h-9 w-9">
         <g {...S}>
@@ -28,7 +28,7 @@ const COMPANIES: Company[] = [
   },
   {
     name: "IonQ",
-    sub: "Forte",
+    sub: "Aria · Forte",
     mark: (
       <svg viewBox="0 0 48 48" className="h-9 w-9">
         <g {...S}>
@@ -57,7 +57,7 @@ const COMPANIES: Company[] = [
   },
   {
     name: "IQM",
-    sub: "Emerald",
+    sub: "Garnet · Emerald",
     mark: (
       <svg viewBox="0 0 48 48" className="h-9 w-9">
         <g {...S}>
@@ -69,7 +69,7 @@ const COMPANIES: Company[] = [
   },
   {
     name: "AWS Braket",
-    sub: "IonQ · Rigetti · IQM",
+    sub: "Rigetti · QuEra · AQT",
     mark: (
       <svg viewBox="0 0 48 48" className="h-9 w-9">
         <g {...S}>
@@ -81,20 +81,8 @@ const COMPANIES: Company[] = [
     ),
   },
   {
-    name: "Xanadu",
-    sub: "Borealis · photonic",
-    mark: (
-      <svg viewBox="0 0 48 48" className="h-9 w-9">
-        <g {...S}>
-          <polygon points="24,9 37,16.5 37,31.5 24,39 11,31.5 11,16.5" />
-          <line x1="24" y1="9" x2="24" y2="39" />
-        </g>
-      </svg>
-    ),
-  },
-  {
     name: "Quandela",
-    sub: "Ascella · photonic",
+    sub: "Belenos · photonic",
     mark: (
       <svg viewBox="0 0 48 48" className="h-9 w-9">
         <g {...S}>
@@ -104,23 +92,11 @@ const COMPANIES: Company[] = [
       </svg>
     ),
   },
-  {
-    name: "Quantum Inspire",
-    sub: "Open access",
-    mark: (
-      <svg viewBox="0 0 48 48" className="h-9 w-9">
-        <g {...S}>
-          <circle cx="23" cy="23" r="13" />
-          <line x1="29" y1="29" x2="38" y2="38" />
-        </g>
-      </svg>
-    ),
-  },
 ];
 
 export default function CompanyLogos() {
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
       {COMPANIES.map((c) => (
         <div
           key={c.name}

@@ -36,10 +36,9 @@ export default async function PricingPage() {
   const [latest, series] = await Promise.all([getLatestSnapshot(), getSeries(120)]);
 
   return (
-    <main className="qci-subpage relative mx-auto w-full max-w-7xl px-6 sm:px-10">
+    <>
       <SiteHeader />
-      <div className="hairline" />
-
+      <main className="qci-subpage relative mx-auto w-full max-w-7xl px-6 sm:px-10">
       {/* hero */}
       <section className="qci-subpage-hero py-16 sm:py-20">
         <p className="mono-label flex items-center gap-2 text-white/70">
@@ -55,15 +54,25 @@ export default async function PricingPage() {
         </p>
       </section>
 
-      {/* steps */}
-      <section className="grid gap-5 pb-6 md:grid-cols-2">
-        {STEPS.map((s) => (
-          <div key={s.n} className="glass glass-hover sheen rounded-2xl p-7">
-            <p className="serif text-4xl leading-none text-white/30">{s.n}</p>
-            <h3 className="mt-4 text-xl font-medium text-white">{s.title}</h3>
-            <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">{s.body}</p>
-          </div>
-        ))}
+      {/* steps — a left-to-right flow: rates → score → blend */}
+      <section className="pb-6">
+        <div className="grid items-stretch gap-4 md:grid-cols-3">
+          {STEPS.map((s, i) => (
+            <div key={s.n} className="relative glass glass-hover sheen rounded-2xl p-7">
+              <p className="serif text-4xl leading-none text-white/30">{s.n}</p>
+              <h3 className="mt-4 text-xl font-medium text-white">{s.title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">{s.body}</p>
+              {i < STEPS.length - 1 && (
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute right-[-1.15rem] top-1/2 z-10 hidden -translate-y-1/2 text-lg text-[var(--muted)] md:block"
+                >
+                  →
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
       </section>
 
       {/* simplified formula */}
@@ -118,6 +127,7 @@ export default async function PricingPage() {
       </section>
 
       <SiteFooter />
-    </main>
+      </main>
+    </>
   );
 }

@@ -38,10 +38,9 @@ const POINTS: TimelinePoint[] = [
 
 export default function HistoryPage() {
   return (
-    <main className="qci-subpage relative mx-auto w-full max-w-7xl px-6 sm:px-10">
+    <>
       <SiteHeader />
-      <div className="hairline" />
-
+      <main className="qci-subpage relative mx-auto w-full max-w-7xl px-6 sm:px-10">
       {/* hero */}
       <section className="qci-subpage-hero py-16 sm:py-20">
         <p className="mono-label flex items-center gap-2 text-white/70">
@@ -77,6 +76,7 @@ export default function HistoryPage() {
       </section>
 
       <SiteFooter />
-    </main>
+      </main>
+    </>
   );
 }

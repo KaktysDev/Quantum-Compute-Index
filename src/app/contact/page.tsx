@@ -10,10 +10,9 @@ export const metadata: Metadata = {
 
 export default function ContactPage() {
   return (
-    <main className="qci-subpage relative mx-auto w-full max-w-7xl px-6 sm:px-10">
+    <>
       <SiteHeader />
-      <div className="hairline" />
-
+      <main className="qci-subpage relative mx-auto w-full max-w-7xl px-6 sm:px-10">
       <section className="qci-subpage-hero grid gap-12 py-16 lg:grid-cols-2 lg:py-24">
         <div>
           <p className="mono-label flex items-center gap-2 text-white/70">
@@ -33,6 +32,7 @@ export default function ContactPage() {
       </section>
 
       <SiteFooter />
-    </main>
+      </main>
+    </>
   );
 }

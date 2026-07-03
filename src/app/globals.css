@@ -204,6 +204,31 @@ textarea:focus-visible {
   backdrop-filter: blur(18px);
 }
 
+/* Unified top nav — one full-width sticky bar with a centered inner container,
+   so it renders identically on the landing and every subpage. */
+.qci-nav {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  background-color: rgba(7, 10, 8, 0.82);
+  background-image: repeating-linear-gradient(90deg, transparent 0 52px, rgba(38, 194, 132, 0.035) 52px 54px);
+  backdrop-filter: blur(18px);
+}
+.qci-nav-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+  max-width: 80rem;
+  margin-inline: auto;
+  padding: 0.85rem 1.5rem;
+}
+@media (min-width: 640px) {
+  .qci-nav-inner { padding: 0.95rem 2.5rem; }
+}
+
 .qci-site-brand {
   border: 1px solid rgba(255,255,255,.18);
   border-radius: 999px;

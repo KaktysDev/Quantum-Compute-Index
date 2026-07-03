@@ -1,6 +1,6 @@
 import Link from "next/link";
-import Logo from "@/components/Logo";
 import SiteFooter from "@/components/SiteFooter";
+import SiteHeader from "@/components/SiteHeader";
 import { formatChangePct, formatUsd } from "@/lib/qci/format";
 import { getLatestSnapshot } from "@/lib/qci/store";
 
@@ -12,7 +12,7 @@ const WORKFLOWS = [
     eyebrow: "Normalize",
     title: "One market language",
     body: "Provider rates are converted into a consistent unit before they enter the index.",
-    metric: "8 provider feeds unified",
+    metric: "6 provider feeds unified",
     visual: (
       <div className="qci-mini-list">
         {["Per shot", "Per task", "Per minute", "Reserved"].map((item) => (
@@ -66,15 +66,15 @@ const WORKFLOWS = [
 
 const METRICS = [
   {
-    value: "8+",
-    label: "Quantum cloud providers tracked across the market",
+    value: "6",
+    label: "Quantum cloud providers tracked",
     before: "Fragmented rates",
     after: "one normalized index",
     tag: "Coverage",
   },
   {
     value: "24h",
-    label: "Refresh cadence for a current view of compute pricing",
+    label: "Refresh cadence for live compute pricing",
     before: "Manual research",
     after: "daily market signal",
     tag: "Freshness",
@@ -98,17 +98,10 @@ export default async function LandingPage() {
   }).format(new Date(latest.ts));
 
   return (
-    <main className="qci-landing">
+    <>
+      <SiteHeader />
+      <main className="qci-landing">
       <section className="qci-hero">
-        <header className="qci-hero-nav">
-          <Link href="/" className="qci-brand-pill" aria-label="QuantumForge home"><Logo /></Link>
-          <div className="qci-nav-actions">
-            <Link href="/pricing" className="qci-simple-link">Methodology</Link>
-            <Link href="/dashboard" className="qci-simple-link">Sign in</Link>
-            <Link href="/contact" className="qci-pill qci-pill-light">Request access</Link>
-          </div>
-        </header>
-
         <div className="qci-hero-content">
           <p className="qci-kicker"><span>✦</span> The market standard for quantum compute</p>
           <h1>The financial layer for<br />quantum computing.</h1>
@@ -191,6 +184,7 @@ export default async function LandingPage() {
       </section>
 
       <div className="qci-footer-wrap"><SiteFooter /></div>
-    </main>
+      </main>
+    </>
   );
 }
