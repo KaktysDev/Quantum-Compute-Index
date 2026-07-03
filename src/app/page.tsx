@@ -6,64 +6,6 @@ import { getLatestSnapshot } from "@/lib/qci/store";
 
 export const dynamic = "force-dynamic";
 
-const WORKFLOWS = [
-  {
-    number: "01",
-    eyebrow: "Normalize",
-    title: "One market language",
-    body: "Provider rates are converted into a consistent unit before they enter the index.",
-    metric: "6 provider feeds unified",
-    visual: (
-      <div className="qci-mini-list">
-        {["Per shot", "Per task", "Per minute", "Reserved"].map((item) => (
-          <div key={item}><span>›</span>{item}</div>
-        ))}
-      </div>
-    ),
-  },
-  {
-    number: "02",
-    eyebrow: "Adjust",
-    title: "Quality-aware pricing",
-    body: "Capability, throughput, and fidelity determine how each system contributes.",
-    metric: "Performance weighted daily",
-    visual: (
-      <div className="qci-mini-table">
-        <span>QPU</span><span>RATE</span><span>WEIGHT</span>
-        <b>A-01</b><b>$1.62</b><i>32%</i>
-        <b>B-08</b><b>$2.14</b><i>41%</i>
-        <b>C-04</b><b>$0.98</b><i>27%</i>
-      </div>
-    ),
-  },
-  {
-    number: "03",
-    eyebrow: "Benchmark",
-    title: "A durable index level",
-    body: "A repeatable methodology creates a comparable time series across market cycles.",
-    metric: "120-day market history",
-    visual: (
-      <div className="qci-mini-flow">
-        <span>Rates</span><b>→</b><span>Quality</span><b>→</b><span>QCI</span>
-      </div>
-    ),
-  },
-  {
-    number: "04",
-    eyebrow: "Decide",
-    title: "Built for real decisions",
-    body: "Give finance, procurement, and infrastructure teams one defensible reference point.",
-    metric: "One source of market truth",
-    visual: (
-      <div className="qci-mini-files">
-        <span><i className="bg-emerald-400" />Board report <b>↓</b></span>
-        <span><i className="bg-white/50" />Pricing brief <b>↓</b></span>
-        <span><i className="bg-emerald-700" />Market data <b>↓</b></span>
-      </div>
-    ),
-  },
-];
-
 const METRICS = [
   {
     value: "6",
@@ -121,26 +63,6 @@ export default async function LandingPage() {
           </div>
         </div>
         <p className="qci-asof">Updated {asOf} · 9:30 AM ET</p>
-      </section>
-
-      <section id="workflows" className="qci-workflows">
-        <div className="qci-section-heading">
-          <p>How the index works</p>
-          <h2>The market decisions<br />teams can make faster.</h2>
-        </div>
-        <div className="qci-workflow-grid">
-          {WORKFLOWS.map((item) => (
-            <article key={item.number} className="qci-workflow-card">
-              <div className="qci-card-visual">{item.visual}</div>
-              <div className="qci-card-copy">
-                <div className="qci-metric-pill"><span>◷</span>{item.metric}</div>
-                <span className="qci-card-number">{item.number} · {item.eyebrow}</span>
-                <h3>{item.title}</h3>
-                <p>{item.body}</p>
-              </div>
-            </article>
-          ))}
-        </div>
       </section>
 
       <section className="qci-outcomes">
