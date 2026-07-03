@@ -6,6 +6,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { basketKey } from "./compute";
 import { sampleSeries, sampleSnapshot, type SamplePoint } from "./sample";
 import type { QciSnapshot, QpuComponent } from "./types";
 
@@ -49,33 +50,61 @@ export async function getLatestSnapshot(): Promise<QciSnapshot> {
   }
 }
 
+interface SeriesRow {
+  ts: string;
+  vwap: number | null;
+  components: Array<{ provider: string }> | null;
+  source: "live" | "sample";
+}
+
+/** Sample chart series in $/NQH terms (scale the 1000-anchored path by VWAP). */
+function sampleVwapSeries(days: number): SamplePoint[] {
+  const snap = sampleSnapshot();
+  const scale = snap.price > 0 ? snap.vwap / snap.price : 1;
+  return sampleSeries(days).map((p) => ({ time: p.time, value: p.value * scale }));
+}
+
 /**
- * QCI history for the chart, as UNIX-second points.
- * Uses REAL recorded snapshots as soon as there is at least one; only falls back
- * to the deterministic sample series when nothing has been recorded yet.
+ * VWAP history for the chart (the real $/NQH price of a quantum compute hour),
+ * as UNIX-second points.
+ *
+ * We chart the VWAP — not the 1000-anchored index level — and include ONLY the
+ * snapshots that share the CURRENT basket composition. That makes the line start
+ * when today's basket was formed, instead of showing the artificial jump from
+ * the assembly phase (providers being connected one by one changes the VWAP for
+ * composition reasons, not real price moves). Falls back to the deterministic
+ * sample series until at least one live snapshot exists.
  */
 export async function getSeries(days = 120): Promise<SamplePoint[]> {
-  if (!isSupabaseConfigured()) return sampleSeries(days);
+  if (!isSupabaseConfigured()) return sampleVwapSeries(days);
   try {
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("qci_snapshots")
-      .select("ts, price")
+      .select("ts, vwap, components, source")
       .order("ts", { ascending: true })
       .limit(SERIES_LIMIT);
-    if (error || !data || data.length === 0) return sampleSeries(days);
+    if (error || !data || data.length === 0) return sampleVwapSeries(days);
 
-    // Every recorded snapshot becomes a point (de-dupe identical timestamps).
+    const live = (data as SeriesRow[]).filter((r) => r.source === "live" && r.vwap != null);
+    if (live.length === 0) return sampleVwapSeries(days);
+
+    // Keep only snapshots matching the latest basket, so the chart begins at the
+    // current basket's first point (no composition-change jumps).
+    const latestBasket = basketKey(live[live.length - 1].components ?? []);
+    const matching = live.filter((r) => basketKey(r.components ?? []) === latestBasket);
+    const rows = matching.length > 0 ? matching : live;
+
     const seen = new Set<number>();
     const points: SamplePoint[] = [];
-    for (const row of data as Array<{ ts: string; price: number }>) {
+    for (const row of rows) {
       const t = Math.floor(new Date(row.ts).getTime() / 1000);
       if (seen.has(t)) continue;
       seen.add(t);
-      points.push({ time: t, value: Number(row.price) });
+      points.push({ time: t, value: Number(row.vwap) });
     }
     return points;
   } catch {
-    return sampleSeries(days);
+    return sampleVwapSeries(days);
   }
 }

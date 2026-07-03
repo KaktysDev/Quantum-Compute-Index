@@ -25,11 +25,13 @@ export default async function DashboardOverview() {
       <div className="grid gap-6 lg:grid-cols-3">
         <GlassCard className="p-6 lg:col-span-1">
           <PriceDisplay
-            price={latest.price}
+            price={latest.vwap}
             changePct={latest.changePct}
             source={latest.source}
             asOf={asOf}
             size="panel"
+            label="$ / QC-HR"
+            caption="Price of one normalized quantum compute hour"
           />
           <div className="hairline my-6" />
           <dl className="grid grid-cols-2 gap-4 text-sm">
@@ -56,23 +58,26 @@ export default async function DashboardOverview() {
             </div>
             <div>
               <dt className="flex items-center text-[var(--muted)]">
-                VWAP (USD/NQH)
-                <InfoTip title="VWAP (USD / NQH)">
-                  The performance-weighted average price of one <b className="text-white">Normalized
-                  Quantum Hour</b> across the basket — the raw dollar figure the index tracks. The
-                  headline QCI is this VWAP rescaled to the 1,000 inception anchor, so as this rises
-                  or falls the index moves with it.
+                QCI index
+                <InfoTip title="QCI index level">
+                  The chain-linked benchmark level, anchored to <b className="text-white">1,000 at
+                  inception</b> (S&amp;P-style). It tracks the VWAP&apos;s day-to-day moves but carries
+                  over unchanged when the basket composition changes, so connecting a provider never
+                  creates an artificial jump. The headline above is the raw $/hour it&apos;s built on.
                 </InfoTip>
               </dt>
               <dd className="tabular mt-1 text-lg text-white">
-                {latest.vwap ? latest.vwap.toLocaleString() : "—"}
+                {latest.price.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
               </dd>
             </div>
             <div>
               <dt className="flex items-center text-[var(--muted)]">
                 Base level
                 <InfoTip title="Base level">
-                  The index is anchored to 1,000 at inception (S&amp;P-style). Today&apos;s level is
+                  The index is anchored to 1,000 at inception (S&amp;P-style). The QCI index above is
                   cumulative price movement of the basket since then.
                 </InfoTip>
               </dt>
@@ -84,7 +89,7 @@ export default async function DashboardOverview() {
         <GlassCard className="p-6 lg:col-span-2">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-sm font-medium uppercase tracking-[0.18em] text-[var(--muted)]">
-              QCI
+              $ / QC-hour
             </h3>
             {latest.source === "sample" && (
               <span className="mono-label rounded-full border border-white/15 bg-white/5 px-2.5 py-0.5">

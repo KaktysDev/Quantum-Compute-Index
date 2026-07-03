@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Logo from "@/components/Logo";
 import SiteFooter from "@/components/SiteFooter";
+import { formatChangePct, formatUsd } from "@/lib/qci/format";
 import { getLatestSnapshot } from "@/lib/qci/store";
 
 export const dynamic = "force-dynamic";
@@ -120,9 +121,9 @@ export default async function LandingPage() {
               </div>
             </div>
             <div className="qci-index-line">
-              <span><i /> QCI · {latest.source === "sample" ? "SAMPLE" : "LIVE"}</span>
-              <strong>${latest.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-              <em>{latest.changePct >= 0 ? "+" : ""}{latest.changePct.toFixed(2)}%</em>
+              <span><i /> $/QC-HR · {latest.source === "sample" ? "SAMPLE" : "LIVE"}</span>
+              <strong>${formatUsd(latest.vwap)}</strong>
+              <em>{formatChangePct(latest.changePct)}</em>
             </div>
           </div>
         </div>

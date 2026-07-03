@@ -3,6 +3,7 @@ import CompanyLogos from "@/components/CompanyLogos";
 import PriceChart from "@/components/PriceChart";
 import SiteFooter from "@/components/SiteFooter";
 import SiteHeader from "@/components/SiteHeader";
+import { formatUsd } from "@/lib/qci/format";
 import { getLatestSnapshot, getSeries } from "@/lib/qci/store";
 
 export const dynamic = "force-dynamic";
@@ -89,13 +90,10 @@ export default async function PricingPage() {
         <div className="glass-panel rounded-3xl p-6 sm:p-8">
           <div className="mb-5 flex items-center justify-between">
             <div>
-              <p className="mono-label">QCI</p>
+              <p className="mono-label">$ / QC-hour</p>
               <p className="serif mt-2 text-4xl text-white sm:text-5xl">
                 <span className="align-top text-xl text-[var(--muted)] sm:text-2xl">$</span>
-                {latest.price.toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
+                {formatUsd(latest.vwap)}
               </p>
             </div>
             <span className="mono-label rounded-full border border-white/15 bg-white/5 px-3 py-1">

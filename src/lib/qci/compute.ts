@@ -45,7 +45,7 @@ export function collapseOnePerProvider(metrics: RawQpuMetrics[]): RawQpuMetrics[
 }
 
 /** Provider-level basket signature (we keep one device per provider). */
-function basketKey(items: Array<{ provider: string }>): string {
+export function basketKey(items: Array<{ provider: string }>): string {
   return [...new Set(items.map((i) => i.provider))].sort().join("|");
 }
 

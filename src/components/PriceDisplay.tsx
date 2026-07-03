@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { formatChangePct } from "@/lib/qci/format";
 
 function useCountUp(target: number, duration = 1400) {
   const [value, setValue] = useState(0);
@@ -29,15 +30,20 @@ export default function PriceDisplay({
   source,
   asOf,
   size = "hero",
+  label = "QCI Index",
+  caption,
 }: {
   price: number;
   changePct: number;
   source: "live" | "sample";
   asOf: string;
   size?: "hero" | "panel";
+  /** Badge shown next to the % change. */
+  label?: string;
+  /** Optional small line under the headline number (e.g. the unit). */
+  caption?: string;
 }) {
   const animated = useCountUp(price);
-  const up = changePct >= 0;
   const big = size === "hero" ? "text-7xl sm:text-8xl" : "text-5xl sm:text-6xl";
   const dollar = size === "hero" ? "text-3xl sm:text-4xl" : "text-2xl sm:text-3xl";
 
@@ -59,13 +65,15 @@ export default function PriceDisplay({
         <div className="flex flex-col items-start gap-2 pb-2">
           <span className="mono-label flex items-center gap-1.5">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-white/60" />
-            QCI Index
+            {label}
           </span>
-          <span className="tabular text-sm text-white/75">
-            {up ? "+" : "−"}{Math.abs(changePct).toFixed(2)}%
-          </span>
+          <span className="tabular text-sm text-white/75">{formatChangePct(changePct)}</span>
         </div>
       </div>
+
+      {caption && (
+        <p className="mono-label mt-2 normal-case tracking-normal text-[var(--muted)]">{caption}</p>
+      )}
 
       <div className="mt-7">
         <p className="mono-label">
