@@ -34,14 +34,18 @@ function ConstituentStatus({
 export default async function DashboardOverview() {
   const [latest, series] = await Promise.all([getLatestSnapshot(), getSeries(180)]);
 
-  const asOf = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  })
-    .format(new Date(latest.ts))
-    .toUpperCase();
+  const asOf =
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    })
+      .format(new Date(latest.ts))
+      .toUpperCase() + " ET";
 
   const hasComponents = latest.components.length > 0;
 

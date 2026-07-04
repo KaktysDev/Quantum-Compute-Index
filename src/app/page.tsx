@@ -37,6 +37,9 @@ export default async function LandingPage() {
     month: "short",
     day: "numeric",
     year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
   }).format(new Date(latest.ts));
 
   return (
@@ -62,7 +65,7 @@ export default async function LandingPage() {
             </div>
           </div>
         </div>
-        <p className="qci-asof">Updated {asOf} · 9:30 AM ET</p>
+        <p className="qci-asof">Updated {asOf} ET</p>
       </section>
 
       <section className="qci-outcomes">

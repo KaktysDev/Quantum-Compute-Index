@@ -61,16 +61,19 @@ export async function computeAndStoreSnapshot(
   const now = opts.now ?? new Date();
   const supabase = createAdminClient();
 
-  // Idempotency: one live snapshot per ET day, unless forced.
+  // Idempotency: one live snapshot per ET day, unless forced. Compare the ET
+  // CALENDAR DATE of the most recent live snapshot to today's ET date — comparing
+  // against a UTC-midnight cutoff would mis-bucket late-evening-ET snapshots (which
+  // fall on the next UTC day) and skip the morning run.
   if (!force) {
-    const dayStart = `${dateEt(now)}T00:00:00.000Z`;
-    const { data: existing } = await supabase
+    const { data: recent } = await supabase
       .from("qci_snapshots")
-      .select("id")
+      .select("ts")
       .eq("source", "live")
-      .gte("ts", dayStart)
+      .order("ts", { ascending: false })
       .limit(1);
-    if (existing && existing.length > 0) {
+    const lastTs = recent && recent.length > 0 ? recent[0].ts : null;
+    if (lastTs && dateEt(new Date(lastTs)) === dateEt(now)) {
       return { wrote: false, source: "sample", skipped: true, reason: "already ran today" };
     }
   }

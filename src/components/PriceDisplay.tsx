@@ -80,7 +80,7 @@ export default function PriceDisplay({
           {source === "sample" ? "Sample · Index Updated" : "Index Updated"}
         </p>
         <p className="tabular mt-1.5 text-xs text-[var(--muted)]">
-          {asOf} · 9:30 AM ET
+          {asOf}
         </p>
       </div>
     </div>
