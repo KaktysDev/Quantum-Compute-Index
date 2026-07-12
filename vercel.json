@@ -7,11 +7,11 @@
     },
     {
       "path": "/api/internal/jobs",
-      "schedule": "* * * * *"
+      "schedule": "35 13 * * *"
     },
     {
       "path": "/api/internal/providers/health",
-      "schedule": "*/5 * * * *"
+      "schedule": "40 13 * * *"
     }
   ]
 }
