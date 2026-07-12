@@ -1,3 +1,76 @@
+# QRouter by QuantumForge
+
+One API key for quantum compute. QRouter accepts OpenQASM, analyzes and
+transpiles the circuit, prices it against a versioned QCI snapshot, routes it to
+an eligible provider, reserves credits, and returns a normalized asynchronous
+job result.
+
+## QRouter quick start
+
+```bash
+curl https://your-domain.com/api/v1/jobs \
+  -H "Authorization: Bearer qci_live_..." \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: bell-001" \
+  -d '{
+    "format": "openqasm2",
+    "circuit": "OPENQASM 2.0; include \"qelib1.inc\"; qreg q[2]; creg c[2]; h q[0]; cx q[0],q[1]; measure q -> c;",
+    "shots": 1024,
+    "target": "auto",
+    "routing_mode": "balanced",
+    "constraints": { "maxCost": 2.00 }
+  }'
+```
+
+Run `supabase/schema.sql` and then `supabase/qrouter.sql`. Copy
+`.env.local.example` to `.env.local`, configure Google OAuth, Stripe, and the
+provider credentials needed in production. The local development server works
+without cloud credentials and exposes the test key
+`qci_test_local_development` outside production.
+
+### What the platform key does
+
+Keys created in **Dashboard -> API keys** authenticate against a SHA-256 hash in
+Supabase. Client applications send only that `qci_live_*` key. QRouter applies
+organization rate limits, compiles and prices the circuit, reserves QCI credits,
+and uses server-side provider credentials to submit the provider job. Provider
+tokens are never returned to the client.
+
+```ts
+import { QRouter } from "@qrouter/sdk";
+
+const qrouter = new QRouter(process.env.QROUTER_API_KEY!);
+const preview = await qrouter.transpile({ circuit, target: "auto", optimization_level: 2 });
+const job = await qrouter.jobs.create({ circuit, shots: 1024, target: "auto" });
+const completed = await qrouter.jobs.wait(job.id);
+const result = await qrouter.jobs.result(completed.id);
+```
+
+The Python client in `sdk/python` exposes the same `transpile`, `create_job`,
+`wait`, `get_result`, and `get_transpiled_qasm` workflow. The complete HTTP
+contract is published at `/openapi.json`.
+
+### Execution coverage
+
+- QCI Aer uses the authenticated GPU/CPU Qiskit worker.
+- IBM uses a live `BackendV2` target, QPY handoff, and the official Qiskit Runtime `SamplerV2` client.
+- IonQ uses the v0.4 QIS API directly, with Braket as the configured fallback.
+- Amazon SV1 and IQM Garnet use Braket; Garnet connectivity comes from current device capabilities before routing.
+- Quantum Inspire uses the configured approved execution bridge.
+- Xanadu and Quandela are capability-gated. Arbitrary gate-model OpenQASM is not silently translated to photonic programs; a native-input bridge is required.
+
+### Production checklist
+
+1. Apply `supabase/schema.sql` and `supabase/qrouter.sql`.
+2. Deploy `services/simulator` behind TLS and configure matching compiler/worker tokens.
+3. Configure Supabase, Stripe, artifact encryption, cron, and provider credentials from `.env.local.example`.
+4. Configure the one-minute `/api/internal/jobs` cron and Stripe webhook.
+5. Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`.
+6. Run credentialed smoke jobs against each enabled paid provider before exposing that backend in production.
+
+The original Quantum Compute Index implementation remains the pricing oracle
+and is documented below.
+
 # QuantumForge Exchange
 
 The financial layer for quantum computing. A web app that publishes the **Quantum
@@ -53,7 +126,6 @@ seed benchmark basket in [`seed.ts`](src/lib/qci/seed.ts).
 3. At the next 9:30 AM ET refresh (or a forced run), the cron pulls that provider's
    metrics, computes the live index, and the app switches from sample to **live** data.
 
-> The provider adapters in [`src/lib/providers/`](src/lib/providers/) are scaffolds:
-> with a key present they currently return benchmark values with small daily drift so
-> the whole pipeline is genuinely live end-to-end. Replace each adapter's `fetchMetrics`
-> body with real provider API calls to source true pricing/calibration/queue data.
+> The adapters in [`src/lib/providers/`](src/lib/providers/) feed QCI index telemetry,
+> not QRouter execution. Their benchmark fallback must be replaced with licensed live
+> pricing/calibration sources before describing the public index itself as live market data.

@@ -10,38 +10,13 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Dashboard requires auth; without Supabase configured there's no session.
-  if (!isSupabaseConfigured()) redirect("/");
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect("/");
-
-  // Is this account allowed to see contact submissions? (graceful if the
-  // contact tables/function aren't created yet.)
-  let isViewer = false;
-  let unread = 0;
-  try {
-    const { data } = await supabase.rpc("is_contact_viewer");
-    isViewer = data === true;
-    if (isViewer) {
-      const { count } = await supabase
-        .from("contact_submissions")
-        .select("id", { count: "exact", head: true })
-        .eq("read", false);
-      unread = count ?? 0;
-    }
-  } catch {
-    isViewer = false;
-  }
+  let email:string|null="developer@local";let organization="Local workspace";let balance=10;
+  if(isSupabaseConfigured()){const supabase=await createClient();const{data:{user}}=await supabase.auth.getUser();if(!user)redirect("/");email=user.email??null;const{data:profile}=await supabase.from("profiles").select("onboarding_complete").eq("id",user.id).maybeSingle();if(profile&&!profile.onboarding_complete)redirect("/onboarding");const{data:member}=await supabase.from("organization_members").select("organization_id,organizations(name)").eq("user_id",user.id).limit(1).maybeSingle();if(member){const org=Array.isArray(member.organizations)?member.organizations[0]:member.organizations;organization=(org as{name?:string}|null)?.name??organization;const{data:credits}=await supabase.from("credit_accounts").select("available").eq("organization_id",member.organization_id).maybeSingle();balance=Number(credits?.available??0)}}
 
   return (
-    <div className="min-h-screen">
-      <DashboardNav email={user.email ?? null} isViewer={isViewer} unread={unread} />
-      <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8">{children}</div>
+    <div className="console-shell min-h-screen">
+      <DashboardNav email={email} organization={organization} balance={balance}/>
+      <div className="console-main">{children}</div>
     </div>
   );
 }

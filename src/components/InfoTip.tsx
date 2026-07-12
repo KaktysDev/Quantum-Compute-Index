@@ -71,7 +71,8 @@ export default function InfoTip({
         onBlur={hide}
         onClick={(e) => {
           e.preventDefault();
-          open ? hide() : show();
+          if (open) hide();
+          else show();
         }}
         className="ml-1 inline-grid h-3.5 w-3.5 shrink-0 cursor-help place-items-center rounded-full border border-white/25 font-sans text-[9px] font-bold normal-case leading-none text-[var(--muted)] transition-colors hover:border-white/55 hover:text-white"
       >

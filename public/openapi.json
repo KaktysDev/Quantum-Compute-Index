@@ -1,0 +1,98 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "QRouter API",
+    "version": "1.0.0",
+    "description": "One authenticated API for hardware-aware compilation, routing, pricing, and execution across quantum providers."
+  },
+  "servers": [{ "url": "https://api.qrouter.dev" }],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "qci_live_*" }
+    },
+    "parameters": {
+      "JobId": { "in": "path", "name": "id", "required": true, "schema": { "type": "string", "format": "uuid" } }
+    },
+    "schemas": {
+      "Constraints": {
+        "type": "object",
+        "properties": {
+          "maxCost": { "type": "number", "exclusiveMinimum": 0 },
+          "maxQueueSeconds": { "type": "integer", "minimum": 0 },
+          "minFidelity": { "type": "number", "minimum": 0, "maximum": 1 },
+          "kind": { "enum": ["qpu", "simulator"] },
+          "providers": { "type": "array", "items": { "type": "string" } },
+          "excludeProviders": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "CreateJob": {
+        "type": "object",
+        "required": ["circuit"],
+        "properties": {
+          "name": { "type": "string", "maxLength": 120 },
+          "circuit": { "type": "string", "maxLength": 256000 },
+          "format": { "enum": ["openqasm2", "openqasm3"], "default": "openqasm2" },
+          "shots": { "type": "integer", "minimum": 1, "maximum": 1000000, "default": 1024 },
+          "target": { "type": "string", "default": "auto" },
+          "routing_mode": { "enum": ["balanced", "cost", "speed", "quality"], "default": "balanced" },
+          "optimization_level": { "type": "integer", "minimum": 0, "maximum": 3, "default": 2 },
+          "constraints": { "$ref": "#/components/schemas/Constraints" }
+        }
+      },
+      "Job": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "status": { "enum": ["created", "analyzing", "quoted", "awaiting_payment", "funds_reserved", "queued", "submitted", "processing", "completed", "failed", "cancellation_requested", "cancelled"] },
+          "selected_backend_id": { "type": "string" },
+          "analysis": { "type": "object" },
+          "route_decision": { "type": "object" },
+          "quote_total": { "type": "number" },
+          "result": { "type": ["object", "null"] }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": { "error": { "type": "object", "properties": { "type": { "type": "string" }, "message": { "type": "string" } } } }
+      }
+    }
+  },
+  "security": [{ "bearerAuth": [] }],
+  "paths": {
+    "/api/v1/transpile": {
+      "post": {
+        "summary": "Analyze, route, and hardware-compile a circuit without executing it",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateJob" } } } },
+        "responses": { "200": { "description": "Compilation, routing decision, and quote" }, "422": { "description": "Circuit or target is incompatible" }, "503": { "description": "Required compiler is unavailable" } }
+      }
+    },
+    "/api/v1/jobs": {
+      "get": { "summary": "List jobs", "responses": { "200": { "description": "Job list" } } },
+      "post": {
+        "summary": "Compile, quote, route, and submit a circuit",
+        "parameters": [{ "in": "header", "name": "Idempotency-Key", "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateJob" } } } },
+        "responses": { "201": { "description": "Job created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Job" } } } }, "402": { "description": "Insufficient credits" }, "422": { "description": "Invalid circuit or no compatible backend" }, "503": { "description": "Compiler or provider unavailable" } }
+      }
+    },
+    "/api/v1/jobs/{id}": {
+      "get": { "summary": "Get a job, decrypted result, and event timeline", "parameters": [{ "$ref": "#/components/parameters/JobId" }], "responses": { "200": { "description": "Job" }, "404": { "description": "Not found" } } }
+    },
+    "/api/v1/jobs/{id}/cancel": {
+      "post": { "summary": "Cancel queued work and release reserved credits", "parameters": [{ "$ref": "#/components/parameters/JobId" }], "responses": { "200": { "description": "Cancelled" }, "409": { "description": "Already processing or terminal" } } }
+    },
+    "/api/v1/jobs/{id}/result": {
+      "get": { "summary": "Download the decrypted JSON result artifact", "parameters": [{ "$ref": "#/components/parameters/JobId" }], "responses": { "200": { "description": "Result JSON" }, "409": { "description": "Result is not available" } } }
+    },
+    "/api/v1/jobs/{id}/transpiled": {
+      "get": { "summary": "Download the hardware-compiled OpenQASM artifact", "parameters": [{ "$ref": "#/components/parameters/JobId" }], "responses": { "200": { "description": "Compiled OpenQASM", "content": { "text/plain": { "schema": { "type": "string" } } } }, "409": { "description": "Artifact is not available" } } }
+    },
+    "/api/v1/backends": {
+      "get": { "summary": "List QCI-priced backends and capabilities", "security": [], "responses": { "200": { "description": "Backend catalog" } } }
+    },
+    "/api/v1/webhooks": {
+      "get": { "summary": "List signed webhook endpoints", "responses": { "200": { "description": "Webhook endpoint list" } } },
+      "post": { "summary": "Create a webhook endpoint", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["url"], "properties": { "url": { "type": "string", "format": "uri" } } } } } }, "responses": { "201": { "description": "Endpoint created; signing secret is returned once" } } }
+    }
+  }
+}

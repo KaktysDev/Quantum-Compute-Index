@@ -21,7 +21,11 @@ export default function SignInButton({
 
   async function handleSignIn() {
     if (!configured) {
-      setError("Sign-in isn't configured yet (add Supabase env vars).");
+      if (process.env.NODE_ENV !== "production") {
+        window.location.href = next;
+        return;
+      }
+      setError("Sign-in is temporarily unavailable.");
       return;
     }
     setLoading(true);

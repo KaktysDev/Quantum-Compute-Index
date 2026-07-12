@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Instrument_Serif, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import "./qrouter.css";
 
 const sans = Inter({
   subsets: ["latin"],
@@ -22,9 +23,8 @@ const serif = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
-  title: "QuantumForge — The Quantum Compute Index",
-  description:
-    "QuantumForge publishes the Quantum Compute Index (QCI): a real-time benchmark for the price of quantum compute.",
+  title: "QRouter — One API for quantum compute",
+  description: "Transpile, route, and run quantum workloads across every major provider with one API key.",
 };
 
 export default function RootLayout({
