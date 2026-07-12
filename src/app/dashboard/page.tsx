@@ -1,2 +1,21 @@
-import Link from"next/link";import{ArrowRight,Braces,CheckCircle2,Cpu,KeyRound,Route,Terminal}from"lucide-react";
-export default function GetStartedPage(){return<div className="console-page"><div className="console-page-heading"><div><p className="qr-eyebrow">Developer console</p><h1>Build on every quantum core.</h1><p>Submit one circuit, let QCI transpile and route it, then fetch a normalized result.</p></div><Link href="/dashboard/submit" className="console-primary">Run a task<ArrowRight size={15}/></Link></div><section className="console-pipeline"><article><div><Braces size={18}/><span>01</span></div><h2>File code vector</h2><p>OpenQASM 2.0 or 3.0 through the API, SDK, or console.</p></article><ArrowRight className="pipeline-arrow"/><article><div><Route size={18}/><span>02</span></div><h2>QCI transpiler</h2><p>Compatibility, complexity, live price, fidelity, and queue analysis.</p></article><ArrowRight className="pipeline-arrow"/><article><div><Cpu size={18}/><span>03</span></div><h2>Chosen quantum core</h2><p>Physical QPU or GPU simulator with a unified result contract.</p></article></section><div className="console-grid two"><section className="console-panel quickstart"><div className="panel-title"><Terminal size={16}/><h2>Quickstart</h2><span>Python</span></div><pre><code>{`pip install qrouter\n\nfrom qrouter import QRouter\nclient = QRouter(api_key="qci_live_...")\n\njob = client.jobs.create(\n    circuit=open("bell.qasm").read(),\n    routing="balanced"\n)\nprint(job.wait().counts)`}</code></pre></section><section className="console-panel checklist"><div className="panel-title"><CheckCircle2 size={16}/><h2>Launch checklist</h2></div><Link href="/dashboard/api-keys"><KeyRound size={17}/><span><b>Create an API key</b><small>Generate a scoped credential for your environment.</small></span><ArrowRight size={15}/></Link><Link href="/dashboard/submit"><Braces size={17}/><span><b>Run a Bell circuit</b><small>Verify routing and simulation end to end.</small></span><ArrowRight size={15}/></Link><Link href="/dashboard/billing"><Cpu size={17}/><span><b>Connect billing</b><small>Load credits before submitting to a physical QPU.</small></span><ArrowRight size={15}/></Link></section></div></div>}
+import Link from "next/link";
+import { ArrowRight, Braces, CheckCircle2, Cpu, KeyRound, Route, Terminal } from "lucide-react";
+
+export default function GetStartedPage() {
+  return (
+    <div className="console-page">
+      <div className="console-page-heading"><div><p className="qr-eyebrow">Developer console</p><h1>Build on every quantum core.</h1><p>Submit one circuit, let QCI transpile and route it, then fetch a normalized result.</p></div><Link href="/dashboard/submit" className="console-primary">Run a task <ArrowRight size={15} /></Link></div>
+      <section className="console-pipeline">
+        <article><div><Braces size={18} /><span>01</span></div><h2>File code vector</h2><p>OpenQASM 2.0 or 3.0 through the API, SDK, or console.</p></article>
+        <ArrowRight className="pipeline-arrow" />
+        <article><div><Route size={18} /><span>02</span></div><h2>QCI transpiler</h2><p>Compatibility, complexity, live price, fidelity, and queue analysis.</p></article>
+        <ArrowRight className="pipeline-arrow" />
+        <article><div><Cpu size={18} /><span>03</span></div><h2>Chosen quantum core</h2><p>Physical QPU or GPU simulator with a unified result contract.</p></article>
+      </section>
+      <div className="console-grid two">
+        <section className="console-panel quickstart"><div className="panel-title"><Terminal size={16} /><h2>Quickstart</h2><span>Python</span></div><pre><code>{`pip install qrouter\n\nfrom qrouter import QRouter\nclient = QRouter(api_key="qci_live_...")\n\njob = client.jobs.create(\n    circuit=open("bell.qasm").read(),\n    routing="balanced"\n)\nprint(job.wait().counts)`}</code></pre></section>
+        <section className="console-panel checklist"><div className="panel-title"><CheckCircle2 size={16} /><h2>Launch checklist</h2></div><Link href="/dashboard/api-keys"><KeyRound size={17} /><span><b>Create an API key</b><small>Generate a scoped credential for your environment.</small></span><ArrowRight size={15} /></Link><Link href="/dashboard/submit"><Braces size={17} /><span><b>Run a Bell circuit</b><small>Verify routing and simulation end to end.</small></span><ArrowRight size={15} /></Link><Link href="/dashboard/billing"><Cpu size={17} /><span><b>Connect billing</b><small>Load credits before submitting to a physical QPU.</small></span><ArrowRight size={15} /></Link></section>
+      </div>
+    </div>
+  );
+}

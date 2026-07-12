@@ -1,38 +1,20 @@
 import { BraketClient, CancelQuantumTaskCommand, CreateQuantumTaskCommand, GetQuantumTaskCommand } from "@aws-sdk/client-braket";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { parseQASM, type CircuitGate } from "quantum-computer-js";
 import { simulateCircuit } from "./simulator";
-import type { CircuitAnalysis, TranspilationResult } from "./types";
+import type { CircuitAnalysis } from "./types";
 
-export interface Submission {
-  providerJobId: string;
-  status: "submitted" | "completed";
-  result?: Record<string, unknown>;
-}
-
-export interface ProviderStatus {
-  status: "submitted" | "processing" | "completed" | "failed" | "cancelled";
-  result?: Record<string, unknown>;
-  error?: string;
-  actualProviderCost?: number;
-}
+export interface Submission { providerJobId: string; status: "submitted" | "completed"; result?: Record<string, unknown> }
+export interface ProviderStatus { status: "submitted" | "processing" | "completed" | "failed" | "cancelled"; result?: Record<string, unknown>; error?: string; actualProviderCost?: number }
 
 const BRAKET_DEVICES: Record<string, { arn: string; region: string }> = {
   "aws-sv1": { arn: "arn:aws:braket:::device/quantum-simulator/amazon/sv1", region: "us-east-1" },
-  "ionq-aria-1": { arn: "arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1", region: "us-east-1" },
   "iqm-garnet": { arn: "arn:aws:braket:eu-north-1::device/qpu/iqm/Garnet", region: "eu-north-1" },
 };
 
-const PARTNER_ADAPTERS: Record<string, { url?: string; token?: string; backend: string }> = {
-  "xanadu-borealis": { url: process.env.XANADU_EXECUTION_URL, token: process.env.XANADU_API_KEY, backend: "borealis" },
-  "quandela-mosaiq": { url: process.env.QUANDELA_EXECUTION_URL, token: process.env.QUANDELA_API_KEY, backend: "MosaiQ" },
-  "qi-starmon-5": { url: process.env.QI_EXECUTION_URL, token: process.env.QI_API_KEY, backend: "Starmon-5" },
-};
-
-export function qasm2ToQasm3(source: string, includeStandardLibrary = true) {
+export function qasm2ToQasm3(source: string) {
   return source
     .replace(/OPENQASM\s+2\.0\s*;/i, "OPENQASM 3.0;")
-    .replace(/include\s+"qelib1\.inc"\s*;/i, includeStandardLibrary ? 'include "stdgates.inc";' : "")
+    .replace(/include\s+"qelib1\.inc"\s*;/i, 'include "stdgates.inc";')
     .replace(/\bqreg\s+(\w+)\[(\d+)]\s*;/g, "qubit[$2] $1;")
     .replace(/\bcreg\s+(\w+)\[(\d+)]\s*;/g, "bit[$2] $1;")
     .replace(/\bcx\b/g, "cnot")
@@ -41,14 +23,11 @@ export function qasm2ToQasm3(source: string, includeStandardLibrary = true) {
 }
 
 async function submitVultr(analysis: CircuitAnalysis, shots: number): Promise<Submission> {
-  if (!process.env.VULTR_SIMULATOR_URL) {
-    return {
-      providerJobId: `local_${crypto.randomUUID()}`,
-      status: "completed",
-      result: await simulateCircuit(analysis, shots),
-    };
+  const endpoint = process.env.VULTR_SIMULATOR_URL;
+  if (!endpoint) {
+    return { providerJobId: `local_${crypto.randomUUID()}`, status: "completed", result: simulateCircuit(analysis, shots) as unknown as Record<string, unknown> };
   }
-  const response = await fetch(`${process.env.VULTR_SIMULATOR_URL.replace(/\/$/, "")}/v1/jobs`, {
+  const response = await fetch(`${endpoint.replace(/\/$/, "")}/v1/jobs`, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${process.env.VULTR_SIMULATOR_TOKEN ?? ""}` },
     body: JSON.stringify({ qasm: analysis.normalizedQasm2, shots }),
@@ -58,71 +37,79 @@ async function submitVultr(analysis: CircuitAnalysis, shots: number): Promise<Su
   return { providerJobId: data.id, status: data.result ? "completed" : "submitted", result: data.result };
 }
 
-async function submitBraket(backendId: string, analysis: CircuitAnalysis, shots: number, id: string): Promise<Submission> {
+async function submitBraket(backendId: string, analysis: CircuitAnalysis, shots: number, clientToken: string): Promise<Submission> {
   const device = BRAKET_DEVICES[backendId];
   const bucket = process.env.BRAKET_OUTPUT_BUCKET;
   if (!device || !bucket) throw new Error("Amazon Braket is not configured.");
-  const response = await new BraketClient({ region: device.region }).send(new CreateQuantumTaskCommand({
-    action: JSON.stringify({
-      braketSchemaHeader: { name: "braket.ir.openqasm.program", version: "1" },
-      source: qasm2ToQasm3(analysis.normalizedQasm2, false),
-    }),
-    clientToken: id.slice(0, 64),
-    deviceArn: device.arn,
-    outputS3Bucket: bucket,
-    outputS3KeyPrefix: `qrouter/${id}`,
-    shots,
-    tags: { product: "qrouter", job: id },
+  const client = new BraketClient({ region: device.region });
+  const action = JSON.stringify({ braketSchemaHeader: { name: "braket.ir.openqasm.program", version: "1" }, source: qasm2ToQasm3(analysis.normalizedQasm2) });
+  const response = await client.send(new CreateQuantumTaskCommand({
+    action, clientToken: clientToken.slice(0, 64), deviceArn: device.arn,
+    outputS3Bucket: bucket, outputS3KeyPrefix: `qrouter/${clientToken}`, shots,
+    tags: { product: "qrouter", job: clientToken },
   }));
-  if (!response.quantumTaskArn) throw new Error("Braket did not return a task ARN.");
+  if (!response.quantumTaskArn) throw new Error("Amazon Braket did not return a task ARN.");
   return { providerJobId: response.quantumTaskArn, status: "submitted" };
 }
 
-async function submitIbm(transpilation: TranspilationResult | undefined, shots: number): Promise<Submission> {
-  const workerUrl = process.env.QROUTER_COMPILER_URL ?? process.env.VULTR_SIMULATOR_URL;
-  const qpy = transpilation?.providerProgram?.format === "qpy" ? transpilation.providerProgram.data : null;
-  if (!workerUrl || !qpy) throw new Error("IBM execution requires the QRouter compiler service and compiled QPY payload.");
-  const response = await fetch(`${workerUrl.replace(/\/$/, "")}/v1/providers/ibm/jobs`, {
+async function submitIbm(analysis: CircuitAnalysis, shots: number): Promise<Submission> {
+  const token = process.env.IBM_QUANTUM_TOKEN;
+  if (!token) throw new Error("IBM Quantum is not configured.");
+  const [hub, group, project] = (process.env.IBM_QUANTUM_INSTANCE ?? "ibm-q/open/main").split("/");
+  const response = await fetch("https://api.quantum-computing.ibm.com/runtime/jobs", {
     method: "POST",
-    headers: { authorization: `Bearer ${process.env.QROUTER_COMPILER_TOKEN ?? process.env.VULTR_SIMULATOR_TOKEN ?? ""}`, "content-type": "application/json" },
-    body: JSON.stringify({ qpy, shots }),
+    headers: { accept: "application/json", authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      program_id: "sampler", backend: process.env.IBM_QUANTUM_BACKEND ?? "ibm_brisbane", hub, group, project,
+      params: { pubs: [[qasm2ToQasm3(analysis.normalizedQasm2)]], options: { default_shots: shots }, version: 2 },
+    }),
   });
-  if (!response.ok) throw new Error(`IBM rejected the job (${response.status}): ${await response.text()}`);
+  if (!response.ok) throw new Error(`IBM Quantum rejected the job (${response.status}): ${await response.text()}`);
   const data = await response.json() as { id?: string };
-  if (!data.id) throw new Error("IBM did not return a job ID.");
+  if (!data.id) throw new Error("IBM Quantum did not return a job ID.");
   return { providerJobId: data.id, status: "submitted" };
 }
 
-function ionqGate(gate: CircuitGate) {
-  const name = gate.type.toUpperCase();
-  if (name === "CNOT") return { gate: "cnot", control: gate.control, target: gate.target };
-  if (name === "SWAP") return { gate: "swap", targets: [gate.target, gate.target2] };
-  const names: Record<string, string> = {
-    H: "h", X: "x", Y: "y", Z: "z", S: "s", S_DAG: "si", T: "t", T_DAG: "ti",
-    RX: "rx", RY: "ry", RZ: "rz",
-  };
-  const mapped = names[name];
-  if (!mapped) throw new Error(`IonQ serializer does not support compiled gate ${gate.type}.`);
-  return gate.angle == null
-    ? { gate: mapped, target: gate.target }
-    : { gate: mapped, target: gate.target, rotation: gate.angle };
+function ionqHeaders() {
+  const token = process.env.IONQ_API_KEY;
+  if (!token) throw new Error("IonQ is not configured.");
+  return { "content-type": "application/json", authorization: `apiKey ${token}` };
 }
 
-async function submitIonq(analysis: CircuitAnalysis, shots: number, id: string): Promise<Submission> {
-  const token = process.env.IONQ_API_KEY;
-  if (!token) return submitBraket("ionq-aria-1", analysis, shots, id);
-  const circuit = parseQASM(analysis.normalizedQasm2);
+function qasm2ToIonqCircuit(source: string) {
+  const gates: Array<Record<string, unknown>> = [];
+  for (const rawLine of source.split("\n")) {
+    const line = rawLine.trim().replace(/;$/, "");
+    let match = /^(h|x|y|z|s|t)\s+q\[(\d+)]$/i.exec(line);
+    if (match) {
+      gates.push({ gate: match[1].toLowerCase(), target: Number(match[2]) });
+      continue;
+    }
+    match = /^(rx|ry|rz)\(([^)]+)\)\s+q\[(\d+)]$/i.exec(line);
+    if (match) {
+      gates.push({ gate: match[1].toLowerCase(), rotation: match[2], target: Number(match[3]) });
+      continue;
+    }
+    match = /^(cx|cnot)\s+q\[(\d+)],\s*q\[(\d+)]$/i.exec(line);
+    if (match) gates.push({ gate: "cnot", control: Number(match[2]), target: Number(match[3]) });
+  }
+  return gates;
+}
+
+async function submitIonq(analysis: CircuitAnalysis, shots: number, jobId: string): Promise<Submission> {
   const response = await fetch("https://api.ionq.co/v0.4/jobs", {
     method: "POST",
-    headers: { authorization: `apiKey ${token}`, "content-type": "application/json" },
+    headers: ionqHeaders(),
     body: JSON.stringify({
+      name: jobId,
       type: "ionq.circuit.v1",
-      name: `QRouter ${id}`,
       shots,
-      backend: process.env.IONQ_BACKEND ?? "qpu.aria-1",
-      metadata: { qrouter_job_id: id, qrouter_qubits: String(circuit.numQubits) },
-      input: { qubits: circuit.numQubits, gateset: "qis", circuit: circuit.gates.map(ionqGate) },
-      settings: { error_mitigation: { debiasing: process.env.IONQ_DEBIASING === "true" } },
+      metadata: { qrouter_qubits: String(analysis.qubits), qrouter_job_id: jobId },
+      input: {
+        qubits: analysis.qubits,
+        gateset: "qis",
+        circuit: qasm2ToIonqCircuit(analysis.normalizedQasm2),
+      },
     }),
   });
   if (!response.ok) throw new Error(`IonQ rejected the job (${response.status}): ${await response.text()}`);
@@ -131,163 +118,124 @@ async function submitIonq(analysis: CircuitAnalysis, shots: number, id: string):
   return { providerJobId: data.id, status: "submitted" };
 }
 
-async function submitPartner(backendId: string, analysis: CircuitAnalysis, shots: number, id: string): Promise<Submission> {
-  const adapter = PARTNER_ADAPTERS[backendId];
-  if (!adapter?.url || !adapter.token) throw new Error(`${backendId} execution bridge is not configured.`);
-  const response = await fetch(`${adapter.url.replace(/\/$/, "")}/v1/jobs`, {
-    method: "POST",
-    headers: { authorization: `Bearer ${adapter.token}`, "content-type": "application/json" },
-    body: JSON.stringify({ externalId: id, backend: adapter.backend, qasm: analysis.normalizedQasm2, shots }),
-  });
-  if (!response.ok) throw new Error(`${backendId} bridge rejected the job (${response.status}): ${await response.text()}`);
-  const data = await response.json() as { id?: string; status?: string; result?: Record<string, unknown> };
-  if (!data.id) throw new Error(`${backendId} bridge did not return a job ID.`);
-  return { providerJobId: data.id, status: data.status === "completed" ? "completed" : "submitted", result: data.result };
-}
-
-export async function submitToProvider(backendId: string, analysis: CircuitAnalysis, shots: number, id: string, transpilation?: TranspilationResult): Promise<Submission> {
+export async function submitToProvider(backendId: string, analysis: CircuitAnalysis, shots: number, jobId: string): Promise<Submission> {
   if (backendId === "qci-aer-gpu") return submitVultr(analysis, shots);
-  if (backendId === "ibm-brisbane") return submitIbm(transpilation, shots);
-  if (backendId === "ionq-aria-1") return submitIonq(analysis, shots, id);
-  if (BRAKET_DEVICES[backendId]) return submitBraket(backendId, analysis, shots, id);
-  if (PARTNER_ADAPTERS[backendId]) return submitPartner(backendId, analysis, shots, id);
+  if (backendId === "ibm-brisbane") return submitIbm(analysis, shots);
+  if (backendId === "ionq-aria-1") return submitIonq(analysis, shots, jobId);
+  if (BRAKET_DEVICES[backendId]) return submitBraket(backendId, analysis, shots, jobId);
   throw new Error(`Execution adapter for ${backendId} is not enabled.`);
 }
 
-function normalizeStatus(status: string): ProviderStatus["status"] {
-  const value = status.toLowerCase();
-  if (["completed", "done", "succeeded", "success"].includes(value)) return "completed";
-  if (["failed", "error"].includes(value)) return "failed";
-  if (["cancelled", "canceled", "deleted"].includes(value)) return "cancelled";
-  if (["running", "executing", "processing", "started"].includes(value)) return "processing";
-  return "submitted";
+async function readStream(body: NonNullable<Awaited<ReturnType<S3Client["send"]>> extends never ? never : unknown>) {
+  const stream = body as { transformToString?: () => Promise<string> };
+  if (!stream.transformToString) throw new Error("Unable to read Braket result body.");
+  return stream.transformToString();
 }
 
-async function ionqStatus(id: string): Promise<ProviderStatus> {
-  const token = process.env.IONQ_API_KEY!;
-  const response = await fetch(`https://api.ionq.co/v0.4/jobs/${encodeURIComponent(id)}`, {
-    headers: { authorization: `apiKey ${token}` },
-  });
-  if (!response.ok) throw new Error(`IonQ status failed (${response.status}).`);
-  const job = await response.json() as {
-    status: string; shots?: number; failure?: { error?: string; message?: string };
-    metadata?: Record<string, string>;
-    stats?: { qubits?: number };
-    results?: { probabilities?: { url?: string } };
-  };
-  const status = normalizeStatus(job.status);
-  if (status === "failed") return { status, error: job.failure?.message ?? job.failure?.error ?? "IonQ job failed." };
-  if (status !== "completed") return { status };
-  const resultUrl = job.results?.probabilities?.url;
-  let probabilities: Record<string, number> = {};
-  if (resultUrl) {
-    const resultResponse = await fetch(new URL(resultUrl, "https://api.ionq.co").toString(), {
-      headers: { authorization: `apiKey ${token}` },
-    });
-    if (!resultResponse.ok) throw new Error(`IonQ result retrieval failed (${resultResponse.status}).`);
-    const payload = await resultResponse.json() as unknown;
-    const envelope = payload as { probabilities?: unknown };
-    probabilities = envelope.probabilities && typeof envelope.probabilities === "object"
-      ? envelope.probabilities as Record<string, number>
-      : payload as Record<string, number>;
-  }
-  const qubits = Number(job.metadata?.qrouter_qubits ?? job.stats?.qubits ?? 0);
-  if (qubits > 0) {
-    probabilities = Object.fromEntries(Object.entries(probabilities).map(([state, probability]) => {
-      const bitstring = /^\d+$/.test(state) ? BigInt(state).toString(2).padStart(qubits, "0") : state;
+function normalizeIonqProbabilities(probabilities: Record<string, number>, qubits: number) {
+  return Object.fromEntries(
+    Object.entries(probabilities).map(([state, probability]) => {
+      const bitstring = /^\d+$/.test(state) ? Number(state).toString(2).padStart(qubits, "0") : state.padStart(qubits, "0");
       return [bitstring, probability];
-    }));
-  }
-  const shots = job.shots ?? 0;
-  const counts = Object.fromEntries(Object.entries(probabilities).map(([state, probability]) => [state, Math.round(probability * shots)]));
-  let actualProviderCost: number | undefined;
-  try {
-    const costResponse = await fetch(`https://api.ionq.co/v0.4/jobs/${encodeURIComponent(id)}/cost`, {
-      headers: { authorization: `apiKey ${token}` },
-    });
-    if (costResponse.ok) {
-      const cost = await costResponse.json() as { cost?: number; amount?: number; estimated_cost?: number };
-      actualProviderCost = cost.cost ?? cost.amount ?? cost.estimated_cost;
-    }
-  } catch {
-    actualProviderCost = undefined;
-  }
-  return { status, result: { probabilities, counts, shots, backend: "ionq-aria-1" }, actualProviderCost };
+    }),
+  );
 }
 
-async function partnerStatus(backendId: string, id: string): Promise<ProviderStatus> {
-  const adapter = PARTNER_ADAPTERS[backendId];
-  if (!adapter?.url || !adapter.token) throw new Error(`${backendId} execution bridge is not configured.`);
-  const response = await fetch(`${adapter.url.replace(/\/$/, "")}/v1/jobs/${encodeURIComponent(id)}`, {
-    headers: { authorization: `Bearer ${adapter.token}` },
-  });
-  if (!response.ok) throw new Error(`${backendId} bridge status failed (${response.status}).`);
-  const data = await response.json() as { status: string; result?: Record<string, unknown>; error?: string; actualProviderCost?: number };
-  return { status: normalizeStatus(data.status), result: data.result, error: data.error, actualProviderCost: data.actualProviderCost };
+async function getIonqStatus(providerJobId: string): Promise<ProviderStatus> {
+  const response = await fetch(`https://api.ionq.co/v0.4/jobs/${encodeURIComponent(providerJobId)}`, { headers: ionqHeaders() });
+  if (!response.ok) throw new Error(`IonQ status request failed (${response.status}).`);
+  const data = await response.json() as {
+    status?: string;
+    failure?: { error?: string };
+    error?: string;
+    shots?: number;
+    metadata?: { qrouter_qubits?: string };
+    results?: { probabilities?: { url?: string } | Record<string, number> };
+  };
+  const raw = (data.status ?? "submitted").toLowerCase();
+  if (["completed", "succeeded"].includes(raw)) {
+    const qubits = Number(data.metadata?.qrouter_qubits ?? 0);
+    const probabilitySource = data.results?.probabilities;
+    let probabilities: Record<string, number> = {};
+    if (probabilitySource && "url" in probabilitySource && typeof probabilitySource.url === "string") {
+      const resultResponse = await fetch(probabilitySource.url, { headers: ionqHeaders() });
+      if (!resultResponse.ok) throw new Error(`IonQ result request failed (${resultResponse.status}).`);
+      probabilities = await resultResponse.json() as Record<string, number>;
+    } else if (probabilitySource) {
+      probabilities = probabilitySource as Record<string, number>;
+    }
+    const normalized = normalizeIonqProbabilities(probabilities, qubits);
+    const shots = data.shots ?? 0;
+    const counts = Object.fromEntries(Object.entries(normalized).map(([state, probability]) => [state, Math.round(probability * shots)]));
+    let actualProviderCost: number | undefined;
+    const costResponse = await fetch(`https://api.ionq.co/v0.4/jobs/${encodeURIComponent(providerJobId)}/cost`, { headers: ionqHeaders() });
+    if (costResponse.ok) {
+      const cost = await costResponse.json() as { cost?: number };
+      actualProviderCost = cost.cost;
+    }
+    return { status: "completed", actualProviderCost, result: { probabilities: normalized, counts, shots } };
+  }
+  if (["failed", "error"].includes(raw)) return { status: "failed", error: data.failure?.error ?? data.error ?? "IonQ job failed." };
+  if (["canceled", "cancelled"].includes(raw)) return { status: "cancelled" };
+  return { status: ["running", "processing"].includes(raw) ? "processing" : "submitted" };
 }
 
 export async function getProviderStatus(backendId: string, providerJobId: string): Promise<ProviderStatus> {
   if (backendId === "qci-aer-gpu" && process.env.VULTR_SIMULATOR_URL) {
-    const response = await fetch(`${process.env.VULTR_SIMULATOR_URL.replace(/\/$/, "")}/v1/jobs/${encodeURIComponent(providerJobId)}`, {
-      headers: { authorization: `Bearer ${process.env.VULTR_SIMULATOR_TOKEN ?? ""}` },
-    });
-    if (!response.ok) throw new Error(`Vultr status failed (${response.status}).`);
-    return response.json();
+    const response = await fetch(`${process.env.VULTR_SIMULATOR_URL.replace(/\/$/, "")}/v1/jobs/${encodeURIComponent(providerJobId)}`, { headers: { authorization: `Bearer ${process.env.VULTR_SIMULATOR_TOKEN ?? ""}` } });
+    if (!response.ok) throw new Error(`Vultr status request failed (${response.status}).`);
+    return response.json() as Promise<ProviderStatus>;
   }
-  if (backendId === "ionq-aria-1" && process.env.IONQ_API_KEY) return ionqStatus(providerJobId);
   if (backendId === "ibm-brisbane") {
-    const workerUrl = process.env.QROUTER_COMPILER_URL ?? process.env.VULTR_SIMULATOR_URL;
-    if (!workerUrl) throw new Error("IBM status requires the QRouter compiler service.");
-    const response = await fetch(`${workerUrl.replace(/\/$/, "")}/v1/providers/ibm/jobs/${encodeURIComponent(providerJobId)}`, { headers: { authorization: `Bearer ${process.env.QROUTER_COMPILER_TOKEN ?? process.env.VULTR_SIMULATOR_TOKEN ?? ""}` } });
-    if (!response.ok) throw new Error(`IBM status failed (${response.status}).`);
-    return response.json();
+    const response = await fetch(`https://api.quantum-computing.ibm.com/runtime/jobs/${encodeURIComponent(providerJobId)}`, { headers: { accept: "application/json", authorization: `Bearer ${process.env.IBM_QUANTUM_TOKEN ?? ""}` } });
+    if (!response.ok) throw new Error(`IBM status request failed (${response.status}).`);
+    const data = await response.json() as { state?: { status?: string; reason?: string }; status?: string; results?: Record<string, unknown> };
+    const raw = (data.state?.status ?? data.status ?? "queued").toLowerCase();
+    if (["completed", "done"].includes(raw)) return { status: "completed", result: data.results ?? { providerJobId, message: "Results are available from IBM Runtime." } };
+    if (["failed", "error"].includes(raw)) return { status: "failed", error: data.state?.reason ?? "IBM job failed." };
+    if (["cancelled", "canceled"].includes(raw)) return { status: "cancelled" };
+    return { status: ["running", "executing"].includes(raw) ? "processing" : "submitted" };
   }
+  if (backendId === "ionq-aria-1") return getIonqStatus(providerJobId);
   const device = BRAKET_DEVICES[backendId];
   if (device) {
-    const task = await new BraketClient({ region: device.region }).send(new GetQuantumTaskCommand({ quantumTaskArn: providerJobId }));
-    const status = normalizeStatus(task.status ?? "queued");
-    if (status === "completed") {
-      const object = await new S3Client({ region: device.region }).send(new GetObjectCommand({
-        Bucket: task.outputS3Bucket ?? process.env.BRAKET_OUTPUT_BUCKET!,
-        Key: `${task.outputS3Directory}/results.json`.replace(/^\//, ""),
-      }));
-      if (!object.Body) throw new Error("Braket result body is empty.");
-      return { status, result: JSON.parse(await object.Body.transformToString()) };
+    const client = new BraketClient({ region: device.region });
+    const task = await client.send(new GetQuantumTaskCommand({ quantumTaskArn: providerJobId }));
+    const raw = task.status ?? "QUEUED";
+    if (raw === "COMPLETED") {
+      const bucket = task.outputS3Bucket ?? process.env.BRAKET_OUTPUT_BUCKET!;
+      const key = `${task.outputS3Directory}/results.json`.replace(/^\//, "");
+      const object = await new S3Client({ region: device.region }).send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+      if (!object.Body) throw new Error("Braket result object did not include a readable body.");
+      const result = JSON.parse(await readStream(object.Body)) as Record<string, unknown>;
+      return { status: "completed", result };
     }
-    return { status, error: status === "failed" ? task.failureReason : undefined };
+    if (raw === "FAILED") return { status: "failed", error: task.failureReason ?? "Braket task failed." };
+    if (raw === "CANCELLED") return { status: "cancelled" };
+    return { status: raw === "RUNNING" ? "processing" : "submitted" };
   }
-  if (PARTNER_ADAPTERS[backendId]) return partnerStatus(backendId, providerJobId);
   throw new Error(`Status adapter for ${backendId} is not enabled.`);
 }
 
-export async function cancelProviderJob(backendId: string, id: string) {
-  if (backendId === "ionq-aria-1" && process.env.IONQ_API_KEY) {
-    const response = await fetch(`https://api.ionq.co/v0.4/jobs/${encodeURIComponent(id)}/status/cancel`, {
-      method: "PUT",
-      headers: { authorization: `apiKey ${process.env.IONQ_API_KEY}` },
-    });
-    if (!response.ok) throw new Error(`IonQ cancellation failed (${response.status}).`);
+export async function cancelProviderJob(backendId: string, providerJobId: string) {
+  if (backendId === "qci-aer-gpu" && process.env.VULTR_SIMULATOR_URL) {
+    const response = await fetch(`${process.env.VULTR_SIMULATOR_URL.replace(/\/$/, "")}/v1/jobs/${encodeURIComponent(providerJobId)}`, { method: "DELETE", headers: { authorization: `Bearer ${process.env.VULTR_SIMULATOR_TOKEN ?? ""}` } });
+    if (!response.ok) throw new Error(`Vultr cancellation failed (${response.status}).`);
     return;
   }
   if (backendId === "ibm-brisbane") {
-    const workerUrl = process.env.QROUTER_COMPILER_URL ?? process.env.VULTR_SIMULATOR_URL;
-    if (!workerUrl) throw new Error("IBM cancellation requires the QRouter compiler service.");
-    const response = await fetch(`${workerUrl.replace(/\/$/, "")}/v1/providers/ibm/jobs/${encodeURIComponent(id)}`, { method: "DELETE", headers: { authorization: `Bearer ${process.env.QROUTER_COMPILER_TOKEN ?? process.env.VULTR_SIMULATOR_TOKEN ?? ""}` } });
+    const response = await fetch(`https://api.quantum-computing.ibm.com/runtime/jobs/${encodeURIComponent(providerJobId)}/cancel`, { method: "POST", headers: { authorization: `Bearer ${process.env.IBM_QUANTUM_TOKEN ?? ""}` } });
     if (!response.ok) throw new Error(`IBM cancellation failed (${response.status}).`);
+    return;
+  }
+  if (backendId === "ionq-aria-1") {
+    const response = await fetch(`https://api.ionq.co/v0.4/jobs/${encodeURIComponent(providerJobId)}`, { method: "DELETE", headers: ionqHeaders() });
+    if (!response.ok) throw new Error(`IonQ cancellation failed (${response.status}).`);
     return;
   }
   const device = BRAKET_DEVICES[backendId];
   if (device) {
-    await new BraketClient({ region: device.region }).send(new CancelQuantumTaskCommand({ quantumTaskArn: id }));
-    return;
-  }
-  const partner = PARTNER_ADAPTERS[backendId];
-  if (partner?.url && partner.token) {
-    const response = await fetch(`${partner.url.replace(/\/$/, "")}/v1/jobs/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-      headers: { authorization: `Bearer ${partner.token}` },
-    });
-    if (!response.ok) throw new Error(`${backendId} bridge cancellation failed (${response.status}).`);
+    await new BraketClient({ region: device.region }).send(new CancelQuantumTaskCommand({ quantumTaskArn: providerJobId }));
     return;
   }
   throw new Error(`Cancellation adapter for ${backendId} is not enabled.`);
