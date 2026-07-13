@@ -634,4 +634,22 @@
   .full-network-row > span:nth-child(8)::before { content: "State"; }
   .full-network-row > span:last-child { display: block; }
   .full-network-row > span:last-child i { display: inline-block; margin-right: .4rem; }
+  .deployment-list, .repo-projects-panel { overflow: visible; }
+  .deployment-head, .repo-project-head { display: none; }
+  .deployment-row, .repo-project-row { min-width: 0; grid-template-columns: 1fr 1fr; gap: .75rem 1rem; padding: .85rem 1rem; }
+  .deployment-row > span, .repo-project-row > span { overflow: visible; white-space: normal; overflow-wrap: anywhere; }
+  .deployment-row > span:first-child, .repo-project-row > span:first-child { grid-column: 1 / -1; padding-bottom: .65rem; border-bottom: 1px solid var(--qr-line); }
+  .deployment-row > span:not(:first-child)::before, .repo-project-row > span:not(:first-child)::before { display: block; margin-bottom: .25rem; color: var(--qr-dim); font: .44rem var(--qr-mono); text-transform: uppercase; }
+  .deployment-row > span:nth-child(2)::before { content: "Source"; }
+  .deployment-row > span:nth-child(3)::before { content: "Target"; }
+  .deployment-row > span:nth-child(4)::before { content: "Compiler"; }
+  .deployment-row > span:nth-child(5)::before { content: "Status"; }
+  .deployment-row > span:nth-child(6)::before { content: "Created"; }
+  .deployment-status { display: block; }
+  .deployment-status i { display: inline-block; margin-right: .4rem; }
+  .repo-project-row > span:nth-child(2)::before { content: "Entrypoint"; }
+  .repo-project-row > span:nth-child(3)::before { content: "Production"; }
+  .repo-project-row > span:nth-child(4)::before { content: "Last deploy"; }
+  .repo-project-row > span:nth-child(5)::before { content: "Actions"; }
+  .repo-project-row > span:last-child { justify-content: flex-start; }
 }
