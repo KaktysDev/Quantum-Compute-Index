@@ -1,0 +1,194 @@
+/* ── Onboarding route styles ─────────────────────────────────────────────────
+   Extracted from qrouter.css, which no route imports (orphaned after a landing
+   refactor) — without this the /onboarding page rendered as raw HTML.
+   Every rule is scoped under .onboarding-page (including the CSS variables) so
+   nothing can clash with dashboard.css after client-side navigation. */
+
+.onboarding-page {
+  --qr-bg: #0b0b0c;
+  --qr-line: rgba(255, 255, 255, 0.09);
+  --qr-muted: #8e8e95;
+  --qr-orange: #38e08a;
+  --qr-orange-hover: #5eecac;
+  --qr-green: #4ade80;
+
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--qr-bg);
+  color: #f7f7f8;
+  letter-spacing: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 52px 52px;
+}
+
+.onboarding-page > header {
+  height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2rem;
+  border-bottom: 1px solid var(--qr-line);
+  background: rgba(11, 11, 12, 0.9);
+}
+.onboarding-page > header > span,
+.onboarding-page > footer {
+  color: #666;
+  font: 0.62rem var(--font-mono, monospace);
+  text-transform: uppercase;
+}
+.onboarding-page > footer {
+  margin-top: auto;
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.onboarding-card {
+  width: min(520px, calc(100% - 2rem));
+  margin: clamp(2rem, 8vh, 6rem) auto;
+  padding: 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(18, 18, 20, 0.96);
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.35);
+}
+.onboarding-card h1 {
+  margin: 0;
+  font-size: 2.2rem;
+  line-height: 1.05;
+}
+.onboarding-lede {
+  color: #85858b;
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+.onboarding-progress {
+  display: flex;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+.onboarding-progress span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--qr-line);
+  border-radius: 50%;
+  color: #666;
+  font: 0.6rem var(--font-mono, monospace);
+}
+.onboarding-progress span.done {
+  border-color: var(--qr-green);
+  color: var(--qr-green);
+}
+.onboarding-progress span.active {
+  border-color: var(--qr-orange);
+  background: var(--qr-orange);
+  color: #090909;
+}
+.onboarding-progress i {
+  flex: 1;
+  height: 1px;
+  background: var(--qr-line);
+}
+
+.onboarding-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+.onboarding-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  color: #85858b;
+  font-size: 0.68rem;
+}
+.onboarding-fields input {
+  width: 100%;
+  height: 38px;
+  border: 1px solid var(--qr-line);
+  border-radius: 5px;
+  background: #0d0d0f;
+  color: #eee;
+  padding: 0 0.7rem;
+  outline: 0;
+}
+.onboarding-fields input:focus {
+  border-color: rgba(56, 224, 138, 0.6);
+}
+
+.onboarding-page .qr-eyebrow {
+  margin: 0 0 1rem;
+  color: var(--qr-orange-hover);
+  font: 650 0.68rem var(--font-mono, monospace);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.onboarding-page .console-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 38px;
+  padding: 0 0.9rem;
+  border-radius: 5px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid #38e08a;
+  background: var(--qr-orange);
+  color: #090909;
+}
+.onboarding-page .console-primary:hover {
+  background: var(--qr-orange-hover);
+}
+.onboarding-page .console-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.onboarding-page .full {
+  width: 100%;
+}
+.onboarding-pay {
+  margin-top: 0.5rem;
+}
+
+.onboarding-skip {
+  display: block;
+  margin: 1rem 0 0 auto;
+  border: 0;
+  background: none;
+  color: #777;
+  font-size: 0.66rem;
+  cursor: pointer;
+}
+.onboarding-skip:hover {
+  color: #aaa;
+}
+
+.stripe-form {
+  margin-top: 1.2rem;
+}
+.stripe-form .console-primary {
+  margin-top: 1rem;
+}
+
+.onboarding-page .form-error {
+  color: #fb7185;
+  font-size: 0.68rem;
+}
+
+.onboarding-page .spin {
+  animation: onboarding-spin 1s linear infinite;
+}
+@keyframes onboarding-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

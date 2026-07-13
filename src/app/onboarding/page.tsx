@@ -1,3 +1,3 @@
-import{redirect}from"next/navigation";import Logo from"@/components/Logo";import OnboardingForm from"@/components/OnboardingForm";import{isSupabaseConfigured}from"@/lib/supabase/config";import{createClient}from"@/lib/supabase/server";
+import{redirect}from"next/navigation";import Logo from"@/components/Logo";import OnboardingForm from"@/components/OnboardingForm";import{isSupabaseConfigured}from"@/lib/supabase/config";import{createClient}from"@/lib/supabase/server";import"./onboarding.css";
 export const dynamic="force-dynamic";export default async function Page(){if(isSupabaseConfigured()){const s=await createClient(),{data:{user}}=await s.auth.getUser();if(!user)redirect("/")}return<main className="onboarding-page"><header><Logo size={28}/><span>Secure workspace setup</span></header><OnboardingForm/><footer>Payments secured by Stripe · Card details never touch QRouter servers</footer></main>}
 
