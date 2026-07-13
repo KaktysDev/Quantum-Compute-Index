@@ -29,10 +29,14 @@ export default function LandingHeroStage() {
       const rect = stage.getBoundingClientRect();
       const distance = Math.max(1, stage.offsetHeight - window.innerHeight);
       const progress = Math.min(1, Math.max(0, -rect.top / distance));
+      const compact = window.innerWidth <= 600;
+      const tablet = window.innerWidth <= 900;
+      const copyStartScale = compact ? 1.08 : tablet ? 1.18 : 1.42;
+      const copyStartY = compact ? 14 : tablet ? 24 : 34;
       stage.style.setProperty("--hero-progress", progress.toFixed(4));
-      stage.style.setProperty("--hero-copy-scale", (1.42 - progress * 0.42).toFixed(4));
+      stage.style.setProperty("--hero-copy-scale", (copyStartScale - progress * (copyStartScale - 1)).toFixed(4));
       stage.style.setProperty("--hero-hand-scale", (1.28 - progress * 0.28).toFixed(4));
-      stage.style.setProperty("--hero-copy-y", `${((1 - progress) * 34).toFixed(2)}px`);
+      stage.style.setProperty("--hero-copy-y", `${((1 - progress) * copyStartY).toFixed(2)}px`);
       stage.style.setProperty("--hero-hand-x", `${((1 - progress) * -52).toFixed(2)}px`);
       stage.style.setProperty("--hero-reveal-y", `${((1 - progress) * 28).toFixed(2)}px`);
       stage.style.setProperty("--hero-nav-opacity", (0.62 + progress * 0.38).toFixed(4));
