@@ -1,4 +1,8 @@
-import type { CircuitAnalysis, JobStatus, Quote, RouteDecision } from "./types";
+import type { CircuitAnalysis, JobStatus, Quote, RouteDecision, TranspilationResult } from "./types";
+
+export type StoredJobAnalysis = CircuitAnalysis & {
+  transpilation?: Omit<TranspilationResult, "providerProgram">;
+};
 
 export interface StoredJob {
   id: string;
@@ -11,7 +15,7 @@ export interface StoredJob {
   routing_mode: string;
   status: JobStatus;
   selected_backend_id: string;
-  analysis: CircuitAnalysis;
+  analysis: StoredJobAnalysis;
   route_decision: RouteDecision;
   quote: Quote;
   result: Record<string, unknown> | null;
@@ -26,4 +30,3 @@ export const demoJobs = state.__qrouterJobs ?? new Map<string, StoredJob>();
 if (process.env.NODE_ENV !== "production") state.__qrouterJobs = demoJobs;
 
 export const DEMO_BALANCE = 10;
-

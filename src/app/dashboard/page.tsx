@@ -1,4 +1,6 @@
 import Link from "next/link";
+import QciMarketPanel from "@/components/QciMarketPanel";
+import { getLatestSnapshot, getProviderSeries, getSeries } from "@/lib/qci/store";
 import {
   ArrowRight,
   Braces,
@@ -32,7 +34,12 @@ job = client.jobs.create(
 
 print(job.wait().counts)`;
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const [latest, indexSeries, providerSeries] = await Promise.all([
+    getLatestSnapshot(),
+    getSeries(365),
+    getProviderSeries(365),
+  ]);
   const providers = new Set(BACKENDS.map((backend) => backend.provider)).size;
   const connected = BACKENDS.filter((backend) => backend.available).length;
   const qpus = BACKENDS.filter((backend) => backend.kind === "qpu").length;
@@ -54,6 +61,8 @@ export default function DashboardPage() {
         <div><span><Zap size={15} /> Connected now</span><strong>{connected}</strong><small>ready to receive</small></div>
         <div><span><ShieldCheck size={15} /> Router status</span><strong className="status-word"><i /> Operational</strong><small>all systems normal</small></div>
       </section>
+
+      <QciMarketPanel latest={latest} indexSeries={indexSeries} providerSeries={providerSeries} />
 
       <div className="overview-grid">
         <section className="console-panel routing-map-panel">

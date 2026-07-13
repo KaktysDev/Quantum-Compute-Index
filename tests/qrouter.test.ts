@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { POST as createJob } from "@/app/api/v1/jobs/route";
+import { sampleProviderSeries, sampleSnapshot } from "@/lib/qci/sample";
 import { analyzeCircuit, CircuitValidationError } from "@/lib/qrouter/analyze";
 import { BACKENDS, withQciSnapshot } from "@/lib/qrouter/catalog";
+import { demoJobs } from "@/lib/qrouter/demo-store";
 import { buildQuote, routeCircuit } from "@/lib/qrouter/route";
 import { simulateCircuit } from "@/lib/qrouter/simulator";
 import { getProviderStatus, submitToProvider } from "@/lib/qrouter/execution";
@@ -20,6 +23,7 @@ describe("QRouter circuit pipeline", () => {
     delete process.env.IONQ_API_KEY;
     delete process.env.QROUTER_COMPILER_URL;
     delete process.env.VULTR_SIMULATOR_URL;
+    demoJobs.clear();
   });
 
   it("analyzes a Bell circuit", () => {
@@ -44,6 +48,37 @@ describe("QRouter circuit pipeline", () => {
     const quote = buildQuote(decision, analysis, 1024);
     expect(quote.total).toBeGreaterThan(0);
     expect(quote.rateSnapshot.qciSnapshotId).toBe(42);
+  });
+
+  it("anchors every sample provider history to its current normalized rate", () => {
+    const now = new Date("2026-07-12T14:00:00Z");
+    const snapshot = sampleSnapshot(now);
+    const series = sampleProviderSeries(90, now);
+    for (const component of snapshot.components) {
+      expect(series[component.provider]).toHaveLength(90);
+      expect(series[component.provider].at(-1)?.value).toBeCloseTo(component.pricePerNqh, 2);
+    }
+  });
+
+  it("transpiles, reprices, and executes submitted jobs through one pipeline", async () => {
+    const response = await createJob(new Request("http://localhost/api/v1/jobs", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer qci_test_local_development",
+        "content-type": "application/json",
+        "idempotency-key": "compiled-bell-test",
+      },
+      body: JSON.stringify({ circuit: bell, shots: 256, target: "auto", optimization_level: 3 }),
+    }));
+    const job = await response.json();
+    expect(response.status).toBe(201);
+    expect(job).toMatchObject({
+      status: "completed",
+      selected_backend_id: "qci-aer-gpu",
+      analysis: { transpilation: { compiler: "local", optimizationLevel: 3, backendId: "qci-aer-gpu" } },
+      quote: { rateSnapshot: { backend: "qci-aer-gpu", qciMethod: "provider-rate-v1" } },
+    });
+    expect(Object.values(job.result.counts as Record<string, number>).reduce((sum, count) => sum + count, 0)).toBe(256);
   });
 
   it("does not let pricing snapshots overwrite physical qubit limits", () => {

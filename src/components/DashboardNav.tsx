@@ -81,7 +81,7 @@ export default function DashboardNav({
             <Link href="/dashboard/billing">Manage balance</Link>
           </div>
           <div className="console-utility-links">
-            <a href="/openapi.json"><BookOpen size={15} /> Documentation</a>
+            <Link href="/docs"><BookOpen size={15} /> Documentation</Link>
             <Link href="/contact"><CircleHelp size={15} /> Support</Link>
             <Link href="/dashboard/settings" className={pathname.startsWith("/dashboard/settings") ? "active" : ""}><Settings size={15} /> Settings</Link>
           </div>

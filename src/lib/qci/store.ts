@@ -7,7 +7,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { basketKey } from "./compute";
-import { sampleSeries, sampleSnapshot, type SamplePoint } from "./sample";
+import { sampleProviderSeries, sampleSeries, sampleSnapshot, type ProviderSampleSeries, type SamplePoint } from "./sample";
 import type { QciSnapshot, QpuComponent } from "./types";
 
 /** How many recorded snapshots to chart (plenty of headroom for daily points). */
@@ -106,5 +106,40 @@ export async function getSeries(days = 120): Promise<SamplePoint[]> {
     return points;
   } catch {
     return sampleVwapSeries(days);
+  }
+}
+
+interface ProviderSeriesRow {
+  ts: string;
+  components: QpuComponent[] | null;
+  source: "live" | "sample";
+}
+
+/** Provider-level normalized USD/NQH histories for the console market view. */
+export async function getProviderSeries(days = 120): Promise<ProviderSampleSeries> {
+  if (!isSupabaseConfigured()) return sampleProviderSeries(days);
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("qci_snapshots")
+      .select("ts,components,source")
+      .order("ts", { ascending: true })
+      .limit(SERIES_LIMIT);
+    if (error || !data || data.length === 0) return sampleProviderSeries(days);
+
+    const cutoff = Date.now() / 1000 - days * 86_400;
+    const output: ProviderSampleSeries = {};
+    for (const row of data as ProviderSeriesRow[]) {
+      if (row.source !== "live") continue;
+      const time = Math.floor(new Date(row.ts).getTime() / 1000);
+      if (!Number.isFinite(time) || time < cutoff) continue;
+      for (const component of row.components ?? []) {
+        if (!Number.isFinite(component.pricePerNqh)) continue;
+        (output[component.provider] ??= []).push({ time, value: component.pricePerNqh });
+      }
+    }
+    return Object.keys(output).length > 0 ? output : sampleProviderSeries(days);
+  } catch {
+    return sampleProviderSeries(days);
   }
 }

@@ -79,8 +79,8 @@ export default async function PricingPage() {
       <section className="py-10">
         <div className="glass-panel rounded-2xl p-7 text-center sm:p-9">
           <p className="mono-label">The index, in one line</p>
-          <p className="tabular mt-4 text-lg text-white sm:text-2xl">
-            QCI&nbsp;=&nbsp;Σ(price&nbsp;×&nbsp;volume&nbsp;×&nbsp;quality)&nbsp;÷&nbsp;Σ(volume&nbsp;×&nbsp;quality)
+          <p className="tabular mx-auto mt-4 max-w-full text-lg leading-relaxed text-white sm:text-2xl">
+            QCI = Σ(price × volume × quality) ÷ Σ(volume × quality)
           </p>
           <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-[var(--muted)]">
             A volume-weighted average price across all qualifying machines, scaled by each one&apos;s

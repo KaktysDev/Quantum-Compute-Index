@@ -15,6 +15,8 @@ export interface SamplePoint {
   value: number;
 }
 
+export type ProviderSampleSeries = Record<string, SamplePoint[]>;
+
 const MS_PER_DAY = 86_400_000;
 const SEC_PER_DAY = 86_400;
 const INCEPTION = "2025-01-01";
@@ -96,4 +98,30 @@ export function sampleSnapshot(now: Date = new Date()): QciSnapshot {
     })),
     source: "sample",
   };
+}
+
+/**
+ * Deterministic provider benchmark paths anchored to each constituent's current
+ * normalized $/NQH rate. These are explicitly sample data, used only until live
+ * snapshots contain provider component histories.
+ */
+export function sampleProviderSeries(days = 120, now: Date = new Date()): ProviderSampleSeries {
+  const market = sampleSeries(days, now);
+  const snapshot = sampleSnapshot(now);
+  const latestMarket = market.at(-1)?.value ?? 1;
+  const latestTime = market.at(-1)?.time ?? 0;
+
+  return Object.fromEntries(snapshot.components.map((component) => {
+    const seed = [...component.provider].reduce((sum, character) => sum + character.charCodeAt(0), 0);
+    const cycleLength = 13 + seed % 11;
+    const beta = 0.82 + (seed % 29) / 100;
+    const latestCycle = Math.sin(latestTime / SEC_PER_DAY / cycleLength + seed);
+    const points = market.map((point) => {
+      const marketRatio = Math.max(point.value / latestMarket, 0.01);
+      const cycle = Math.sin(point.time / SEC_PER_DAY / cycleLength + seed);
+      const providerRatio = Math.pow(marketRatio, beta) * (1 + (cycle - latestCycle) * 0.018);
+      return { time: point.time, value: round(component.pricePerNqh * providerRatio, 2) };
+    });
+    return [component.provider, points];
+  }));
 }

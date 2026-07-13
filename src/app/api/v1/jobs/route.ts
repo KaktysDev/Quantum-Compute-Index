@@ -1,11 +1,15 @@
 import { createHash, randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import type { QpuComponent } from "@/lib/qci/types";
+import { getLatestSnapshot } from "@/lib/qci/store";
 import { analyzeCircuit } from "@/lib/qrouter/analyze";
 import { resolvePrincipal } from "@/lib/qrouter/auth";
+import { withQciSnapshot } from "@/lib/qrouter/catalog";
 import { demoJobs, type StoredJob } from "@/lib/qrouter/demo-store";
 import { submitToProvider } from "@/lib/qrouter/execution";
 import { apiError } from "@/lib/qrouter/http";
-import { buildQuote, routeCircuit } from "@/lib/qrouter/route";
+import { prepareExecution } from "@/lib/qrouter/pipeline";
+import { publicTranspilation } from "@/lib/qrouter/transpiler";
 import { createJobSchema } from "@/lib/qrouter/validation";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -35,9 +39,37 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: { type: "invalid_request", message: "The request body is invalid.", details: parsed.error.flatten() } }, { status: 400 });
     }
     const input = parsed.data;
-    const analysis = analyzeCircuit(input.circuit, input.format);
-    const decision = routeCircuit({ analysis, shots: input.shots, target: input.target, mode: input.routing_mode, constraints: input.constraints });
-    const quote = buildQuote(decision, analysis, input.shots);
+    const originalAnalysis = analyzeCircuit(input.circuit, input.format);
+    let snapshot: { id: number | null; ts: string; components: QpuComponent[] };
+    if (principal.demo) {
+      const latest = await getLatestSnapshot();
+      snapshot = { id: null, ts: latest.ts, components: latest.components };
+    } else {
+      const { data } = await createAdminClient()
+        .from("qci_snapshots")
+        .select("id,ts,components")
+        .order("ts", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      snapshot = {
+        id: data?.id ?? null,
+        ts: data?.ts ?? new Date().toISOString(),
+        components: (data?.components ?? []) as QpuComponent[],
+      };
+    }
+    const prepared = await prepareExecution({
+      backends: withQciSnapshot(snapshot.components),
+      analysis: originalAnalysis,
+      shots: input.shots,
+      target: input.target,
+      mode: input.routing_mode,
+      constraints: input.constraints,
+      qciSnapshotId: snapshot.id,
+      qciTimestamp: snapshot.ts,
+      optimizationLevel: input.optimization_level,
+    });
+    const { decision, quote, executionAnalysis } = prepared;
+    const analysis = { ...originalAnalysis, transpilation: publicTranspilation(prepared.transpilation) };
     const idempotencyKey = request.headers.get("idempotency-key")?.trim() || null;
     const now = new Date().toISOString();
     const jobId = randomUUID();
@@ -56,7 +88,7 @@ export async function POST(request: Request) {
       };
       demoJobs.set(jobId, base);
       try {
-        const submission = await submitToProvider(decision.selected.id, analysis, input.shots, jobId);
+        const submission = await submitToProvider(decision.selected.id, executionAnalysis, input.shots, jobId);
         base.status = submission.status === "completed" ? "completed" : "submitted";
         base.result = submission.result ?? null;
         base.updated_at = new Date().toISOString();
@@ -96,7 +128,7 @@ export async function POST(request: Request) {
     }
     await admin.from("job_events").insert({ job_id: jobId, type: "credits.reserved", from_status: "quoted", to_status: "funds_reserved", payload: { amount: quote.total } });
     try {
-      const submission = await submitToProvider(decision.selected.id, analysis, input.shots, jobId);
+      const submission = await submitToProvider(decision.selected.id, executionAnalysis, input.shots, jobId);
       const status = submission.status === "completed" ? "completed" : "submitted";
       await admin.from("jobs").update({ status, provider_job_id: submission.providerJobId, result: submission.result ?? null, started_at: now, completed_at: status === "completed" ? new Date().toISOString() : null, updated_at: new Date().toISOString() }).eq("id", jobId);
       await admin.from("job_attempts").insert({ job_id: jobId, attempt: 1, backend_id: decision.selected.id, provider_job_id: submission.providerJobId, status, request: { shots: input.shots }, response: submission.result ?? {} , finished_at: status === "completed" ? new Date().toISOString() : null });
@@ -115,4 +147,3 @@ export async function POST(request: Request) {
     return apiError(error);
   }
 }
-
