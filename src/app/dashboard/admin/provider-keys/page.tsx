@@ -24,6 +24,13 @@ export default async function AdminProviderKeysPage() {
       name: p.name,
       description: p.description,
       docsUrl: p.docsUrl,
+      fields: (p.fields ?? []).map(({ key, label, placeholder, type }) => ({
+        key,
+        label,
+        placeholder,
+        type,
+      })),
+      testable: Boolean(p.testable),
       configured: Boolean(row),
       enabled: row?.enabled ?? false,
       label: row?.label ?? null,

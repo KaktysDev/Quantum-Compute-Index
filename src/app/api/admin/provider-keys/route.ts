@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireAdminApi } from "@/lib/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { encryptSecret } from "@/lib/crypto";
-import { isProviderId } from "@/lib/providers";
+import { getProvider, isProviderId } from "@/lib/providers";
 
 export const dynamic = "force-dynamic";
 
@@ -13,11 +13,13 @@ export const dynamic = "force-dynamic";
 const SaveSchema = z.object({
   provider: z.string(),
   apiKey: z.string().trim().min(4).max(10_000).optional(),
+  /** Multi-field credentials (e.g. AWS access key + secret + region). */
+  fieldValues: z.record(z.string(), z.string().max(10_000)).optional(),
   label: z.string().trim().max(120).optional(),
   enabled: z.boolean().optional(),
 });
 
-/** POST: save (encrypt + upsert) a provider key, or toggle/relabel an existing one. */
+/** POST: save (encrypt + upsert) a provider credential, or toggle/relabel one. */
 export async function POST(req: Request) {
   const ctx = await requireAdminApi();
   if (!ctx) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -35,8 +37,23 @@ export async function POST(req: Request) {
   const admin = createAdminClient();
   const now = new Date().toISOString();
 
+  // Assemble the credential: single-field providers store the raw value,
+  // multi-field providers (AWS, IBM) store a JSON object — matching what each
+  // adapter's credential parser expects.
+  const adapter = getProvider(parsed.provider);
+  const filled = Object.entries(parsed.fieldValues ?? {})
+    .map(([k, v]) => [k, v.trim()] as const)
+    .filter(([, v]) => v.length > 0);
+  const credential =
+    parsed.apiKey ??
+    (filled.length === 0
+      ? undefined
+      : (adapter?.fields ?? []).length > 1
+        ? JSON.stringify(Object.fromEntries(filled))
+        : filled[0][1]);
+
   // Toggle / relabel only (no new key material supplied).
-  if (parsed.apiKey === undefined) {
+  if (credential === undefined) {
     const patch: Record<string, unknown> = { updated_by: ctx.user.id, updated_at: now };
     if (parsed.enabled !== undefined) patch.enabled = parsed.enabled;
     if (parsed.label !== undefined) patch.label = parsed.label;
@@ -45,9 +62,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  if (credential.length < 4) {
+    return NextResponse.json({ error: "Credential is too short" }, { status: 400 });
+  }
+
   let encrypted: string;
   try {
-    encrypted = encryptSecret(parsed.apiKey);
+    encrypted = encryptSecret(credential);
   } catch {
     return NextResponse.json(
       { error: "KEY_ENCRYPTION_SECRET is not configured on the server." },

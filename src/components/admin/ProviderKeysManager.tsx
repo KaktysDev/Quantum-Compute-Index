@@ -2,48 +2,101 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, KeyRound, Loader2, Power, Trash2 } from "lucide-react";
+import {
+  Check,
+  CheckCircle2,
+  KeyRound,
+  Loader2,
+  Power,
+  Radio,
+  Trash2,
+  XCircle,
+} from "lucide-react";
 import GlassCard from "@/components/GlassCard";
+
+export interface ProviderField {
+  key: string;
+  label: string;
+  placeholder?: string;
+  type?: "text" | "password";
+}
 
 export interface ProviderKeyStatus {
   id: string;
   name: string;
   description: string;
   docsUrl: string;
+  fields: ProviderField[];
+  testable: boolean;
   configured: boolean;
   enabled: boolean;
   label: string | null;
   updatedAt: string | null;
 }
 
+interface TestResult {
+  ok: boolean;
+  message: string;
+  details?: string[];
+}
+
 function ProviderRow({ item }: { item: ProviderKeyStatus }) {
   const router = useRouter();
-  const [apiKey, setApiKey] = useState("");
+  const [values, setValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [test, setTest] = useState<TestResult | null>(null);
 
-  async function call(body: Record<string, unknown>, method: "POST" | "DELETE" = "POST") {
-    const res = await fetch("/api/admin/provider-keys", {
+  const anyFilled = Object.values(values).some((v) => v.trim().length > 0);
+  const fields: ProviderField[] =
+    item.fields.length > 0
+      ? item.fields
+      : [{ key: "apiKey", label: `${item.name} API key`, type: "password" }];
+
+  async function call(body: Record<string, unknown>, method: "POST" | "DELETE" = "POST", path = "/api/admin/provider-keys") {
+    const res = await fetch(path, {
       method,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ provider: item.id, ...body }),
     });
-    if (!res.ok) throw new Error((await res.json()).error ?? "Request failed");
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? "Request failed");
+    return data;
   }
 
   async function saveKey() {
-    if (apiKey.trim().length < 4) return;
+    if (!anyFilled) return;
     setBusy("save");
     setError(null);
+    setTest(null);
     try {
-      await call({ apiKey: apiKey.trim(), enabled: true });
-      setApiKey("");
+      await call({ fieldValues: values, enabled: true });
+      setValues({});
       setSaved(true);
       router.refresh();
       setTimeout(() => setSaved(false), 2500);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** Tests the typed values if any are filled, otherwise the stored credential. */
+  async function testConnection() {
+    setBusy("test");
+    setError(null);
+    setTest(null);
+    try {
+      const result = (await call(
+        anyFilled ? { fieldValues: values } : {},
+        "POST",
+        "/api/admin/provider-keys/test",
+      )) as TestResult;
+      setTest(result);
+    } catch (err) {
+      setTest({ ok: false, message: err instanceof Error ? err.message : "Test failed" });
     } finally {
       setBusy(null);
     }
@@ -68,6 +121,7 @@ function ProviderRow({ item }: { item: ProviderKeyStatus }) {
     setError(null);
     try {
       await call({}, "DELETE");
+      setTest(null);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
@@ -127,23 +181,64 @@ function ProviderRow({ item }: { item: ProviderKeyStatus }) {
         )}
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        <input
-          type="password"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          placeholder={item.configured ? "Rotate: paste a new API key" : "Paste the provider API key"}
-          className="min-w-[260px] flex-1 rounded-lg border border-white/10 bg-black/30 px-3 py-2 font-mono text-xs text-white placeholder:text-[var(--muted)] outline-none focus:border-[var(--qr-emerald,#34d399)]"
-        />
+      {/* Credential inputs — one per adapter field (AWS gets key id + secret + region) */}
+      <div className={`mt-3 grid gap-2 ${fields.length > 1 ? "sm:grid-cols-2 lg:grid-cols-3" : ""}`}>
+        {fields.map((f) => (
+          <label key={f.key} className="flex flex-col gap-1">
+            <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">{f.label}</span>
+            <input
+              type={f.type === "password" ? "password" : "text"}
+              value={values[f.key] ?? ""}
+              onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+              placeholder={f.placeholder ?? (item.configured ? "Rotate: paste a new value" : f.label)}
+              className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 font-mono text-xs text-white placeholder:text-[var(--muted)] outline-none focus:border-[var(--qr-emerald,#34d399)]"
+            />
+          </label>
+        ))}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
           onClick={saveKey}
-          disabled={busy !== null || apiKey.trim().length < 4}
+          disabled={busy !== null || !anyFilled}
           className="console-primary disabled:opacity-40"
         >
           {busy === "save" ? <Loader2 size={13} className="animate-spin" /> : saved ? <Check size={13} /> : <KeyRound size={13} />}
           {busy === "save" ? "Encrypting…" : saved ? "Saved" : item.configured ? "Rotate key" : "Save key"}
         </button>
+        {item.testable && (
+          <button
+            onClick={testConnection}
+            disabled={busy !== null || (!item.configured && !anyFilled)}
+            className="flex items-center gap-1.5 rounded-lg border border-sky-300/30 px-3.5 py-2 text-xs text-sky-300 transition-colors hover:bg-sky-300/10 disabled:opacity-40"
+            title={anyFilled ? "Tests the values typed above (before saving)" : "Tests the stored credential"}
+          >
+            {busy === "test" ? <Loader2 size={13} className="animate-spin" /> : <Radio size={13} />}
+            {busy === "test" ? "Probing…" : anyFilled ? "Test pasted key" : "Test connection"}
+          </button>
+        )}
       </div>
+
+      {/* Connection test outcome — proves the key actually pulls data */}
+      {test && (
+        <div
+          className={`mt-3 rounded-lg border p-3 ${
+            test.ok ? "border-emerald-300/25 bg-emerald-300/5" : "border-red-400/25 bg-red-400/5"
+          }`}
+        >
+          <p className={`flex items-center gap-2 text-xs font-medium ${test.ok ? "text-emerald-300" : "text-red-400"}`}>
+            {test.ok ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+            {test.message}
+          </p>
+          {test.details && test.details.length > 0 && (
+            <ul className="mt-2 flex flex-col gap-1">
+              {test.details.map((d) => (
+                <li key={d} className="font-mono text-[10px] text-[var(--muted)]">· {d}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
     </GlassCard>
   );
@@ -153,8 +248,9 @@ export default function ProviderKeysManager({ providers }: { providers: Provider
   return (
     <div className="flex flex-col gap-3">
       <p className="text-xs text-[var(--muted)]">
-        Credentials are AES-256-GCM encrypted at rest and only ever decrypted server-side by the
-        daily QCI refresh. Enabled keys feed the index; disabling one carries its last data forward.
+        Credentials are AES-256-GCM encrypted at rest and only ever decrypted server-side.
+        Enabled keys feed the daily QCI refresh; use <b className="text-white">Test connection</b> to
+        verify a key actually reaches the provider and lists its QPUs — before or after saving.
       </p>
       {providers.map((p) => (
         <ProviderRow key={p.id} item={p} />
