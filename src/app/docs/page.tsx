@@ -18,6 +18,9 @@ import Logo from "@/components/Logo";
 import "./docs.css";
 
 const endpoints = [
+  ["GET", "/api/v1/repositories/inspect", "Discover OpenQASM entrypoints in a connected GitHub repository."],
+  ["POST", "/api/v1/projects", "Import a repository, production branch, entrypoint, and routing defaults."],
+  ["POST", "/api/v1/repository-jobs", "Deploy a commit-pinned circuit from a connected repository."],
   ["GET", "/api/v1/backends", "List compute targets and current routing inputs."],
   ["POST", "/api/v1/transpile", "Analyze, route, compile, verify, and quote without execution."],
   ["POST", "/api/v1/jobs", "Compile, reserve credits, and submit a workload."],
@@ -40,6 +43,7 @@ export default function DocsPage() {
         <p>QRouter API</p>
         <a href="#quickstart">Quickstart</a>
         <a href="#authentication">Authentication</a>
+        <a href="#repositories">Repositories</a>
         <a href="#jobs">Jobs</a>
         <a href="#endpoints">Endpoints</a>
         <a href="#transpilation">Transpilation</a>
@@ -57,7 +61,7 @@ export default function DocsPage() {
           <p className="docs-eyebrow"><span /> QRouter / API v1</p>
           <h1>One contract for quantum compute.</h1>
           <p>Submit OpenQASM once. QRouter analyzes the workload, selects an eligible provider, transpiles against its native target, locks a QCI-backed quote, and normalizes the result.</p>
-          <div className="docs-actions"><Link href="/dashboard/submit">Open playground <ArrowRight size={14} /></Link><a href="/openapi.json">Download specification <FileJson size={14} /></a></div>
+          <div className="docs-actions"><Link href="/dashboard/playground">Open deployments <ArrowRight size={14} /></Link><a href="/openapi.json">Download specification <FileJson size={14} /></a></div>
         </section>
 
         <section className="docs-section">
@@ -70,6 +74,12 @@ export default function DocsPage() {
           <div className="docs-callout"><ShieldCheck size={16} /><p>Platform keys authenticate to QRouter. Provider credentials remain encrypted server-side and are never returned to client applications.</p></div>
           <pre className="docs-inline-code"><code>Authorization: Bearer qci_live_...</code></pre>
           <p className="docs-copy-text">Create, expire, and revoke keys in <Link href="/dashboard/api-keys">Console → API keys</Link>. Local development without Supabase accepts <code>qci_test_local_development</code>; production never does.</p>
+        </section>
+
+        <section className="docs-section" id="repositories">
+          <div className="docs-section-title"><Route size={17} /><div><h2>Repository deployments</h2><p>Production workloads are sourced from connected GitHub repositories, not typed into the console.</p></div></div>
+          <pre className="docs-inline-code"><code>{`# qrouter.json\n{\n  "circuit": "circuits/bell.qasm",\n  "shots": 1024,\n  "target": "auto",\n  "routing_mode": "balanced",\n  "optimization_level": 2\n}`}</code></pre>
+          <p className="docs-copy-text">Install the QRouter GitHub App for the workspace, import a repository, and select its production branch and <code>.qasm</code> entrypoint. Each deployment fetches the source server-side and records the exact blob SHA before routing. CI can call <code>POST /api/v1/repository-jobs</code> with a stable <code>deployment_id</code> to make retries idempotent.</p>
         </section>
 
         <section className="docs-section" id="jobs">
@@ -139,10 +149,10 @@ export default function DocsPage() {
 
         <section className="docs-section" id="production">
           <div className="docs-section-title"><ShieldCheck size={17} /><div><h2>Production checklist</h2><p>Required before enabling paid physical backends.</p></div></div>
-          <ol className="docs-checklist"><li>Apply <code>supabase/schema.sql</code> and <code>supabase/qrouter.sql</code>.</li><li>Configure Supabase, Stripe, artifact encryption, and provider credentials.</li><li>Deploy the authenticated Qiskit compiler/worker and set <code>QROUTER_COMPILER_URL</code>.</li><li>Configure the internal job poller, refresh cron, and Stripe webhook.</li><li>Run credentialed smoke jobs against every enabled paid provider.</li><li>Run lint, typecheck, Node tests, Python worker tests, SDK builds, and the production web build.</li></ol>
+          <ol className="docs-checklist"><li>Apply <code>supabase/schema.sql</code> and <code>supabase/qrouter.sql</code>.</li><li>Configure Supabase, Stripe, artifact encryption, and provider credentials.</li><li>Create the GitHub App, set its callback URL, and configure <code>GITHUB_APP_ID</code>, <code>GITHUB_APP_SLUG</code>, and <code>GITHUB_APP_PRIVATE_KEY</code>.</li><li>Deploy the authenticated Qiskit compiler/worker and set <code>QROUTER_COMPILER_URL</code>.</li><li>Configure the internal job poller, refresh cron, and Stripe webhook.</li><li>Run credentialed smoke jobs against every enabled paid provider.</li><li>Run lint, typecheck, Node tests, Python worker tests, SDK builds, and the production web build.</li></ol>
         </section>
 
-        <section className="docs-end"><p>Ready to send a circuit?</p><Link href="/dashboard/submit">Open the playground <ArrowRight size={14} /></Link></section>
+        <section className="docs-end"><p>Ready to deploy a repository circuit?</p><Link href="/dashboard/playground">Open deployments <ArrowRight size={14} /></Link></section>
       </main>
     </div>
   );

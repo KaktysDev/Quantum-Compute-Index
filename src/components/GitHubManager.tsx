@@ -1,47 +1,158 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ArrowUpRight, CheckCircle2, GitBranch, Loader2, Plug, Unplug } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { ArrowUpRight, Check, FileCode2, GitBranch, Loader2, Plus, RefreshCw, Trash2, Unplug } from "lucide-react";
+import type { QRouterProject, RepositoryInspection } from "@/lib/qrouter/repositories";
 
-type Repository = { full_name: string; html_url: string; default_branch: string; stargazers_count: number; updated_at: string; private: boolean };
-const STORAGE_KEY = "qrouter.github.v1";
+const DEFAULT_REPOSITORY = "KaktysDev/Quantum-Compute-Index";
+
+interface GithubStatus {
+  configured: boolean;
+  connected: boolean;
+  connection: { account_login: string; account_type: string } | null;
+}
 
 export default function GitHubManager() {
-  const [value, setValue] = useState("KaktysDev/Quantum-Compute-Index");
-  const [repository, setRepository] = useState<Repository | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [projects, setProjects] = useState<QRouterProject[]>([]);
+  const [repository, setRepository] = useState(DEFAULT_REPOSITORY);
+  const [ref, setRef] = useState("");
+  const [circuitPath, setCircuitPath] = useState("");
+  const [inspection, setInspection] = useState<RepositoryInspection | null>(null);
+  const [github, setGithub] = useState<GithubStatus | null>(null);
+  const [busy, setBusy] = useState<"load" | "inspect" | "import" | null>("load");
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const saved = window.localStorage.getItem(STORAGE_KEY);
-    if (saved) setRepository(JSON.parse(saved) as Repository);
+  const loadProjects = useCallback(async () => {
+    setBusy("load");
+    try {
+      const response = await fetch("/api/v1/projects", { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error?.message ?? "Could not load projects.");
+      setProjects(data.data);
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "Could not load projects.");
+    } finally {
+      setBusy(null);
+    }
   }, []);
 
-  async function connect() {
-    const slug = value.trim().replace(/^https?:\/\/github\.com\//, "").replace(/\.git$/, "").replace(/^\/+|\/+$/g, "");
-    if (!/^[\w.-]+\/[\w.-]+$/.test(slug)) { setError("Enter a GitHub repository as owner/name."); return; }
-    setBusy(true); setError(null);
+  const loadGithub = useCallback(async () => {
     try {
-      const response = await fetch(`https://api.github.com/repos/${slug}`, { headers: { accept: "application/vnd.github+json" } });
-      if (!response.ok) throw new Error(response.status === 404 ? "Repository not found or not public." : "GitHub connection failed.");
-      const data = await response.json() as Repository;
-      setRepository(data); window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch (value) { setError(value instanceof Error ? value.message : "GitHub connection failed."); }
-    finally { setBusy(false); }
+      const response = await fetch("/api/v1/integrations/github", { cache: "no-store" });
+      if (response.ok) setGithub(await response.json() as GithubStatus);
+    } catch {
+      setGithub(null);
+    }
+  }, []);
+
+  useEffect(() => { loadProjects(); loadGithub(); }, [loadGithub, loadProjects]);
+
+  async function disconnectGithub() {
+    const response = await fetch("/api/v1/integrations/github", { method: "DELETE" });
+    if (!response.ok) {
+      const data = await response.json();
+      setError(data.error?.message ?? "Could not disconnect GitHub.");
+      return;
+    }
+    await loadGithub();
   }
 
-  function disconnect() { setRepository(null); window.localStorage.removeItem(STORAGE_KEY); }
+  async function inspect() {
+    setBusy("inspect"); setError(null); setInspection(null);
+    try {
+      const query = new URLSearchParams({ repository, ...(ref.trim() ? { ref: ref.trim() } : {}) });
+      const response = await fetch(`/api/v1/repositories/inspect?${query}`, { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error?.message ?? "Repository inspection failed.");
+      const next = data as RepositoryInspection;
+      setInspection(next);
+      setRepository(next.repository.fullName);
+      setRef(ref.trim() || next.repository.defaultBranch);
+      const configured = typeof next.config?.circuit === "string" ? next.config.circuit : "";
+      setCircuitPath(next.files.some((file) => file.path === configured) ? configured : next.files[0]?.path ?? "");
+      if (!next.files.length) setError("No .qasm circuit files were found in this ref.");
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "Repository inspection failed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function importProject() {
+    if (!inspection || !circuitPath) return;
+    setBusy("import"); setError(null);
+    try {
+      const config = inspection.config ?? {};
+      const response = await fetch("/api/v1/projects", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          repository: inspection.repository.fullName,
+          production_branch: ref,
+          circuit_path: circuitPath,
+          settings: {
+            shots: typeof config.shots === "number" ? config.shots : 1024,
+            target: typeof config.target === "string" ? config.target : "auto",
+            routingMode: ["balanced", "cost", "speed", "quality"].includes(String(config.routing_mode)) ? config.routing_mode : "balanced",
+            optimizationLevel: typeof config.optimization_level === "number" ? config.optimization_level : 2,
+          },
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error?.message ?? "Project import failed.");
+      setInspection(null); setCircuitPath("");
+      await loadProjects();
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "Project import failed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function remove(id: string) {
+    const response = await fetch(`/api/v1/projects/${id}`, { method: "DELETE" });
+    if (!response.ok) {
+      const data = await response.json();
+      setError(data.error?.message ?? "Could not remove project.");
+      return;
+    }
+    setProjects((current) => current.filter((project) => project.id !== id));
+  }
 
   return (
-    <div className="github-layout">
-      <section className="console-panel github-connect">
-        <div className="panel-title"><GitBranch size={16} /><div><h2>Repository connection</h2><small>Source-triggered quantum jobs</small></div></div>
-        <div className="github-form"><label><span>Repository</span><input value={value} onChange={(event) => setValue(event.target.value)} placeholder="owner/repository" /></label>{error && <p className="form-error">{error}</p>}<button className="console-primary" onClick={connect} disabled={busy}>{busy ? <Loader2 className="spin" size={14} /> : <Plug size={14} />} Connect repository</button></div>
+    <div className="repo-import-layout">
+      <section className="github-connection-bar">
+        <div><GitBranch size={15} /><span><b>GitHub source</b><small>{github?.connection ? `${github.connection.account_login} · ${github.connection.account_type}` : github?.connected ? "Server credential connected" : "Public repositories only"}</small></span></div>
+        {github?.connection ? <button onClick={disconnectGithub}><Unplug size={13} /> Disconnect</button> : github?.configured ? <a href="/api/integrations/github/connect"><GitBranch size={13} /> Install GitHub App</a> : <span>APP NOT CONFIGURED</span>}
+      </section>
+      <section className="console-panel repo-import-panel">
+        <div className="panel-title"><Plus size={16} /><div><h2>Import Git repository</h2><small>GitHub source → QRouter project</small></div></div>
+        <div className="repo-import-form">
+          <label><span>Repository</span><div className="terminal-input"><b>github.com/</b><input value={repository} onChange={(event) => setRepository(event.target.value)} /></div></label>
+          <label><span>Production branch</span><div className="terminal-input"><GitBranch size={13} /><input value={ref} onChange={(event) => setRef(event.target.value)} placeholder="default branch" /></div></label>
+          <button className="console-secondary" onClick={inspect} disabled={Boolean(busy)}>{busy === "inspect" ? <Loader2 className="spin" size={14} /> : <RefreshCw size={14} />} Inspect repository</button>
+          {inspection && <div className="repo-inspection">
+            <div><Check size={14} /><span><b>{inspection.repository.fullName}</b><small>{inspection.repository.private ? "Private via server credential" : "Public repository"} · {inspection.files.length} circuits</small></span></div>
+            <label><span>Entrypoint circuit</span><select value={circuitPath} onChange={(event) => setCircuitPath(event.target.value)}>{inspection.files.map((file) => <option key={file.sha} value={file.path}>{file.path}</option>)}</select></label>
+            {inspection.config && <p><FileCode2 size={12} /> qrouter.json detected and defaults loaded</p>}
+            <button className="console-primary" onClick={importProject} disabled={Boolean(busy) || !circuitPath}>{busy === "import" ? <Loader2 className="spin" size={14} /> : <Plus size={14} />} Import project</button>
+          </div>}
+          {error && <p className="form-error">{error}</p>}
+        </div>
       </section>
 
-      <section className="console-panel github-state">
-        <div className="panel-title"><GitBranch size={16} /><div><h2>Connected source</h2><small>GitHub public repository</small></div></div>
-        {repository ? <div className="github-repo"><div className="github-repo-status"><CheckCircle2 size={16} /><span><b>{repository.full_name}</b><small>Connection healthy</small></span></div><dl><div><dt>Default branch</dt><dd>{repository.default_branch}</dd></div><div><dt>Visibility</dt><dd>{repository.private ? "Private" : "Public"}</dd></div><div><dt>Stars</dt><dd>{repository.stargazers_count.toLocaleString()}</dd></div><div><dt>Last activity</dt><dd>{new Date(repository.updated_at).toLocaleDateString()}</dd></div></dl><div className="github-actions"><a className="console-secondary" href={repository.html_url} target="_blank" rel="noreferrer">Open GitHub <ArrowUpRight size={13} /></a><button className="console-danger" onClick={disconnect}><Unplug size={13} /> Disconnect</button></div></div> : <div className="console-empty"><GitBranch /><p>No repository connected</p></div>}
+      <section className="console-panel repo-projects-panel">
+        <div className="panel-title"><GitBranch size={16} /><div><h2>Workspace projects</h2><small>Connected deployment sources</small></div><span>{projects.length} total</span></div>
+        <div className="repo-project-head"><span>Project</span><span>Entrypoint</span><span>Production</span><span>Last deploy</span><span /></div>
+        {busy === "load" ? <div className="console-empty"><Loader2 className="spin" /></div> : projects.length === 0 ? <div className="console-empty"><GitBranch /><p>No repositories imported</p><small>Inspect a repository to create the first project.</small></div> : projects.map((project) => (
+          <div className="repo-project-row" key={project.id}>
+            <span><b>{project.name}</b><small>{project.repository}</small></span>
+            <span><FileCode2 size={12} />{project.circuit_path}</span>
+            <span><GitBranch size={12} />{project.production_branch}</span>
+            <span>{project.last_deployed_at ? new Date(project.last_deployed_at).toLocaleString() : "Never"}</span>
+            <span><a href={project.repository_url} target="_blank" rel="noreferrer" title="Open repository"><ArrowUpRight size={13} /></a><button onClick={() => remove(project.id)} title="Remove project"><Trash2 size={13} /></button></span>
+          </div>
+        ))}
       </section>
     </div>
   );

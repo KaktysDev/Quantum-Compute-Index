@@ -119,7 +119,7 @@ export default function QciMarketPanel({
     });
     const series = chart.addAreaSeries({
       lineColor: "#2fbd7c",
-      topColor: "rgba(47,189,124,.18)",
+      topColor: "rgba(47,189,124,0)",
       bottomColor: "rgba(47,189,124,0)",
       lineWidth: 2,
       priceLineVisible: false,
@@ -151,11 +151,11 @@ export default function QciMarketPanel({
 
   useEffect(() => {
     if (!seriesRef.current || visible.length === 0) return;
-    const color = positive ? "#2fbd7c" : "#dc6677";
+    const color = positive ? "#2fbd7c" : "#668074";
     seriesRef.current.applyOptions({
       lineColor: color,
-      topColor: positive ? "rgba(47,189,124,.18)" : "rgba(220,102,119,.16)",
-      bottomColor: positive ? "rgba(47,189,124,0)" : "rgba(220,102,119,0)",
+      topColor: "transparent",
+      bottomColor: "transparent",
       crosshairMarkerBackgroundColor: color,
     });
     seriesRef.current.setData(visible.map((point) => ({ time: point.time as Time, value: point.value })) as AreaData[]);

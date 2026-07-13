@@ -1,4 +1,5 @@
 import type { CircuitAnalysis, JobStatus, Quote, RouteDecision, TranspilationResult } from "./types";
+import type { QRouterProject } from "./repositories";
 
 export type StoredJobAnalysis = CircuitAnalysis & {
   transpilation?: Omit<TranspilationResult, "providerProgram">;
@@ -7,6 +8,7 @@ export type StoredJobAnalysis = CircuitAnalysis & {
 export interface StoredJob {
   id: string;
   organization_id: string;
+  project_id?: string | null;
   name: string | null;
   input_format: string;
   source: string;
@@ -28,5 +30,9 @@ export interface StoredJob {
 const state = globalThis as typeof globalThis & { __qrouterJobs?: Map<string, StoredJob> };
 export const demoJobs = state.__qrouterJobs ?? new Map<string, StoredJob>();
 if (process.env.NODE_ENV !== "production") state.__qrouterJobs = demoJobs;
+
+const projectState = globalThis as typeof globalThis & { __qrouterProjects?: Map<string, QRouterProject> };
+export const demoProjects = projectState.__qrouterProjects ?? new Map<string, QRouterProject>();
+if (process.env.NODE_ENV !== "production") projectState.__qrouterProjects = demoProjects;
 
 export const DEMO_BALANCE = 10;

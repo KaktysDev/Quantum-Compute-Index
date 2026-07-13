@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST as createJob } from "@/app/api/v1/jobs/route";
+import { POST as createProject } from "@/app/api/v1/projects/route";
+import { GET as listRepositoryJobs, POST as createRepositoryJob } from "@/app/api/v1/repository-jobs/route";
 import { sampleProviderSeries, sampleSnapshot } from "@/lib/qci/sample";
 import { analyzeCircuit, CircuitValidationError } from "@/lib/qrouter/analyze";
 import { BACKENDS, withQciSnapshot } from "@/lib/qrouter/catalog";
-import { demoJobs } from "@/lib/qrouter/demo-store";
+import { demoJobs, demoProjects } from "@/lib/qrouter/demo-store";
+import { normalizeCircuitPath, normalizeRef, normalizeRepository } from "@/lib/qrouter/repositories";
 import { buildQuote, routeCircuit } from "@/lib/qrouter/route";
 import { simulateCircuit } from "@/lib/qrouter/simulator";
 import { getProviderStatus, submitToProvider } from "@/lib/qrouter/execution";
@@ -24,6 +27,7 @@ describe("QRouter circuit pipeline", () => {
     delete process.env.QROUTER_COMPILER_URL;
     delete process.env.VULTR_SIMULATOR_URL;
     demoJobs.clear();
+    demoProjects.clear();
   });
 
   it("analyzes a Bell circuit", () => {
@@ -39,6 +43,59 @@ describe("QRouter circuit pipeline", () => {
 
   it("rejects non-QASM input", () => {
     expect(() => analyzeCircuit("not qasm", "openqasm2")).toThrow(CircuitValidationError);
+  });
+
+  it("normalizes repository coordinates and rejects source traversal", () => {
+    expect(normalizeRepository("https://github.com/acme/quantum.git")).toBe("acme/quantum");
+    expect(normalizeRef("feature/router-v2")).toBe("feature/router-v2");
+    expect(normalizeCircuitPath("circuits/bell.qasm")).toBe("circuits/bell.qasm");
+    expect(() => normalizeRef("../main")).toThrow("invalid");
+    expect(() => normalizeCircuitPath("../secret.qasm")).toThrow("invalid");
+  });
+
+  it("imports and deploys a commit-pinned repository circuit", async () => {
+    const repositoryConfig = JSON.stringify({ circuit: "circuits/bell.qasm", shots: 256, routing_mode: "cost", optimization_level: 3 });
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.endsWith("/repos/acme/quantum")) return Response.json({ full_name: "acme/quantum", html_url: "https://github.com/acme/quantum", default_branch: "main", private: true, updated_at: "2026-07-13T12:00:00Z" });
+      if (url.includes("/repos/acme/quantum/git/trees/main")) return Response.json({ tree: [
+        { path: "circuits/bell.qasm", type: "blob", sha: "circuit-sha", size: bell.length },
+        { path: "qrouter.json", type: "blob", sha: "config-sha", size: repositoryConfig.length },
+      ] });
+      if (url.includes("/contents/qrouter.json")) return Response.json({ content: Buffer.from(repositoryConfig).toString("base64"), encoding: "base64", sha: "config-sha", size: repositoryConfig.length, html_url: "https://github.com/acme/quantum/blob/main/qrouter.json" });
+      if (url.includes("/contents/circuits/bell.qasm")) return Response.json({ content: Buffer.from(bell).toString("base64"), encoding: "base64", sha: "circuit-sha", size: bell.length, html_url: "https://github.com/acme/quantum/blob/main/circuits/bell.qasm" });
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const authorization = "Bearer qci_test_local_development";
+    const projectResponse = await createProject(new Request("http://localhost/api/v1/projects", {
+      method: "POST",
+      headers: { authorization, "content-type": "application/json" },
+      body: JSON.stringify({ repository: "acme/quantum", production_branch: "main" }),
+    }));
+    const project = await projectResponse.json();
+    expect(projectResponse.status).toBe(201);
+    expect(project).toMatchObject({ repository: "acme/quantum", production_branch: "main", circuit_path: "circuits/bell.qasm", settings: { shots: 256, routingMode: "cost", optimizationLevel: 3 } });
+
+    const deploymentResponse = await createRepositoryJob(new Request("http://localhost/api/v1/repository-jobs", {
+      method: "POST",
+      headers: { authorization, "content-type": "application/json" },
+      body: JSON.stringify({ project_id: project.id, deployment_id: "deploy-test-1", settings: { shots: 256, target: "auto", routingMode: "cost", optimizationLevel: 3 } }),
+    }));
+    const deployment = await deploymentResponse.json();
+    expect(deploymentResponse.status).toBe(201);
+    expect(deployment).toMatchObject({
+      status: "completed",
+      selected_backend_id: "qci-aer-gpu",
+      analysis: { transpilation: { compiler: "local", optimizationLevel: 3 } },
+      deployment: { project_id: project.id, repository: "acme/quantum", ref: "main", path: "circuits/bell.qasm", sha: "circuit-sha" },
+    });
+
+    const listResponse = await listRepositoryJobs(new Request(`http://localhost/api/v1/repository-jobs?project_id=${project.id}`, { headers: { authorization } }));
+    const list = await listResponse.json();
+    expect(listResponse.status).toBe(200);
+    expect(list.data).toHaveLength(1);
+    expect(list.data[0]).toMatchObject({ id: deployment.id, project_id: project.id, status: "completed" });
   });
 
   it("routes through the live QCI quote model", () => {

@@ -44,6 +44,27 @@ alter table public.api_keys enable row level security;
 drop policy if exists "api key member read" on public.api_keys; create policy "api key member read" on public.api_keys for select using(public.is_org_member(organization_id));
 drop policy if exists "api key admin write" on public.api_keys; create policy "api key admin write" on public.api_keys for all using(public.is_org_admin(organization_id)) with check(public.is_org_admin(organization_id));
 
+create table if not exists public.github_connections (
+  id uuid primary key default gen_random_uuid(), organization_id uuid not null unique references public.organizations(id) on delete cascade,
+  installation_id bigint not null unique, account_login text not null, account_type text not null,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+alter table public.github_connections enable row level security;
+drop policy if exists "github connection member read" on public.github_connections; create policy "github connection member read" on public.github_connections for select using(public.is_org_member(organization_id));
+drop policy if exists "github connection admin write" on public.github_connections; create policy "github connection admin write" on public.github_connections for all using(public.is_org_admin(organization_id)) with check(public.is_org_admin(organization_id));
+
+create table if not exists public.projects (
+  id uuid primary key default gen_random_uuid(), organization_id uuid not null references public.organizations(id) on delete cascade,
+  name text not null, repository text not null, repository_url text not null, default_branch text not null,
+  production_branch text not null, circuit_path text not null, settings jsonb not null default '{}',
+  last_deployed_at timestamptz, created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  unique(organization_id,repository)
+);
+create index if not exists projects_org_created_idx on public.projects(organization_id,created_at desc);
+alter table public.projects enable row level security;
+drop policy if exists "project member read" on public.projects; create policy "project member read" on public.projects for select using(public.is_org_member(organization_id));
+drop policy if exists "project member write" on public.projects; create policy "project member write" on public.projects for all using(public.is_org_member(organization_id)) with check(public.is_org_member(organization_id));
+
 create table if not exists public.jobs (
   id uuid primary key default gen_random_uuid(), organization_id uuid not null references public.organizations(id) on delete cascade,
   user_id uuid references auth.users(id) on delete set null, api_key_id uuid references public.api_keys(id) on delete set null,
@@ -56,6 +77,7 @@ create table if not exists public.jobs (
   created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
   started_at timestamptz, completed_at timestamptz, unique(organization_id,idempotency_key)
 );
+alter table public.jobs add column if not exists project_id uuid references public.projects(id) on delete set null;
 create index if not exists jobs_org_created_idx on public.jobs(organization_id,created_at desc);
 create index if not exists jobs_status_idx on public.jobs(status,updated_at);
 alter table public.jobs enable row level security;

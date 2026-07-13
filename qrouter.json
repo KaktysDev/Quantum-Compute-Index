@@ -1,0 +1,7 @@
+{
+  "circuit": "examples/bell.qasm",
+  "shots": 1024,
+  "target": "auto",
+  "routing_mode": "balanced",
+  "optimization_level": 2
+}

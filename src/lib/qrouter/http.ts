@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { AuthenticationError } from "./auth";
 import { CircuitValidationError } from "./analyze";
+import { RepositorySourceError } from "./repositories";
 
 export function apiError(error: unknown) {
   if (error instanceof AuthenticationError) {
@@ -9,6 +10,9 @@ export function apiError(error: unknown) {
   if (error instanceof CircuitValidationError) {
     return NextResponse.json({ error: { type: "invalid_circuit", message: error.message, details: error.details } }, { status: 422 });
   }
+  if (error instanceof RepositorySourceError) {
+    return NextResponse.json({ error: { type: error.type, message: error.message } }, { status: error.status });
+  }
   if (error instanceof Error && error.message.includes("No backend")) {
     return NextResponse.json({ error: { type: "routing_error", message: error.message } }, { status: 422 });
   }
@@ -16,4 +20,3 @@ export function apiError(error: unknown) {
   console.error(error);
   return NextResponse.json({ error: { type: "server_error", message } }, { status: 500 });
 }
-

@@ -23,7 +23,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ object: "list", data });
     }
     const admin = createAdminClient();
-    const { data, error } = await admin.from("jobs").select("id,name,input_format,shots,target,routing_mode,status,selected_backend_id,analysis,route_decision,result,error,created_at,updated_at,completed_at").eq("organization_id", principal.organizationId).order("created_at", { ascending: false }).limit(100);
+    const { data, error } = await admin.from("jobs").select("id,project_id,name,input_format,shots,target,routing_mode,status,selected_backend_id,analysis,route_decision,result,error,created_at,updated_at,completed_at").eq("organization_id", principal.organizationId).order("created_at", { ascending: false }).limit(100);
     if (error) throw error;
     return NextResponse.json({ object: "list", data });
   } catch (error) {

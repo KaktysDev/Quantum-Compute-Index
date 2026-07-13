@@ -11,7 +11,8 @@
       "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "qci_live_*" }
     },
     "parameters": {
-      "JobId": { "in": "path", "name": "id", "required": true, "schema": { "type": "string", "format": "uuid" } }
+      "JobId": { "in": "path", "name": "id", "required": true, "schema": { "type": "string", "format": "uuid" } },
+      "ProjectId": { "in": "path", "name": "id", "required": true, "schema": { "type": "string", "format": "uuid" } }
     },
     "schemas": {
       "Constraints": {
@@ -39,6 +40,37 @@
           "constraints": { "$ref": "#/components/schemas/Constraints" }
         }
       },
+      "ProjectSettings": {
+        "type": "object",
+        "required": ["shots", "target", "routingMode", "optimizationLevel"],
+        "properties": {
+          "shots": { "type": "integer", "minimum": 1, "maximum": 1000000, "default": 1024 },
+          "target": { "type": "string", "default": "auto" },
+          "routingMode": { "enum": ["balanced", "cost", "speed", "quality"], "default": "balanced" },
+          "optimizationLevel": { "type": "integer", "minimum": 0, "maximum": 3, "default": 2 }
+        }
+      },
+      "CreateProject": {
+        "type": "object",
+        "required": ["repository"],
+        "properties": {
+          "repository": { "type": "string", "examples": ["acme/quantum-workloads"] },
+          "production_branch": { "type": "string", "default": "repository default branch" },
+          "circuit_path": { "type": "string", "examples": ["circuits/bell.qasm"] },
+          "settings": { "$ref": "#/components/schemas/ProjectSettings" }
+        }
+      },
+      "RepositoryDeployment": {
+        "type": "object",
+        "required": ["project_id"],
+        "properties": {
+          "project_id": { "type": "string", "format": "uuid" },
+          "ref": { "type": "string", "description": "Branch, tag, or commit SHA. Defaults to the production branch." },
+          "circuit_path": { "type": "string", "description": "OpenQASM entrypoint. Defaults to the project entrypoint." },
+          "deployment_id": { "type": "string", "maxLength": 120, "description": "Stable idempotency value from CI or a webhook." },
+          "settings": { "$ref": "#/components/schemas/ProjectSettings" }
+        }
+      },
       "Job": {
         "type": "object",
         "properties": {
@@ -59,6 +91,40 @@
   },
   "security": [{ "bearerAuth": [] }],
   "paths": {
+    "/api/v1/repositories/inspect": {
+      "get": {
+        "summary": "Inspect an authenticated GitHub repository for OpenQASM entrypoints and qrouter.json",
+        "parameters": [
+          { "in": "query", "name": "repository", "required": true, "schema": { "type": "string" } },
+          { "in": "query", "name": "ref", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Repository metadata, QASM files, and optional configuration" }, "404": { "description": "Repository or ref not found" } }
+      }
+    },
+    "/api/v1/projects": {
+      "get": { "summary": "List connected repository projects", "responses": { "200": { "description": "Project list" } } },
+      "post": {
+        "summary": "Import or update a repository project",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateProject" } } } },
+        "responses": { "201": { "description": "Project imported" }, "400": { "description": "Invalid project configuration" } }
+      }
+    },
+    "/api/v1/projects/{id}": {
+      "patch": { "summary": "Update production source and routing defaults", "parameters": [{ "$ref": "#/components/parameters/ProjectId" }], "responses": { "200": { "description": "Project updated" }, "404": { "description": "Project not found" } } },
+      "delete": { "summary": "Remove a repository project", "parameters": [{ "$ref": "#/components/parameters/ProjectId" }], "responses": { "204": { "description": "Project removed" } } }
+    },
+    "/api/v1/repository-jobs": {
+      "get": {
+        "summary": "List deployments for a repository project",
+        "parameters": [{ "in": "query", "name": "project_id", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": { "200": { "description": "Repository deployment list" } }
+      },
+      "post": {
+        "summary": "Fetch a commit-pinned repository circuit, compile it, route it, and execute it",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RepositoryDeployment" } } } },
+        "responses": { "201": { "description": "Deployment created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Job" } } } }, "404": { "description": "Project or source not found" }, "422": { "description": "Circuit or route is invalid" } }
+      }
+    },
     "/api/v1/transpile": {
       "post": {
         "summary": "Analyze, route, and hardware-compile a circuit without executing it",

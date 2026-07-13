@@ -1,11 +1,11 @@
 "use client";
 
+import { Fragment } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity,
   BookOpen,
-  Braces,
   ChevronDown,
   CircleHelp,
   CreditCard,
@@ -14,20 +14,30 @@ import {
   ListChecks,
   LogOut,
   PanelLeft,
+  Rocket,
+  Route,
   Server,
   Settings,
-  Sparkles,
+  Terminal,
+  Cpu,
 } from "lucide-react";
 import Logo from "./Logo";
 
 const TABS = [
   { href: "/dashboard", label: "QCI", icon: Activity },
-  { href: "/dashboard/submit", label: "Playground", icon: Braces },
+  { href: "/dashboard/playground", label: "Playground", icon: Rocket },
   { href: "/dashboard/tasks", label: "Current jobs", icon: ListChecks },
   { href: "/dashboard/instances", label: "Instances", icon: Server },
   { href: "/dashboard/github", label: "GitHub", icon: GitBranch },
   { href: "/dashboard/api-keys", label: "API keys", icon: KeyRound },
   { href: "/dashboard/billing", label: "Billing", icon: CreditCard },
+];
+
+const PLAYGROUND_TABS = [
+  { href: "/dashboard/playground", label: "Deployments", icon: Rocket },
+  { href: "/dashboard/playground/routing", label: "Routing", icon: Route },
+  { href: "/dashboard/playground/api", label: "API endpoint", icon: Terminal },
+  { href: "/dashboard/playground/network", label: "Network", icon: Cpu },
 ];
 
 export default function DashboardNav({
@@ -65,11 +75,16 @@ export default function DashboardNav({
           {TABS.map((tab) => {
             const active = tab.href === "/dashboard" ? pathname === tab.href : pathname.startsWith(tab.href);
             return (
-              <Link href={tab.href} key={tab.href} className={active ? "active" : ""}>
-                <tab.icon size={16} />
-                <span>{tab.label}</span>
-                {tab.href === "/dashboard/submit" && <Sparkles size={12} className="nav-spark" />}
-              </Link>
+              <Fragment key={tab.href}>
+                <Link href={tab.href} className={active ? "active" : ""}>
+                  <tab.icon size={16} />
+                  <span>{tab.label}</span>
+                </Link>
+                {tab.href === "/dashboard/playground" && active && <div className="console-subnav">{PLAYGROUND_TABS.map((item) => {
+                  const childActive = item.href === "/dashboard/playground" ? pathname === item.href : pathname.startsWith(item.href);
+                  return <Link href={item.href} key={item.href} className={childActive ? "active" : ""}><item.icon size={12} /><span>{item.label}</span></Link>;
+                })}</div>}
+              </Fragment>
             );
           })}
         </nav>
