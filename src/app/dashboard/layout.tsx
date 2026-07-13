@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import DashboardNav from "@/components/DashboardNav";
+import { checkIsAdmin } from "@/lib/admin";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import "./dashboard.css";
@@ -15,11 +16,13 @@ export default async function DashboardLayout({
   let email: string | null = "developer@local";
   let organization = "Local workspace";
   let balance = 10;
+  let isAdmin = false;
   if (isSupabaseConfigured()) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) redirect("/");
     email = user.email ?? null;
+    isAdmin = await checkIsAdmin(supabase);
     const { data: profile } = await supabase.from("profiles").select("onboarding_complete").eq("id", user.id).maybeSingle();
     if (profile && !profile.onboarding_complete) redirect("/onboarding");
     const { data: member } = await supabase.from("organization_members").select("organization_id, organizations(name)").eq("user_id", user.id).limit(1).maybeSingle();
@@ -33,7 +36,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="console-shell min-h-screen">
-      <DashboardNav email={email} organization={organization} balance={balance} />
+      <DashboardNav email={email} organization={organization} balance={balance} isAdmin={isAdmin} />
       <div className="console-main">{children}</div>
     </div>
   );

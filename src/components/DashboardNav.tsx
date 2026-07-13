@@ -12,11 +12,13 @@ import {
   CreditCard,
   GitBranch,
   KeyRound,
+  LifeBuoy,
   LogOut,
   Rocket,
   Search,
   Server,
   Settings,
+  ShieldCheck,
 } from "lucide-react";
 import Logo from "./Logo";
 
@@ -29,17 +31,22 @@ const PRODUCT_TABS = [
   { href: "/docs", label: "Docs", icon: BookOpen },
 ];
 
+const ADMIN_TAB = { href: "/dashboard/admin", label: "Admin", icon: ShieldCheck };
+
 export default function DashboardNav({
   email,
   organization,
   balance,
+  isAdmin = false,
 }: {
   email: string | null;
   organization: string;
   balance: number;
+  isAdmin?: boolean;
 }) {
   const pathname = usePathname();
   const searchRef = useRef<HTMLInputElement>(null);
+  const tabs = isAdmin ? [...PRODUCT_TABS, ADMIN_TAB] : PRODUCT_TABS;
 
   useEffect(() => {
     function focusSearch(event: KeyboardEvent) {
@@ -62,7 +69,7 @@ export default function DashboardNav({
           <kbd>⌘ K</kbd>
         </form>
         <nav className="router-product-nav" aria-label="Product navigation">
-          {PRODUCT_TABS.map((tab) => {
+          {tabs.map((tab) => {
             const active = tab.href === "/docs" ? false : pathname.startsWith(tab.href);
             return <Link href={tab.href} key={tab.href} className={active ? "active" : ""}><tab.icon size={14} /><span>{tab.label}</span></Link>;
           })}
@@ -78,6 +85,7 @@ export default function DashboardNav({
               <Link href="/dashboard/instances"><Server size={14} /> Instances</Link>
               <Link href="/dashboard/api-keys"><KeyRound size={14} /> API keys</Link>
               <Link href="/dashboard/billing"><CreditCard size={14} /> Credits</Link>
+              <Link href="/dashboard/support"><LifeBuoy size={14} /> Support</Link>
               <Link href="/dashboard/settings"><Settings size={14} /> Settings</Link>
               <form action="/auth/signout" method="post"><button type="submit"><LogOut size={14} /> Sign out</button></form>
             </div>
@@ -85,7 +93,7 @@ export default function DashboardNav({
         </div>
       </div>
       <nav className="router-mobile-nav" aria-label="Mobile product navigation">
-        {PRODUCT_TABS.map((tab) => {
+        {tabs.map((tab) => {
           const active = tab.href === "/docs" ? false : pathname.startsWith(tab.href);
           return <Link href={tab.href} key={tab.href} className={active ? "active" : ""}>{tab.label}</Link>;
         })}
