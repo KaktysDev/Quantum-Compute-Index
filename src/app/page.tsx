@@ -63,7 +63,7 @@ export default async function LandingPage() {
 
         <div className="qh-provider-cards">
           <article><span>CONNECTED TARGETS</span><strong>{BACKENDS.length}</strong><p>Every major architecture</p><Network size={22} /></article>
-          <article><span>QCI INDEX / USD</span><strong>${latest.price.toFixed(2)}</strong><p>{latest.changePct >= 0 ? "+" : ""}{latest.changePct.toFixed(2)}% live rate</p><Gauge size={22} /></article>
+          <article><span>QCI PRICE / NQH</span><strong>${latest.vwap.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong><p>{latest.changePct >= 0 ? "+" : ""}{latest.changePct.toFixed(2)}% live rate</p><Gauge size={22} /></article>
           <article><span>ROUTER STATUS</span><strong>{connected} LIVE</strong><p>Automatic failover ready</p><Cloud size={22} /></article>
         </div>
       </section>
