@@ -121,6 +121,42 @@ create policy "contact: admin update"
   using (public.is_admin())
   with check (public.is_admin());
 
+-- ── 4. Backfill workspaces for pre-control-plane accounts ───────────────────
+-- Accounts created before the QRouter tables existed have no organization /
+-- credit account (the app shows "Local workspace"). Give each of them the same
+-- personal workspace + $10 starter balance that new signups get. Idempotent.
+do $$
+declare p record; o uuid;
+begin
+  for p in
+    select pr.id, pr.email, pr.full_name
+    from public.profiles pr
+    where not exists (
+      select 1 from public.organization_members m where m.user_id = pr.id
+    )
+  loop
+    o := null;
+    insert into public.organizations (name, slug, created_by)
+    values (
+      coalesce(p.full_name, split_part(coalesce(p.email, 'workspace'), '@', 1)) || '''s workspace',
+      'ws-' || replace(p.id::text, '-', ''),
+      p.id
+    )
+    on conflict (slug) do nothing
+    returning id into o;
+    if o is null then
+      select id into o from public.organizations
+      where slug = 'ws-' || replace(p.id::text, '-', '');
+    end if;
+    insert into public.organization_members (organization_id, user_id, role)
+    values (o, p.id, 'owner')
+    on conflict do nothing;
+    insert into public.credit_accounts (organization_id, available)
+    values (o, 10.00)
+    on conflict do nothing;
+  end loop;
+end $$;
+
 -- ════════════════════════════════════════════════════════════════════════════
 -- 👇 EDIT THIS: the Google accounts that get the Admin tab. Add/remove lines,
 --    then run. Changes apply on the next page load — no redeploy needed.
