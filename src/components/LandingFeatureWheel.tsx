@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState, type KeyboardEvent, type WheelEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type WheelEvent } from "react";
 import { Braces, CircleDollarSign, Gauge, KeyRound, Route, Workflow } from "lucide-react";
 
 const FEATURES = [
@@ -14,17 +14,35 @@ const FEATURES = [
 
 export default function LandingFeatureWheel({ price, changePct }: { price: number; changePct: number }) {
   const [active, setActive] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
   const lastWheel = useRef(0);
+  const manualUntil = useRef(0);
+  const visible = useRef(false);
   const move = useCallback((direction: number) => setActive((current) => (current + direction + FEATURES.length) % FEATURES.length), []);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const observer = new IntersectionObserver(([entry]) => { visible.current = entry.isIntersecting && entry.intersectionRatio > 0.45; }, { threshold: [0, 0.45, 1] });
+    observer.observe(root);
+    const timer = window.setInterval(() => {
+      if (visible.current && Date.now() > manualUntil.current) move(1);
+    }, 4200);
+    return () => { observer.disconnect(); window.clearInterval(timer); };
+  }, [move]);
+
+  function markManual() { manualUntil.current = Date.now() + 7000; }
 
   function onWheel(event: WheelEvent<HTMLDivElement>) {
     const now = Date.now();
     if (Math.abs(event.deltaY) < 18 || now - lastWheel.current < 420) return;
     lastWheel.current = now;
+    markManual();
     move(event.deltaY > 0 ? 1 : -1);
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    markManual();
     if (event.key === "ArrowDown" || event.key === "ArrowRight") move(1);
     if (event.key === "ArrowUp" || event.key === "ArrowLeft") move(-1);
   }
@@ -32,9 +50,9 @@ export default function LandingFeatureWheel({ price, changePct }: { price: numbe
   const feature = FEATURES[active];
 
   return (
-    <div className="qh-feature-wheel" onWheel={onWheel} onKeyDown={onKeyDown} tabIndex={0} aria-label="QRouter feature preview">
+    <div className="qh-feature-wheel" ref={rootRef} onWheel={onWheel} onKeyDown={onKeyDown} tabIndex={0} aria-label="QRouter feature preview">
       <div className="qh-wheel-nav" role="tablist" aria-label="QRouter features">
-        {FEATURES.map((item, index) => <button key={item.number} role="tab" aria-selected={index === active} className={index === active ? "active" : ""} onClick={() => setActive(index)}><span>{item.number}</span><b>{item.label}</b><i /></button>)}
+        {FEATURES.map((item, index) => <button key={item.number} role="tab" aria-selected={index === active} className={index === active ? "active" : ""} onClick={() => { markManual(); setActive(index); }}><span>{item.number}</span><b>{item.label}</b><i /></button>)}
       </div>
 
       <article className="qh-wheel-panel" key={feature.number} role="tabpanel">

@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowDown,
@@ -10,9 +9,9 @@ import {
   Network,
   Play,
   Sparkles,
-  Terminal,
 } from "lucide-react";
 import LandingFeatureWheel from "@/components/LandingFeatureWheel";
+import LandingHeroStage from "@/components/LandingHeroStage";
 import Logo from "@/components/Logo";
 import { BACKENDS } from "@/lib/qrouter/catalog";
 import { getLatestSnapshot } from "@/lib/qci/store";
@@ -27,33 +26,7 @@ export default async function LandingPage() {
   return (
     <main className="qh-site">
       <section className="qh-hero">
-        <header className="qh-nav">
-          <Link href="/" className="qh-nav-word">QCI</Link>
-          <a href="#network">NETWORK</a>
-          <Link href="/" className="qh-nav-center"><span>Q</span>ROUTER<small>QCI</small></Link>
-          <Link href="/pricing">PRICING</Link>
-          <Link href="/dashboard">CONSOLE <ArrowRight size={11} /></Link>
-        </header>
-
-        <div className="qh-hero-grid">
-          <div className="qh-hero-copy">
-            <p>OPEN API <i /> USAGE BASED</p>
-            <h1><span className="qh-robot-word" data-text="QUANTUM.">QUANTUM.</span><br />FOR ALL.</h1>
-            <p className="qh-hero-lede">One API key to transpile, price, route, and execute across the quantum cloud.</p>
-            <Link href="/dashboard" className="qh-action"><Play size={12} fill="currentColor" /> OPEN CONSOLE</Link>
-            <div className="qh-install">
-              <span>RUN YOUR FIRST TASK</span>
-              <code><b>POST</b> api.qci.dev/v1/jobs</code>
-              <button type="button" title="API endpoint"><Terminal size={13} /></button>
-            </div>
-          </div>
-
-          <div className="qh-hands" aria-hidden="true">
-            <Image src="/assets/qrouter-hands-transparent.png" alt="" fill priority sizes="(max-width: 800px) 100vw, 62vw" className="qh-hand-base" />
-            <Image src="/assets/qrouter-hands-transparent.png" alt="" fill sizes="(max-width: 800px) 100vw, 62vw" className="qh-hand-glitch" />
-            <div className="qh-hand-scan"><i /><i /><i /><i /><i /><i /></div>
-          </div>
-        </div>
+        <LandingHeroStage />
 
         <div className="qh-terminal-shell">
           <div className="qh-terminal-bar"><span><i /><i /><i /> qrouter / first-task.py</span><em>QCI NETWORK ONLINE</em></div>

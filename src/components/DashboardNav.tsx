@@ -9,19 +9,23 @@ import {
   ChevronDown,
   CircleHelp,
   CreditCard,
+  GitBranch,
   KeyRound,
   ListChecks,
   LogOut,
   PanelLeft,
+  Server,
   Settings,
   Sparkles,
 } from "lucide-react";
 import Logo from "./Logo";
 
 const TABS = [
-  { href: "/dashboard", label: "Overview", icon: Activity },
+  { href: "/dashboard", label: "QCI", icon: Activity },
   { href: "/dashboard/submit", label: "Playground", icon: Braces },
-  { href: "/dashboard/tasks", label: "Tasks", icon: ListChecks },
+  { href: "/dashboard/tasks", label: "Current jobs", icon: ListChecks },
+  { href: "/dashboard/instances", label: "Instances", icon: Server },
+  { href: "/dashboard/github", label: "GitHub", icon: GitBranch },
   { href: "/dashboard/api-keys", label: "API keys", icon: KeyRound },
   { href: "/dashboard/billing", label: "Billing", icon: CreditCard },
 ];
@@ -77,7 +81,7 @@ export default function DashboardNav({
             <Link href="/dashboard/billing">Manage balance</Link>
           </div>
           <div className="console-utility-links">
-            <a href="/openapi.json"><BookOpen size={15} /> API reference</a>
+            <a href="/openapi.json"><BookOpen size={15} /> Documentation</a>
             <Link href="/contact"><CircleHelp size={15} /> Support</Link>
             <Link href="/dashboard/settings" className={pathname.startsWith("/dashboard/settings") ? "active" : ""}><Settings size={15} /> Settings</Link>
           </div>
