@@ -93,3 +93,98 @@
   .provider-detail-hero { grid-template-columns: auto 1fr; }.provider-detail-hero > div:last-child { grid-column: 1/-1; justify-content: space-between; }.provider-detail-tabs { overflow-x: auto; }.provider-detail-tabs a { flex: none; }.provider-detail-stats { grid-template-columns: 1fr; }.provider-detail-stats > div { border-right: 0; border-bottom: 1px solid var(--qr-line); }.provider-price-line { grid-template-columns: 1fr 1fr; padding: .8rem; }.provider-capabilities { grid-template-columns: 1fr; }.provider-capabilities > div:last-child { grid-column: auto; }.provider-detail-cta { grid-template-columns: auto 1fr; }.provider-detail-cta > a { grid-column: 1/-1; }
   .ranking-method { display: grid; grid-template-columns: 1fr 1fr; }.ranking-method > * { min-height: 42px; border-bottom: 1px solid var(--qr-line); }.ranking-method > span { grid-column: 1/-1; }
 }
+
+/* Strict terminal palette. One emerald, with opacity providing hierarchy. */
+.console-shell {
+  --qr-bg: #000;
+  --qr-panel: #000;
+  --qr-panel-raised: #000;
+  --qr-line: rgba(5, 150, 105, .28);
+  --qr-line-strong: rgba(5, 150, 105, .58);
+  --qr-text: #059669;
+  --qr-muted: rgba(5, 150, 105, .72);
+  --qr-dim: rgba(5, 150, 105, .46);
+  --qr-emerald: #059669;
+  --qr-emerald-soft: rgba(5, 150, 105, .08);
+  --qr-danger: #059669;
+  --qr-warning: #059669;
+  background: #000 !important;
+  color: var(--qr-emerald);
+  font-family: var(--qr-mono) !important;
+}
+
+.console-shell *,
+.console-shell *::before,
+.console-shell *::after {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+.console-shell :is(h1, h2, h3, h4, b, strong, code, kbd, a, button, input, select, textarea, label, dt, dd),
+.console-shell :is(.console-page-heading h1, .overview-heading h1, .provider-catalog-heading h1, .provider-listing h2, .provider-detail-hero h1) {
+  color: var(--qr-emerald) !important;
+  font-family: var(--qr-mono) !important;
+}
+
+.console-shell :is(p, small, span, em, .muted, .provider-description, .provider-listing-top p) {
+  color: var(--qr-muted) !important;
+}
+
+.console-shell :is(input, select, textarea)::placeholder {
+  color: var(--qr-dim) !important;
+  opacity: 1;
+}
+
+.console-shell :is(input, select, textarea, button) {
+  accent-color: var(--qr-emerald);
+}
+
+.router-topbar,
+.router-account-menu > div,
+.provider-filter-rail,
+.provider-listing,
+.provider-detail-section,
+.provider-catalog-toolbar > label,
+.provider-catalog-toolbar > button,
+.catalog-sort,
+.catalog-view-switch,
+.provider-table,
+.provider-compare,
+.ranking-list,
+.console-panel,
+.terminal-screen,
+.terminal-input,
+.code-block,
+.api-command-bar,
+.endpoint-reference,
+.full-network-panel {
+  background: #000 !important;
+  border-color: var(--qr-line) !important;
+}
+
+.console-shell :is(.provider-listing, .ranking-row, .provider-table > a, .router-account-menu a, .router-account-menu button, .catalog-view-switch button):hover,
+.console-shell :is(.active, .selected) {
+  background: rgba(5, 150, 105, .06) !important;
+}
+
+.console-shell :is(.catalog-live, .catalog-standby, .deployment-status, .status-dot, .online, .standby, .positive, .negative, .form-error, .form-message) {
+  color: var(--qr-emerald) !important;
+}
+
+.console-shell :is(.catalog-live, .catalog-standby, .deployment-status, .status-dot) i,
+.ranking-row > span:nth-child(3) em,
+.router-product-nav a.active::after {
+  background: var(--qr-emerald) !important;
+}
+
+.router-brand svg path {
+  fill: var(--qr-emerald) !important;
+  fill-opacity: 1 !important;
+}
+
+.router-brand span {
+  color: var(--qr-emerald) !important;
+  font-family: var(--qr-mono) !important;
+  font-weight: 600 !important;
+}

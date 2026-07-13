@@ -98,34 +98,34 @@ export default function QciMarketPanel({
       height: element.clientHeight || 310,
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
-        textColor: "#59645d",
+        textColor: "rgba(5,150,105,0.52)",
         fontFamily: "var(--qr-mono), monospace",
         fontSize: 10,
         attributionLogo: false,
       },
       grid: {
         vertLines: { visible: false },
-        horzLines: { color: "#111914", style: 1 },
+        horzLines: { color: "rgba(5,150,105,0.08)", style: 1 },
       },
       rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.12, bottom: 0.08 } },
       timeScale: { borderVisible: false, timeVisible: false, secondsVisible: false, rightOffset: 0 },
       crosshair: {
         mode: CrosshairMode.Normal,
-        vertLine: { color: "#2f5f48", width: 1, style: 2, labelVisible: false },
+        vertLine: { color: "rgba(5,150,105,0.48)", width: 1, style: 2, labelVisible: false },
         horzLine: { visible: false, labelVisible: false },
       },
       handleScroll: { mouseWheel: false, pressedMouseMove: false, horzTouchDrag: true, vertTouchDrag: false },
       handleScale: { mouseWheel: false, pinch: true, axisPressedMouseMove: false },
     });
     const series = chart.addAreaSeries({
-      lineColor: "#2fbd7c",
-      topColor: "rgba(47,189,124,0)",
-      bottomColor: "rgba(47,189,124,0)",
+      lineColor: "#059669",
+      topColor: "rgba(5,150,105,0)",
+      bottomColor: "rgba(5,150,105,0)",
       lineWidth: 2,
       priceLineVisible: false,
       lastValueVisible: false,
-      crosshairMarkerBorderColor: "#030504",
-      crosshairMarkerBackgroundColor: "#48c98e",
+      crosshairMarkerBorderColor: "#000000",
+      crosshairMarkerBackgroundColor: "#059669",
       priceFormat: { type: "price", precision: 2, minMove: 0.01 },
     });
     chartRef.current = chart;
@@ -151,7 +151,7 @@ export default function QciMarketPanel({
 
   useEffect(() => {
     if (!seriesRef.current || visible.length === 0) return;
-    const color = positive ? "#2fbd7c" : "#668074";
+    const color = "#059669";
     seriesRef.current.applyOptions({
       lineColor: color,
       topColor: "transparent",
