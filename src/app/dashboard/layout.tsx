@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import DashboardNav from "@/components/DashboardNav";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import "./dashboard.css";
 
 export const dynamic = "force-dynamic";
 
