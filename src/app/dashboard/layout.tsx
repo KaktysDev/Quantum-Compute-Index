@@ -3,6 +3,7 @@ import DashboardNav from "@/components/DashboardNav";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import "./dashboard.css";
+import "./marketplace.css";
 
 export const dynamic = "force-dynamic";
 

@@ -23,7 +23,7 @@ const TERMINAL_IDLE = [
   { kind: "muted", text: "waiting for a project deployment" },
 ];
 
-export default function RepositoryDeployments() {
+export default function RepositoryDeployments({ requestedTarget }: { requestedTarget?: string }) {
   const [projects, setProjects] = useState<QRouterProject[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [settings, setSettings] = useState<ProjectSettings>({ shots: 1024, target: "auto", routingMode: "balanced", optimizationLevel: 2 });
@@ -61,7 +61,7 @@ export default function RepositoryDeployments() {
 
   useEffect(() => {
     if (!selected) return;
-    setSettings(selected.settings);
+    setSettings({ ...selected.settings, target: requestedTarget || selected.settings.target });
     setRef(selected.production_branch);
     setCircuitPath(selected.circuit_path);
     setInspection(null);
@@ -72,7 +72,7 @@ export default function RepositoryDeployments() {
       const response = await fetch(`/api/v1/repositories/inspect?${query}`, { cache: "no-store" });
       if (response.ok) setInspection(await response.json() as RepositoryInspection);
     })();
-  }, [loadDeployments, selected]);
+  }, [loadDeployments, requestedTarget, selected]);
 
   useEffect(() => {
     if (!selectedId) return;

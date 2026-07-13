@@ -14,6 +14,7 @@
   --qr-mono: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
 }
 
+
 .console-shell {
   min-height: 100vh;
   background:
