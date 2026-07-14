@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import LandingFeatureWheel from "@/components/LandingFeatureWheel";
 import LandingHeroStage from "@/components/LandingHeroStage";
+import LandingSignin from "@/components/LandingSignin";
 import Logo from "@/components/Logo";
 import { BACKENDS } from "@/lib/qrouter/catalog";
 import { getLatestSnapshot } from "@/lib/qci/store";
@@ -25,6 +26,7 @@ export default async function LandingPage() {
 
   return (
     <main className="qh-site">
+      <LandingSignin />
       <section className="qh-hero">
         <LandingHeroStage />
 
