@@ -1,0 +1,45 @@
+/* ── Console dark mode ────────────────────────────────────────────────────────
+   Opt-in via the Settings → Appearance toggle, which sets data-theme="dark" on
+   <html>. This file ONLY re-maps the palette variables that marketplace.css's
+   light skin defines — the light design itself is untouched. Selectors carry
+   the html[data-theme="dark"] prefix for higher specificity, so they win over
+   the light block's !important rules without editing them. */
+
+html[data-theme="dark"] .console-shell {
+  --surface: #0c0f0e;
+  --surface-raised: #111513;
+  --fg: #e8ebe9;
+  --muted: #878e8a;
+  --line: rgba(255, 255, 255, 0.09);
+  --glass: #0c0f0e;
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --qr-bg: #070908;
+  --qr-panel: #0c0f0e;
+  --qr-panel-raised: #111513;
+  --qr-line: rgba(255, 255, 255, 0.085);
+  --qr-line-strong: rgba(255, 255, 255, 0.22);
+  --qr-text: #e8ebe9;
+  --qr-muted: #878e8a;
+  --qr-dim: #565d59;
+  --qr-emerald: #42e59e;
+  --qr-emerald-soft: rgba(66, 229, 158, 0.12);
+  --qr-danger: #ff6b7a;
+  --qr-warning: #e5c45d;
+  background: #070908 !important;
+}
+
+/* Form fields: the light skin hardcodes white — give them a dark panel. */
+html[data-theme="dark"] .console-shell :is(input, select, textarea) {
+  background: #0c0f0e !important;
+}
+
+/* Filled emerald controls: #42e59e is bright in dark mode, so their text
+   flips to near-black (the light skin uses #f5f7f5, which would wash out). */
+html[data-theme="dark"] .console-shell :is(.selected, .catalog-view-switch button.active, .console-segments button.active, .amount-options button.active),
+html[data-theme="dark"] .console-shell :is(.console-primary, .provider-catalog-heading > a, .provider-detail-hero > div:last-child > a) {
+  color: #07110d !important;
+}
+html[data-theme="dark"] .console-shell :is(.selected, .catalog-view-switch button.active, .console-segments button.active, .amount-options button.active) :is(span, b, strong, svg),
+html[data-theme="dark"] .console-shell :is(.console-primary, .provider-catalog-heading > a, .provider-detail-hero > div:last-child > a) :is(span, b, strong, svg) {
+  color: #07110d !important;
+}
