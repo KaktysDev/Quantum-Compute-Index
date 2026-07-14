@@ -198,7 +198,7 @@ export default function GitHubManager() {
         <div className="repo-import-form">
           <label><span>Repository</span><div className="terminal-input"><b>github.com/</b><input value={repository} onChange={(event) => setRepository(event.target.value)} /></div></label>
           <label><span>Production branch</span><div className="terminal-input"><GitBranch size={13} /><input value={ref} onChange={(event) => setRef(event.target.value)} placeholder="default branch" /></div></label>
-          <button className="console-secondary" onClick={inspect} disabled={Boolean(busy)}>{busy === "inspect" ? <Loader2 className="spin" size={14} /> : <RefreshCw size={14} />} Inspect repository</button>
+          <button className="console-secondary" onClick={() => inspect()} disabled={Boolean(busy)}>{busy === "inspect" ? <Loader2 className="spin" size={14} /> : <RefreshCw size={14} />} Inspect repository</button>
           {inspection && <div className="repo-inspection">
             <div><Check size={14} /><span><b>{inspection.repository.fullName}</b><small>{inspection.repository.private ? "Private via server credential" : "Public repository"} · {inspection.files.length} circuits</small></span></div>
             <label><span>Entrypoint circuit</span><select value={circuitPath} onChange={(event) => setCircuitPath(event.target.value)}>{inspection.files.map((file) => <option key={file.sha} value={file.path}>{file.path}</option>)}</select></label>
