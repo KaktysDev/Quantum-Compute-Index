@@ -94,22 +94,30 @@
   .ranking-method { display: grid; grid-template-columns: 1fr 1fr; }.ranking-method > * { min-height: 42px; border-bottom: 1px solid var(--qr-line); }.ranking-method > span { grid-column: 1/-1; }
 }
 
-/* Strict terminal palette. One emerald, with opacity providing hierarchy. */
+/* QCI index interface: paper surfaces, emerald rules, serif display, mono data. */
 .console-shell {
-  --qr-bg: #000;
-  --qr-panel: #000;
-  --qr-panel-raised: #000;
-  --qr-line: rgba(5, 150, 105, .28);
-  --qr-line-strong: rgba(5, 150, 105, .58);
-  --qr-text: #059669;
-  --qr-muted: rgba(5, 150, 105, .72);
-  --qr-dim: rgba(5, 150, 105, .46);
-  --qr-emerald: #059669;
-  --qr-emerald-soft: rgba(5, 150, 105, .08);
-  --qr-danger: #059669;
-  --qr-warning: #059669;
-  background: #000 !important;
-  color: var(--qr-emerald);
+  --bg: #f5f7f5;
+  --surface: #f5f7f5;
+  --surface-raised: #ffffff;
+  --fg: #003e27;
+  --muted: #537565;
+  --line: rgba(0, 95, 60, .2);
+  --glass: #f5f7f5;
+  --glass-border: rgba(0, 95, 60, .22);
+  --qr-bg: #f5f7f5;
+  --qr-panel: #f5f7f5;
+  --qr-panel-raised: #ffffff;
+  --qr-line: rgba(0, 95, 60, .22);
+  --qr-line-strong: #008e58;
+  --qr-text: #003e27;
+  --qr-muted: #537565;
+  --qr-dim: #789286;
+  --qr-emerald: #008e58;
+  --qr-emerald-soft: rgba(0, 142, 88, .08);
+  --qr-danger: #8c3340;
+  --qr-warning: #85691a;
+  background: #f5f7f5 !important;
+  color: var(--qr-text);
   font-family: var(--qr-mono) !important;
 }
 
@@ -117,18 +125,31 @@
 .console-shell *::before,
 .console-shell *::after {
   border-radius: 0 !important;
+  border-color: var(--qr-line);
   box-shadow: none !important;
+  letter-spacing: 0 !important;
   text-shadow: none !important;
 }
 
-.console-shell :is(h1, h2, h3, h4, b, strong, code, kbd, a, button, input, select, textarea, label, dt, dd),
+.console-shell :is(h1, h2, h3, h4),
 .console-shell :is(.console-page-heading h1, .overview-heading h1, .provider-catalog-heading h1, .provider-listing h2, .provider-detail-hero h1) {
   color: var(--qr-emerald) !important;
+  font-family: var(--font-serif), Georgia, serif !important;
+  font-weight: 400 !important;
+  line-height: .98 !important;
+}
+
+.console-shell :is(a, button, input, select, textarea, label, code, kbd, dt, dd, b, strong) {
+  color: var(--qr-text) !important;
   font-family: var(--qr-mono) !important;
 }
 
-.console-shell :is(p, small, span, em, .muted, .provider-description, .provider-listing-top p) {
+.console-shell :is(p, small, .muted, .provider-description, .provider-listing-top p) {
   color: var(--qr-muted) !important;
+}
+
+.console-shell :is(span, em) {
+  color: inherit;
 }
 
 .console-shell :is(input, select, textarea)::placeholder {
@@ -141,6 +162,9 @@
 }
 
 .router-topbar,
+.router-global-search,
+.router-credit-button,
+.router-key-button,
 .router-account-menu > div,
 .provider-filter-rail,
 .provider-listing,
@@ -158,24 +182,76 @@
 .code-block,
 .api-command-bar,
 .endpoint-reference,
-.full-network-panel {
-  background: #000 !important;
+.full-network-panel,
+.qr-modal,
+.created-key,
+.editor-wrap,
+.amount-options button,
+.auto-mark,
+.backend-option,
+.glass,
+.glass-strong {
+  background: var(--qr-panel) !important;
   border-color: var(--qr-line) !important;
 }
 
-.console-shell :is(.provider-listing, .ranking-row, .provider-table > a, .router-account-menu a, .router-account-menu button, .catalog-view-switch button):hover,
-.console-shell :is(.active, .selected) {
-  background: rgba(5, 150, 105, .06) !important;
+.router-global-search input {
+  background: transparent !important;
 }
 
-.console-shell :is(.catalog-live, .catalog-standby, .deployment-status, .status-dot, .online, .standby, .positive, .negative, .form-error, .form-message) {
+.console-shell :is(input, select, textarea) {
+  border-color: var(--qr-line-strong) !important;
+  background: #fff !important;
+  color: var(--qr-text) !important;
+}
+
+.console-shell :is(.provider-listing, .ranking-row, .provider-table > a, .router-account-menu a, .router-account-menu button, .backend-option):hover {
+  background: var(--qr-emerald-soft) !important;
+}
+
+.console-shell :is(.selected, .catalog-view-switch button.active, .console-segments button.active, .amount-options button.active) {
+  border-color: var(--qr-emerald) !important;
+  background: var(--qr-emerald) !important;
+  color: #f5f7f5 !important;
+}
+
+.console-shell :is(.selected, .catalog-view-switch button.active, .console-segments button.active, .amount-options button.active) :is(span, b, strong, svg) {
+  color: #f5f7f5 !important;
+}
+
+.console-shell :is(.console-primary, .provider-catalog-heading > a, .provider-detail-hero > div:last-child > a) {
+  border-color: var(--qr-emerald) !important;
+  background: var(--qr-emerald) !important;
+  color: #f5f7f5 !important;
+}
+
+.console-shell :is(.router-product-nav a.active, .router-mobile-nav a.active, .provider-category-tabs button.active) {
+  background: transparent !important;
   color: var(--qr-emerald) !important;
+}
+
+.console-shell :is(.catalog-live, .online, .positive, .form-message) {
+  color: var(--qr-emerald) !important;
+}
+
+.console-shell :is(.catalog-standby, .standby) {
+  color: var(--qr-dim) !important;
+}
+
+.console-shell :is(.deployment-status.failed, .status-dot.failed, .form-error) {
+  color: var(--qr-danger) !important;
 }
 
 .console-shell :is(.catalog-live, .catalog-standby, .deployment-status, .status-dot) i,
 .ranking-row > span:nth-child(3) em,
 .router-product-nav a.active::after {
+  background: currentColor !important;
+}
+
+.provider-mark {
+  border-color: var(--qr-emerald) !important;
   background: var(--qr-emerald) !important;
+  color: #f5f7f5 !important;
 }
 
 .router-brand svg path {
@@ -185,6 +261,120 @@
 
 .router-brand span {
   color: var(--qr-emerald) !important;
-  font-family: var(--qr-mono) !important;
-  font-weight: 600 !important;
+  font-family: var(--font-serif), Georgia, serif !important;
+  font-weight: 400 !important;
+}
+
+/* Normalize legacy terminal panels to the same QCI index surface. */
+.console-sidebar,
+.console-mobile-bar,
+.console-mobile-tabs,
+.console-workspace,
+.console-credit-meter,
+.console-status-strip,
+.console-status-strip > div,
+.panel-title,
+.market-chart-column,
+.market-watchlist,
+.market-watch-head,
+.market-watchlist > button,
+.market-watchlist footer,
+.market-ranges,
+.github-connection-bar,
+.project-switcher,
+.deployment-summary,
+.network-command-status,
+.routing-command-flow,
+.routing-command-flow > div,
+.api-terminal-panel pre,
+.tasks-head,
+.key-head,
+.instance-head,
+.task-detail,
+.qr-icon-button,
+.instance-actions button,
+.terminal-icon-button,
+.repo-project-row a,
+.repo-project-row button,
+.console-note,
+.qr-modal-mark {
+  background: var(--qr-panel) !important;
+  border-color: var(--qr-line) !important;
+}
+
+.market-watchlist > button:hover,
+.repo-project-row:hover,
+.deployment-row:hover,
+.task-row:hover,
+.qci-console-links a:hover {
+  background: var(--qr-emerald-soft) !important;
+}
+
+.market-watchlist > button.active,
+.market-ranges button.active {
+  border-color: var(--qr-emerald) !important;
+  background: var(--qr-emerald) !important;
+  color: #f5f7f5 !important;
+}
+
+.market-watchlist > button.active :is(b, small, span, svg),
+.market-ranges button.active {
+  color: #f5f7f5 !important;
+}
+
+.api-terminal-panel pre,
+.terminal-screen,
+.editor-wrap,
+.routing-command-flow {
+  background-image: repeating-linear-gradient(90deg, rgba(0, 142, 88, .045) 0 1px, transparent 1px 52px) !important;
+}
+
+.console-shell [class*="bg-black"],
+.console-shell [class*="bg-white/"] {
+  background: var(--qr-panel) !important;
+}
+
+.console-shell [class*="text-white"] {
+  color: var(--qr-text) !important;
+}
+
+.console-shell [class*="border-white"] {
+  border-color: var(--qr-line) !important;
+}
+
+/* ── Grouped left sidebar navigation (replaces the flat topbar) ──────────────── */
+/* Show the sidebar, retire the topbar, and reclaim its 60px top offset. */
+.console-shell { padding-top: 0; }
+.router-topbar, .router-mobile-nav { display: none !important; }
+.console-sidebar { display: flex !important; }
+.console-main { margin-left: 248px !important; }
+.provider-marketplace { min-height: 100vh; }
+.provider-filter-rail { top: 0; height: 100vh; }
+
+/* Paper-theme the sidebar chrome to match the QCI index surface. */
+.console-sidebar { background: var(--surface-raised) !important; border-right: 1px solid var(--qr-line) !important; }
+.console-brand-row { border-bottom: 1px solid var(--qr-line); }
+.console-search { border-color: var(--qr-line-strong); background: var(--surface-raised); }
+.console-search input { color: var(--qr-text); }
+.console-search kbd { border-color: var(--qr-line); color: var(--qr-dim); }
+.console-nav p { color: var(--qr-dim); }
+.console-nav a, .console-utility-links a { color: var(--qr-muted); }
+.console-nav a:hover, .console-utility-links a:hover { background: var(--qr-emerald-soft); color: var(--qr-text); }
+.console-nav a.active, .console-utility-links a.active { background: var(--qr-emerald-soft); color: var(--qr-emerald) !important; }
+.console-nav a.active::before { background: var(--qr-emerald); }
+.console-workspace, .console-credit-meter { background: var(--surface-raised) !important; }
+.console-workspace b, .console-credit-meter strong, .console-user b { color: var(--qr-text); }
+.console-credit-meter > i { background: var(--qr-line); }
+.console-credit-meter > i span { background: var(--qr-emerald); }
+.console-user > span { border-color: var(--qr-line-strong); background: var(--surface-raised); color: var(--qr-text); }
+.console-user button:hover { color: var(--qr-emerald); }
+
+/* Below 820px the sidebar collapses to the bottom tab bar + top strip. */
+@media (max-width: 820px) {
+  .console-sidebar { display: none !important; }
+  .console-main { margin-left: 0 !important; }
+  .console-mobile-bar, .console-mobile-tabs { display: flex !important; }
+  .console-mobile-bar { background: var(--surface-raised) !important; border-bottom: 1px solid var(--qr-line); }
+  .console-mobile-tabs { background: var(--surface-raised) !important; border-top: 1px solid var(--qr-line); }
+  .provider-filter-rail { top: 0; height: auto; }
 }

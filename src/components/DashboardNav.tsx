@@ -7,31 +7,67 @@ import {
   Activity,
   BarChart3,
   BookOpen,
-  ChevronDown,
+  ChevronsUpDown,
   Cpu,
-  CreditCard,
   GitBranch,
+  Inbox,
   KeyRound,
   LifeBuoy,
+  LineChart,
   LogOut,
   Rocket,
   Search,
+  Send,
   Server,
   Settings,
   ShieldCheck,
 } from "lucide-react";
 import Logo from "./Logo";
 
-const PRODUCT_TABS = [
-  { href: "/dashboard/providers", label: "Providers", icon: Cpu },
-  { href: "/dashboard/playground", label: "Playground", icon: Rocket },
-  { href: "/dashboard/tasks", label: "Activity", icon: Activity },
-  { href: "/dashboard/rankings", label: "Rankings", icon: BarChart3 },
-  { href: "/dashboard/qci", label: "QCI", icon: Activity },
-  { href: "/docs", label: "Docs", icon: BookOpen },
+type NavItem = { href: string; label: string; icon: typeof Cpu };
+
+const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
+  {
+    label: "Build",
+    items: [
+      { href: "/dashboard/playground", label: "Playground", icon: Rocket },
+      { href: "/dashboard/submit", label: "Submit", icon: Send },
+      { href: "/dashboard/github", label: "Repositories", icon: GitBranch },
+      { href: "/dashboard/instances", label: "Instances", icon: Server },
+    ],
+  },
+  {
+    label: "Monitor",
+    items: [
+      { href: "/dashboard/tasks", label: "Activity", icon: Activity },
+      { href: "/dashboard/requests", label: "Requests", icon: Inbox },
+    ],
+  },
+  {
+    label: "Market",
+    items: [
+      { href: "/dashboard/providers", label: "Providers", icon: Cpu },
+      { href: "/dashboard/rankings", label: "Rankings", icon: BarChart3 },
+      { href: "/dashboard/qci", label: "QCI", icon: LineChart },
+    ],
+  },
 ];
 
-const ADMIN_TAB = { href: "/dashboard/admin", label: "Admin", icon: ShieldCheck };
+const UTILITY_LINKS: NavItem[] = [
+  { href: "/docs", label: "Docs", icon: BookOpen },
+  { href: "/dashboard/api-keys", label: "API keys", icon: KeyRound },
+  { href: "/dashboard/support", label: "Support", icon: LifeBuoy },
+  { href: "/dashboard/settings", label: "Settings", icon: Settings },
+];
+
+// Compact bottom bar shown on mobile (sidebar is hidden < 820px).
+const MOBILE_TABS: NavItem[] = [
+  { href: "/dashboard/providers", label: "Providers", icon: Cpu },
+  { href: "/dashboard/playground", label: "Build", icon: Rocket },
+  { href: "/dashboard/tasks", label: "Activity", icon: Activity },
+  { href: "/dashboard/github", label: "Repos", icon: GitBranch },
+  { href: "/dashboard/qci", label: "QCI", icon: LineChart },
+];
 
 export default function DashboardNav({
   email,
@@ -46,7 +82,12 @@ export default function DashboardNav({
 }) {
   const pathname = usePathname();
   const searchRef = useRef<HTMLInputElement>(null);
-  const tabs = isAdmin ? [...PRODUCT_TABS, ADMIN_TAB] : PRODUCT_TABS;
+
+  const groups = isAdmin
+    ? [...NAV_GROUPS, { label: "Admin", items: [{ href: "/dashboard/admin", label: "Admin", icon: ShieldCheck }] }]
+    : NAV_GROUPS;
+
+  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   useEffect(() => {
     function focusSearch(event: KeyboardEvent) {
@@ -59,45 +100,74 @@ export default function DashboardNav({
     return () => window.removeEventListener("keydown", focusSearch);
   }, []);
 
+  const initial = (email ?? "D").slice(0, 1).toUpperCase();
+  const creditPct = Math.max(4, Math.min(100, (balance / 100) * 100));
+
   return (
-    <header className="router-topbar">
-      <div className="router-topbar-main">
-        <Link className="router-brand" href="/dashboard/providers" aria-label="QRouter providers"><Logo size={28} /></Link>
-        <form className="router-global-search" action="/dashboard/providers">
-          <Search size={15} />
-          <input ref={searchRef} name="q" placeholder="Search providers" aria-label="Search quantum providers" />
-          <kbd>⌘ K</kbd>
-        </form>
-        <nav className="router-product-nav" aria-label="Product navigation">
-          {tabs.map((tab) => {
-            const active = tab.href === "/docs" ? false : pathname.startsWith(tab.href);
-            return <Link href={tab.href} key={tab.href} className={active ? "active" : ""}><tab.icon size={14} /><span>{tab.label}</span></Link>;
-          })}
-        </nav>
-        <div className="router-account-actions">
-          <Link className="router-credit-button" href="/dashboard/billing"><span>Credits</span><b>${balance.toFixed(2)}</b></Link>
-          <Link className="router-key-button" href="/dashboard/api-keys" aria-label="API keys" title="API keys"><KeyRound size={15} /></Link>
-          <details className="router-account-menu">
-            <summary><span>{(email ?? "D").slice(0, 1).toUpperCase()}</span><ChevronDown size={13} /></summary>
-            <div>
-              <header><b>{organization}</b><small>{email ?? "Local developer"}</small></header>
-              <Link href="/dashboard/github"><GitBranch size={14} /> Repositories</Link>
-              <Link href="/dashboard/instances"><Server size={14} /> Instances</Link>
-              <Link href="/dashboard/api-keys"><KeyRound size={14} /> API keys</Link>
-              <Link href="/dashboard/billing"><CreditCard size={14} /> Credits</Link>
-              <Link href="/dashboard/support"><LifeBuoy size={14} /> Support</Link>
-              <Link href="/dashboard/settings"><Settings size={14} /> Settings</Link>
-              <form action="/auth/signout" method="post"><button type="submit"><LogOut size={14} /> Sign out</button></form>
-            </div>
-          </details>
+    <>
+      <aside className="console-sidebar">
+        <div className="console-brand-row">
+          <Link href="/dashboard/providers" aria-label="QRouter console"><Logo size={26} /></Link>
+          <span className="console-product-badge">Console</span>
         </div>
+
+        <Link className="console-workspace" href="/dashboard/settings">
+          <span className="workspace-avatar">{(organization ?? "Q").slice(0, 1).toUpperCase()}</span>
+          <span><b>{organization}</b><small>{email ?? "Local developer"}</small></span>
+          <ChevronsUpDown size={14} />
+        </Link>
+
+        <form className="console-search" action="/dashboard/providers">
+          <Search size={14} />
+          <input ref={searchRef} name="q" placeholder="Search providers" aria-label="Search quantum providers" />
+          <kbd>⌘K</kbd>
+        </form>
+
+        <nav className="console-nav" aria-label="Console navigation">
+          {groups.map((group) => (
+            <div key={group.label}>
+              <p>{group.label}</p>
+              {group.items.map((item) => (
+                <Link href={item.href} key={item.href} className={isActive(item.href) ? "active" : ""}>
+                  <item.icon size={15} /> {item.label}
+                </Link>
+              ))}
+            </div>
+          ))}
+        </nav>
+
+        <div className="console-sidebar-bottom">
+          <div className="console-credit-meter">
+            <div><span>Credits</span><strong>${balance.toFixed(2)}</strong></div>
+            <i><span style={{ width: `${creditPct}%` }} /></i>
+            <Link href="/dashboard/billing">Add credits →</Link>
+          </div>
+          <div className="console-utility-links">
+            {UTILITY_LINKS.map((item) => (
+              <Link href={item.href} key={item.href} className={item.href !== "/docs" && isActive(item.href) ? "active" : ""}>
+                <item.icon size={15} /> {item.label}
+              </Link>
+            ))}
+          </div>
+          <div className="console-user">
+            <span>{initial}</span>
+            <b>{email ?? "Local developer"}</b>
+            <form action="/auth/signout" method="post"><button type="submit" aria-label="Sign out" title="Sign out"><LogOut size={15} /></button></form>
+          </div>
+        </div>
+      </aside>
+
+      <div className="console-mobile-bar">
+        <Link href="/dashboard/providers" aria-label="QRouter console"><Logo size={24} /></Link>
+        <span><KeyRound size={13} /> ${balance.toFixed(2)}</span>
       </div>
-      <nav className="router-mobile-nav" aria-label="Mobile product navigation">
-        {tabs.map((tab) => {
-          const active = tab.href === "/docs" ? false : pathname.startsWith(tab.href);
-          return <Link href={tab.href} key={tab.href} className={active ? "active" : ""}>{tab.label}</Link>;
-        })}
+      <nav className="console-mobile-tabs" aria-label="Mobile navigation">
+        {MOBILE_TABS.map((item) => (
+          <Link href={item.href} key={item.href} className={isActive(item.href) ? "active" : ""}>
+            <item.icon size={16} /> {item.label}
+          </Link>
+        ))}
       </nav>
-    </header>
+    </>
   );
 }

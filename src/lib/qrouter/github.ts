@@ -107,3 +107,115 @@ export async function getGithubAccessToken(principal: Principal) {
   if (connection && githubAppConfigured()) return createInstallationToken(connection.installation_id);
   return fallback;
 }
+
+// ── Repository listing (Vercel-style import picker) ────────────────────────────
+
+export interface GithubRepo {
+  fullName: string;
+  owner: string;
+  name: string;
+  private: boolean;
+  defaultBranch: string;
+  updatedAt: string;
+  pushedAt: string | null;
+  htmlUrl: string;
+  language: string | null;
+  description: string | null;
+}
+
+interface RawRepo {
+  full_name: string;
+  name: string;
+  owner?: { login?: string };
+  private?: boolean;
+  default_branch?: string;
+  updated_at?: string;
+  pushed_at?: string | null;
+  html_url: string;
+  language?: string | null;
+  description?: string | null;
+}
+
+interface GithubAuth {
+  token: string;
+  /** installation → list via /installation/repositories; user → via /user/repos. */
+  mode: "installation" | "user";
+}
+
+/**
+ * Resolve the best available GitHub auth for this principal AND tell the caller
+ * which listing endpoint to use. App installation token wins (per-org, private
+ * repos); otherwise a personal GITHUB_TOKEN acts as a single-account fallback so
+ * the picker works on localhost without registering an App.
+ */
+export async function resolveGithubAuth(principal: Principal): Promise<GithubAuth | null> {
+  if (!principal.demo && githubAppConfigured()) {
+    const connection = await getGithubConnection(principal);
+    if (connection) {
+      return { token: await createInstallationToken(connection.installation_id), mode: "installation" };
+    }
+  }
+  const fallback = process.env.GITHUB_TOKEN ?? process.env.GITHUB_APP_TOKEN;
+  return fallback ? { token: fallback, mode: "user" } : null;
+}
+
+function mapRepo(raw: RawRepo): GithubRepo {
+  return {
+    fullName: raw.full_name,
+    owner: raw.owner?.login ?? raw.full_name.split("/")[0],
+    name: raw.name,
+    private: Boolean(raw.private),
+    defaultBranch: raw.default_branch ?? "main",
+    updatedAt: raw.updated_at ?? "",
+    pushedAt: raw.pushed_at ?? null,
+    htmlUrl: raw.html_url,
+    language: raw.language ?? null,
+    description: raw.description ?? null,
+  };
+}
+
+async function tokenRequest<T>(path: string, token: string): Promise<T> {
+  const response = await fetch(`https://api.github.com${path}`, {
+    headers: {
+      accept: "application/vnd.github+json",
+      authorization: `Bearer ${token}`,
+      "user-agent": "QRouter/1.0",
+      "x-github-api-version": "2022-11-28",
+    },
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`GitHub repository listing failed (${response.status}).`);
+  return response.json() as Promise<T>;
+}
+
+/**
+ * List repositories the principal can import. Uses the App installation's
+ * granted repos when connected, else the personal token's repos. Paginated and
+ * capped at 500, most-recently-pushed first. Returns [] when no auth exists.
+ */
+export async function listGithubRepositories(principal: Principal): Promise<GithubRepo[]> {
+  const auth = await resolveGithubAuth(principal);
+  if (!auth) return [];
+  const perPage = 100;
+  const maxPages = 5; // cap at 500 repos
+  const repos: GithubRepo[] = [];
+  for (let page = 1; page <= maxPages; page += 1) {
+    if (auth.mode === "installation") {
+      const data = await tokenRequest<{ repositories: RawRepo[] }>(
+        `/installation/repositories?per_page=${perPage}&page=${page}`,
+        auth.token,
+      );
+      repos.push(...data.repositories.map(mapRepo));
+      if (data.repositories.length < perPage) break;
+    } else {
+      const data = await tokenRequest<RawRepo[]>(
+        `/user/repos?per_page=${perPage}&page=${page}&sort=pushed&affiliation=owner,collaborator,organization_member`,
+        auth.token,
+      );
+      repos.push(...data.map(mapRepo));
+      if (data.length < perPage) break;
+    }
+  }
+  repos.sort((a, b) => (b.pushedAt ?? b.updatedAt).localeCompare(a.pushedAt ?? a.updatedAt));
+  return repos;
+}

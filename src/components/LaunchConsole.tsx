@@ -21,6 +21,7 @@ export default function LaunchConsole() {
             <h2 id="launch-title">One identity. Every quantum backend.</h2>
             <p>Sign in to create your universal API key and run your first circuit with $10 in test credits.</p>
             <SignInButton label="Continue with Google" variant="solid" next="/onboarding" className="mt-6 w-full [&>button]:w-full" />
+            <SignInButton label="Continue with GitHub" provider="github" variant="glass" next="/onboarding" className="mt-2.5 w-full [&>button]:w-full" />
             <small>By continuing, you agree to usage-based billing and acceptable use terms.</small>
           </section>
         </div>

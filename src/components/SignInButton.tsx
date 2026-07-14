@@ -9,11 +9,13 @@ export default function SignInButton({
   variant = "glass",
   className = "",
   next = "/dashboard",
+  provider = "google",
 }: {
   label?: string;
   variant?: "glass" | "solid";
   className?: string;
   next?: string;
+  provider?: "google" | "github";
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,9 +35,12 @@ export default function SignInButton({
     try {
       const supabase = createClient();
       const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
+        provider,
         options: {
           redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+          // GitHub login also requests `repo` so the OAuth token can list and
+          // read the user's repositories for the import picker.
+          ...(provider === "github" ? { scopes: "read:user user:email repo" } : {}),
         },
       });
       if (error) {

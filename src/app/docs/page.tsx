@@ -34,26 +34,42 @@ const endpoints = [
 export default function DocsPage() {
   return (
     <div className="docs-shell">
-      <header className="docs-header">
-        <Link href="/" aria-label="QRouter home"><Logo size={27} /></Link>
-        <nav><Link href="/dashboard">Console</Link><a href="/openapi.json">OpenAPI <ExternalLink size={12} /></a><Link className="docs-header-cta" href="/dashboard/api-keys"><KeyRound size={13} /> API keys</Link></nav>
-      </header>
-
       <aside className="docs-sidebar">
-        <p>QRouter API</p>
-        <a href="#quickstart">Quickstart</a>
-        <a href="#authentication">Authentication</a>
-        <a href="#repositories">Repositories</a>
-        <a href="#jobs">Jobs</a>
-        <a href="#endpoints">Endpoints</a>
-        <a href="#transpilation">Transpilation</a>
-        <a href="#routing">Routing</a>
-        <a href="#pricing">Pricing</a>
-        <a href="#lifecycle">Lifecycle</a>
-        <a href="#webhooks">Webhooks</a>
-        <a href="#errors">Errors</a>
-        <a href="#production">Production</a>
-        <div><span>API version</span><b>v1</b><span>Base URL</span><code>api.qrouter.dev</code></div>
+        <div className="docs-brand-row">
+          <Link href="/" aria-label="QRouter home"><Logo size={26} /></Link>
+          <span className="docs-badge">Docs</span>
+        </div>
+        <nav className="docs-toc" aria-label="Documentation">
+          <div>
+            <p>Getting started</p>
+            <a href="#quickstart">Quickstart</a>
+            <a href="#authentication">Authentication</a>
+          </div>
+          <div>
+            <p>Deploy</p>
+            <a href="#repositories">Repositories</a>
+            <a href="#jobs">Jobs</a>
+            <a href="#endpoints">Endpoints</a>
+          </div>
+          <div>
+            <p>Pipeline</p>
+            <a href="#transpilation">Transpilation</a>
+            <a href="#routing">Routing</a>
+            <a href="#pricing">Pricing</a>
+            <a href="#lifecycle">Lifecycle</a>
+          </div>
+          <div>
+            <p>Operate</p>
+            <a href="#webhooks">Webhooks</a>
+            <a href="#errors">Errors</a>
+            <a href="#production">Production</a>
+          </div>
+        </nav>
+        <div className="docs-sidebar-foot">
+          <Link href="/dashboard"><KeyRound size={13} /> Back to console</Link>
+          <a href="/openapi.json">OpenAPI <ExternalLink size={12} /></a>
+          <div><span>API version</span><b>v1</b><span>Base URL</span><code>api.qrouter.dev</code></div>
+        </div>
       </aside>
 
       <main className="docs-main">
