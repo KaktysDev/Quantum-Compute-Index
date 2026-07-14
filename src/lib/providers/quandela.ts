@@ -2,8 +2,10 @@
 // Quandela — REAL integration (Quandela Cloud photonic hardware).
 //
 // Credential: a single API token generated at cloud.quandela.com. Sent as
-// `Authorization: Bearer <token>`. API host is api.cloud.quandela.com (the
-// cloud.quandela.com domain is the web dashboard, NOT the API).
+// `Authorization: Bearer <token>`. API host is cloud.quandela.com — the SAME
+// origin as the dashboard (verified empirically: dashboard-issued tokens return
+// 200 there, while the api.cloud.quandela.com host Perceval defaults to rejects
+// them with 401). Override with QUANDELA_API_BASE if Quandela moves it.
 //
 // Quandela's cloud has NO list-all endpoint, so we probe known platform names:
 //   GET /api/platforms/{name}/processor        (new; falls back to
@@ -23,7 +25,7 @@
 import type { RawQpuMetrics } from "@/lib/qci/types";
 import type { ProviderAdapter, ProviderTestResult } from "./types";
 
-const QUANDELA_API = (process.env.QUANDELA_API_BASE || "https://api.cloud.quandela.com").replace(
+const QUANDELA_API = (process.env.QUANDELA_API_BASE || "https://cloud.quandela.com").replace(
   /\/+$/,
   "",
 );
@@ -72,8 +74,35 @@ function parseToken(apiKey: string): string | null {
     /* not JSON → treat the whole value as the token */
   }
   // People often copy the whole header value — strip a leading "Bearer ".
-  raw = raw.replace(/^Bearer\s+/i, "").trim();
+  raw = raw.replace(/^Bearer\s+/i, "");
+  // Quandela tokens never contain whitespace. The dashboard shows the token in
+  // a box that wraps across several lines, so a copy can carry embedded newlines
+  // or spaces — strip ALL internal whitespace so a wrapped-copy still works.
+  raw = raw.replace(/\s+/g, "");
   return raw || null;
+}
+
+/** Masked, structural description of a token for self-diagnosing auth errors. */
+function describeToken(token: string): string {
+  const preview = token.length <= 12 ? token : `${token.slice(0, 6)}…${token.slice(-4)}`;
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    return `received a ${token.length}-char value "${preview}" that is NOT a 3-part JWT — it was likely truncated or altered when pasted`;
+  }
+  let expNote = "";
+  try {
+    const payloadJson = Buffer.from(
+      parts[1].replace(/-/g, "+").replace(/_/g, "/"),
+      "base64",
+    ).toString("utf8");
+    const payload = JSON.parse(payloadJson) as { exp?: number };
+    if (typeof payload.exp === "number") {
+      expNote = payload.exp * 1000 < Date.now() ? "; the JWT is EXPIRED" : "; the JWT is unexpired";
+    }
+  } catch {
+    /* payload not decodable */
+  }
+  return `received a ${token.length}-char JWT "${preview}"${expNote}`;
 }
 
 /**
@@ -96,7 +125,8 @@ async function fetchPlatform(token: string, name: string): Promise<QuandelaPlatf
         /* non-JSON error body */
       }
       throw new Error(
-        `Quandela auth failed (${res.status}${detail ? `: ${detail}` : ""}) — token rejected by ${QUANDELA_API}. Paste the raw API token from cloud.quandela.com (no "Bearer" prefix); tokens expire, so generate a fresh one if in doubt.`,
+        `Quandela auth failed (${res.status}${detail ? `: ${detail}` : ""}) at ${QUANDELA_API} — ${describeToken(token)}. ` +
+          `If it says a well-formed, unexpired JWT here but the dashboard shows the same token as Valid, the pasted string differs from the original (a copy artifact) — re-copy it with the dashboard's copy button, or generate a fresh token.`,
       );
     }
     if (!res.ok) continue; // 404 etc. → try the legacy path / give up
