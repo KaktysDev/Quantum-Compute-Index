@@ -50,9 +50,21 @@ export async function POST(req: Request) {
 
   if (filled.length > 0) {
     // Multi-field providers (AWS, IBM) expect a JSON object; single-key
-    // providers take the raw value.
+    // providers take the raw value. Testing a partial multi-field paste would
+    // always fail, so require all fields up front with a clear message.
+    const adapterFields = adapter.fields ?? [];
+    if (adapterFields.length > 1) {
+      const provided = new Set(filled.map(([k]) => k));
+      const missing = adapterFields.filter((f) => !provided.has(f.key));
+      if (missing.length > 0) {
+        return NextResponse.json({
+          ok: false,
+          message: `Fill in all credential fields to test (missing: ${missing.map((f) => f.label).join(", ")}).`,
+        });
+      }
+    }
     credential =
-      (adapter.fields ?? []).length > 1
+      adapterFields.length > 1
         ? JSON.stringify(Object.fromEntries(filled))
         : filled[0][1];
   } else {

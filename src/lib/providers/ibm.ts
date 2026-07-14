@@ -57,6 +57,24 @@ function parseCreds(apiKey: string): IbmCreds | null {
   return null;
 }
 
+/**
+ * Explain WHY a stored credential can't be used. The common case is a raw
+ * (non-JSON) string: a key saved by the old single-input form, which never
+ * stored the CRN at all.
+ */
+function credsProblem(raw: string): string {
+  try {
+    const c = JSON.parse(raw) as Partial<IbmCreds>;
+    const missing = [
+      !c?.apiKey && "the IBM Cloud API key",
+      !c?.crn && "the Instance CRN",
+    ].filter(Boolean);
+    return `The stored IBM credential is missing ${missing.join(" and ")}. Paste both fields above and save again.`;
+  } catch {
+    return "The stored IBM credential contains only the API key — it was saved by an older version of this form that had no CRN field. Paste BOTH the IBM Cloud API key and the Instance CRN above, then Save to replace it.";
+  }
+}
+
 /** Exchange an IBM Cloud API key for a short-lived IAM bearer token. */
 async function getIamToken(apiKey: string): Promise<string> {
   const res = await fetch(IAM_URL, {
@@ -181,7 +199,7 @@ export const ibm: ProviderAdapter = {
   async testConnection(apiKey: string): Promise<ProviderTestResult> {
     const creds = parseCreds(apiKey);
     if (!creds) {
-      return { ok: false, message: "Enter both the IBM Cloud API key and the Instance CRN." };
+      return { ok: false, message: credsProblem(apiKey) };
     }
     try {
       const token = await getIamToken(creds.apiKey);

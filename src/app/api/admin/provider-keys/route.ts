@@ -44,6 +44,22 @@ export async function POST(req: Request) {
   const filled = Object.entries(parsed.fieldValues ?? {})
     .map(([k, v]) => [k, v.trim()] as const)
     .filter(([, v]) => v.length > 0);
+
+  // Multi-field credentials must be saved whole: a partial save (e.g. only a
+  // new API key without the CRN) would replace the stored JSON with an object
+  // the adapter's parser rejects, silently breaking the provider.
+  const adapterFields = adapter?.fields ?? [];
+  if (filled.length > 0 && adapterFields.length > 1) {
+    const provided = new Set(filled.map(([k]) => k));
+    const missing = adapterFields.filter((f) => !provided.has(f.key));
+    if (missing.length > 0) {
+      return NextResponse.json(
+        { error: `Fill in all credential fields (missing: ${missing.map((f) => f.label).join(", ")}) — this provider's fields are stored together.` },
+        { status: 400 },
+      );
+    }
+  }
+
   const credential =
     parsed.apiKey ??
     (filled.length === 0
