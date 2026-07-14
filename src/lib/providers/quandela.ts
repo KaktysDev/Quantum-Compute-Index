@@ -63,15 +63,17 @@ interface QuandelaPlatform {
 
 /** Stored credential is either a raw token or a JSON object { token }. */
 function parseToken(apiKey: string): string | null {
-  const raw = (apiKey ?? "").trim();
+  let raw = (apiKey ?? "").trim();
   if (!raw) return null;
   try {
     const c = JSON.parse(raw);
-    if (c && typeof c === "object" && c.token) return String(c.token).trim();
+    if (c && typeof c === "object" && c.token) raw = String(c.token).trim();
   } catch {
     /* not JSON → treat the whole value as the token */
   }
-  return raw;
+  // People often copy the whole header value — strip a leading "Bearer ".
+  raw = raw.replace(/^Bearer\s+/i, "").trim();
+  return raw || null;
 }
 
 /**
@@ -86,7 +88,16 @@ async function fetchPlatform(token: string, name: string): Promise<QuandelaPlatf
   for (const path of paths) {
     const res = await fetch(`${QUANDELA_API}${path}`, { headers });
     if (res.status === 401 || res.status === 403) {
-      throw new Error("Quandela auth failed — check the Cloud API token.");
+      let detail = "";
+      try {
+        const e = (await res.json()) as { error?: string };
+        detail = typeof e.error === "string" ? e.error : "";
+      } catch {
+        /* non-JSON error body */
+      }
+      throw new Error(
+        `Quandela auth failed (${res.status}${detail ? `: ${detail}` : ""}) — token rejected by ${QUANDELA_API}. Paste the raw API token from cloud.quandela.com (no "Bearer" prefix); tokens expire, so generate a fresh one if in doubt.`,
+      );
     }
     if (!res.ok) continue; // 404 etc. → try the legacy path / give up
     try {

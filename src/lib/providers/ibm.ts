@@ -71,7 +71,23 @@ async function getIamToken(apiKey: string): Promise<string> {
     }),
   });
   if (!res.ok) {
-    throw new Error(`IBM IAM auth failed (${res.status}) — check the API key.`);
+    // Surface IAM's own reason (e.g. BXNIM0415E "Provided API key could not be
+    // found") instead of a generic hint — it pinpoints the actual problem.
+    let detail = "";
+    try {
+      const e = (await res.json()) as { errorMessage?: string; errorCode?: string };
+      detail = [e.errorCode, e.errorMessage].filter(Boolean).join(" ");
+    } catch {
+      /* non-JSON error body */
+    }
+    // Legacy quantum.ibm.com tokens are long hex strings; IAM only accepts
+    // IBM Cloud API keys — a very common mixup since the platform migration.
+    const legacyHint = /^[0-9a-f]{48,}$/i.test(apiKey)
+      ? " This looks like a legacy IBM Quantum token — create an IBM Cloud API key instead (cloud.ibm.com → Manage → Access (IAM) → API keys)."
+      : "";
+    throw new Error(
+      `IBM IAM auth failed (${res.status})${detail ? `: ${detail}` : " — check the API key."}${legacyHint}`,
+    );
   }
   const j = (await res.json()) as { access_token?: string };
   if (!j.access_token) throw new Error("IBM IAM returned no access token.");
@@ -88,7 +104,16 @@ async function fetchBackends(token: string, crn: string): Promise<IbmBackend[]> 
     },
   });
   if (!res.ok) {
-    throw new Error(`IBM backends request failed (${res.status}) — check the Instance CRN.`);
+    let detail = "";
+    try {
+      const e = (await res.json()) as { errors?: Array<{ message?: string }>; message?: string };
+      detail = e.message ?? e.errors?.map((x) => x.message).filter(Boolean).join("; ") ?? "";
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new Error(
+      `IBM backends request failed (${res.status})${detail ? `: ${detail}` : ""} — check the Instance CRN (copy the full CRN from your instance on quantum.cloud.ibm.com; it starts with "crn:v1:bluemix:" and ends with "::").`,
+    );
   }
   const j = (await res.json()) as Record<string, unknown>;
   const list = (j.devices ?? j.backends ?? (Array.isArray(j) ? j : [])) as IbmBackend[];
