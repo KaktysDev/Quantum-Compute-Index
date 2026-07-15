@@ -1,95 +1,61 @@
 import Link from "next/link";
-import {
-  ArrowDown,
-  ArrowRight,
-  Cloud,
-  Code2,
-  Gauge,
-  GitBranch,
-  Network,
-  Play,
-  Sparkles,
-} from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check, GitBranch } from "lucide-react";
 import LandingFeatureWheel from "@/components/LandingFeatureWheel";
 import LandingHeroStage from "@/components/LandingHeroStage";
-import LandingSignin from "@/components/LandingSignin";
-import Logo from "@/components/Logo";
-import { BACKENDS } from "@/lib/qrouter/catalog";
+import { ApiWorkbench, RoutingProcess } from "@/components/LandingProductSections";
 import { getLatestSnapshot } from "@/lib/qci/store";
 import "./landing.css";
 
 export const dynamic = "force-dynamic";
 
+const providers = [
+  ["QCI Aer GPU", "STATE-VECTOR SIMULATOR", "LIVE", "QROUTER NATIVE"],
+  ["IBM Quantum", "SUPERCONDUCTING", "PRIVATE BETA", "PROVIDER ADAPTER"],
+  ["AWS BRAKET", "MULTI-ARCHITECTURE", "PRIVATE BETA", "PROVIDER ADAPTER"],
+  ["IonQ", "TRAPPED ION", "PLANNED", "ROADMAP"],
+] as const;
+
 export default async function LandingPage() {
   const latest = await getLatestSnapshot();
-  const connected = BACKENDS.filter((backend) => backend.available).length;
+  return <main className="qr-site">
+    <LandingHeroStage />
 
-  return (
-    <main className="qh-site">
-      <LandingSignin />
-      <section className="qh-hero">
-        <LandingHeroStage />
+    <section className="qr-status-strip" aria-label="Network status"><span>ROUTER STATUS <b>ONLINE</b></span><span>CONNECTED TARGETS <b>—</b></span><span>FAILOVER <b>ARMED</b></span><span>API <b>OPERATIONAL</b></span><span>REGION <b>US-CENTRAL</b></span></section>
 
-        <div className="qh-terminal-shell">
-          <div className="qh-terminal-bar"><span><i /><i /><i /> qrouter / first-task.py</span><em>QCI NETWORK ONLINE</em></div>
-          <div className="qh-terminal-body">
-            <div className="qh-terminal-code">
-              <p><span>01</span><code>from <b>qrouter</b> import QRouter</code></p>
-              <p><span>02</span><code>client = QRouter(api_key=<em>QCI_API_KEY</em>)</code></p>
-              <p><span>03</span><code>job = client.jobs.create(</code></p>
-              <p><span>04</span><code>&nbsp;&nbsp;circuit=open(<em>&quot;bell.qasm&quot;</em>).read(),</code></p>
-              <p><span>05</span><code>&nbsp;&nbsp;routing=<em>&quot;balanced&quot;</em>, shots=1024</code></p>
-              <p><span>06</span><code>)</code></p>
-              <p><span>07</span><code>print(job.wait().counts)</code></p>
-              <div className="qh-live-circuit">
-                <span>INPUT / BELL CIRCUIT</span>
-                <div><b>q0</b><i /><em>H</em><i /><em className="control">●</em><i /><em>M</em></div>
-                <div><b>q1</b><i /><em className="blank" /><i /><em>⊕</em><i /><em>M</em></div>
-              </div>
-            </div>
-            <aside className="qh-route-result">
-              <p><span /> LIVE ROUTE DECISION</p>
-              <div className="qh-live-steps"><span>ANALYZE</span><span>TRANSPILE</span><span>SCORE</span><span>EXECUTE</span></div>
-              <div className="qh-live-candidates">
-                <div><span><b>QCI Aer GPU</b><small>2s / 100.0%</small></span><i><em style={{ width: "96%" }} /></i><strong>0.96</strong></div>
-                <div><span><b>IBM Brisbane</b><small>13m / 99.2%</small></span><i><em style={{ width: "73%" }} /></i><strong>0.73</strong></div>
-                <div><span><b>IonQ Aria 1</b><small>20m / 99.6%</small></span><i><em style={{ width: "68%" }} /></i><strong>0.68</strong></div>
-              </div>
-              <div className="qh-route-choice"><span>SELECTED</span><b>qci-aer-gpu</b><strong>$0.0031</strong></div>
-              <div className="qh-counts"><span><i style={{ width: "94%" }} />|00&gt; 507</span><span><i style={{ width: "96%" }} />|11&gt; 517</span></div>
-              <div className="qh-execution-flow"><i /><i /><i /><i /><i /><i /><i /><i /></div>
-            </aside>
-          </div>
-          <footer><span>QROUTER CONSOLE / LIVE PREVIEW</span><span>TRANSPILE <ArrowRight size={11} /> ROUTE <ArrowRight size={11} /> EXECUTE</span></footer>
-        </div>
+    <section id="routing" className="qr-section qr-process">
+      <header className="qr-section-head"><p className="qr-kicker">01 / ROUTING PROCESS</p><h2>ONE CIRCUIT.<br />ONE DECISION.<br />EVERY VARIABLE.</h2><p>QRouter preserves the evidence behind every route, from circuit constraints to the normalized result.</p></header>
+      <RoutingProcess />
+    </section>
 
-        <div className="qh-provider-cards">
-          <article><span>CONNECTED TARGETS</span><strong>{BACKENDS.length}</strong><p>Every major architecture</p><Network size={22} /></article>
-          <article><span>QCI PRICE / NQH</span><strong>${latest.vwap.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong><p>{latest.changePct >= 0 ? "+" : ""}{latest.changePct.toFixed(2)}% live rate</p><Gauge size={22} /></article>
-          <article><span>ROUTER STATUS</span><strong>{connected} LIVE</strong><p>Automatic failover ready</p><Cloud size={22} /></article>
-        </div>
-      </section>
+    <section className="qr-section qr-fragmentation">
+      <header className="qr-section-head compact"><p className="qr-kicker">02 / INTEGRATION MODEL</p><h2>REMOVE THE<br />PROVIDER SURFACE.</h2></header>
+      <div className="qr-compare"><div><header><span>DIRECT INTEGRATION</span><b>FRAGMENTED</b></header>{["4 provider SDKs","4 credential systems","4 billing models","4 job schemas","provider-specific transpilation","manual backend selection","manual fallback logic"].map((item, index) => <p key={item}><span>{String(index + 1).padStart(2, "0")}</span>{item}</p>)}</div><div className="ordered"><header><span>QROUTER</span><b>ONE CONTROL PLANE</b></header>{["1 API","1 job object","1 routing policy","1 result schema","automatic backend evaluation","automatic failover","normalized settlement"].map((item) => <p key={item}><Check size={13} />{item}</p>)}</div></div>
+    </section>
 
-      <section id="network" className="qh-features">
-        <div className="qh-feature-label"><Logo size={22} /><span>FEATURE</span><b>PREVIEW</b></div>
-        <LandingFeatureWheel price={latest.price} changePct={latest.changePct} />
-        <div className="qh-mega-word">QROUTER</div>
-      </section>
+    <section id="benchmarks" className="qr-section qr-benchmark">
+      <div><p className="qr-kicker">03 / PRIVATE BENCHMARK PROGRAM</p><h2>ROUTING SHOULD<br />BE MEASURABLE.</h2><p>We are validating routing performance across heterogeneous quantum architectures. Public performance claims will appear only after the methodology and data are ready for review.</p><Link href="/contact">REQUEST TECHNICAL BRIEF <ArrowRight size={14} /></Link></div>
+      <div className="qr-benchmark-plot" aria-label="Benchmark program placeholder; no performance data is shown"><header><span>QROUTER ROUTING</span><b>VALIDATION IN PROGRESS</b></header><div><i /><i /><i /><i /><i /><i /><span>PUBLIC DATA PENDING</span></div><footer><span>TEST WINDOW / —</span><span>CIRCUITS / —</span><span>BACKENDS / —</span></footer></div>
+    </section>
 
-      <section className="qh-manifesto">
-        <p><Sparkles size={14} /> THE QUANTUM EXECUTION LAYER</p>
-        <h2>ONE API.<br />EVERY CORE.</h2>
-        <div>
-          <Link href="/dashboard" className="qh-action dark"><Play size={12} fill="currentColor" /> START ROUTING</Link>
-          <a href="/openapi.json">READ THE API <ArrowRight size={12} /></a>
-        </div>
-      </section>
+    <section className="qr-section qr-api">
+      <header className="qr-section-head"><p className="qr-kicker">04 / ONE REQUEST CONTRACT</p><h2>SUBMIT ONCE.<br />GET ONE RESULT.</h2><p>Create a job, choose a routing policy, wait for execution, and read a provider-neutral response.</p></header>
+      <ApiWorkbench />
+    </section>
 
-      <footer className="qh-footer">
-        <Logo size={24} />
-        <p>QUANTUM COMPUTE INDEX / CHICAGO</p>
-        <div><a href="/openapi.json"><Code2 size={14} /> API</a><a href="https://github.com/ItCodinTime/QCI2"><GitBranch size={14} /> GITHUB</a><a href="#network"><ArrowDown size={14} /> TOP</a></div>
-      </footer>
-    </main>
-  );
+    <section id="network" className="qr-section qr-capabilities">
+      <header className="qr-section-head compact"><p className="qr-kicker">05 / CONTROL SURFACE</p><h2>THE EXECUTION LAYER.</h2></header>
+      <LandingFeatureWheel price={latest.price} changePct={latest.changePct} />
+    </section>
+
+    <section className="qr-section qr-provider-network">
+      <header className="qr-section-head"><p className="qr-kicker">06 / PROVIDER NETWORK</p><h2>HETEROGENEOUS<br />BY DESIGN.</h2><p>Integration status reflects the current QRouter product roadmap, not general provider availability.</p></header>
+      <div className="qr-provider-table"><header><span>TARGET</span><span>ARCHITECTURE</span><span>AVAILABILITY</span><span>INTEGRATION</span></header>{providers.map(([target, architecture, status, integration]) => <div key={target}><strong>{target}</strong><span>{architecture}</span><span className={status === "LIVE" ? "live" : ""}><i />{status}</span><span>{integration}</span></div>)}</div>
+    </section>
+
+    <section className="qr-section qr-credibility"><p className="qr-kicker">07 / BUILT FOR THE WORK</p><h2>BUILT AT THE INTERSECTION OF<br />QUANTUM RESEARCH AND<br />INFRASTRUCTURE.</h2><div><p>QRouter is building the routing, execution, and settlement layer required to treat quantum compute as programmable infrastructure.</p><span>QCI NETWORK / CHICAGO</span></div></section>
+
+    <section className="qr-final"><div className="qr-final-topology" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div><p className="qr-kicker">QROUTER / V1</p><h2>ROUTE YOUR<br />FIRST CIRCUIT.</h2><code><span>POST</span> /api/v1/jobs</code><div><Link href="/dashboard">OPEN CONSOLE <ArrowUpRight size={15} /></Link><Link href="/docs">READ THE DOCUMENTATION <ArrowRight size={14} /></Link></div></section>
+
+    <footer className="qr-footer"><div><strong>QROUTER</strong><span>THE QUANTUM EXECUTION LAYER</span></div><nav>{[["PRODUCT","#routing"],["CONSOLE","/dashboard"],["API","/docs"],["PRICING","/pricing"],["STATUS","#network"],["ABOUT","#routing"],["CONTACT","/contact"]].map(([label, href]) => <Link href={href} key={label}>{label}</Link>)}<a href="https://github.com/ItCodinTime/QCI2">GITHUB <GitBranch size={11} /></a></nav><div><span>QCI NETWORK / CHICAGO</span><span>© 2026 QROUTER</span><span>SYSTEM STATUS: <b>OPERATIONAL</b></span></div></footer>
+  </main>;
 }
