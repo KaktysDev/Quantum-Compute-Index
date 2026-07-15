@@ -38,9 +38,10 @@ export default function SignInButton({
         provider,
         options: {
           redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
-          // GitHub login also requests `repo` so the OAuth token can list and
-          // read the user's repositories for the import picker.
-          ...(provider === "github" ? { scopes: "read:user user:email repo" } : {}),
+          // Identity-only scopes — parity with Google. Repository access is
+          // handled by the separate GitHub App (per-repo, user-selected,
+          // revocable), so sign-in never needs the broad `repo` scope.
+          ...(provider === "github" ? { scopes: "read:user user:email" } : {}),
         },
       });
       if (error) {
