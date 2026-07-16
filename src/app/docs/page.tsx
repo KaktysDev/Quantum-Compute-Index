@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -15,7 +16,13 @@ import {
 } from "lucide-react";
 import DocsCodeExamples from "@/components/DocsCodeExamples";
 import Logo from "@/components/Logo";
+import { PUBLIC_CONFIG } from "@/lib/publicConfig";
 import "./docs.css";
+
+export const metadata: Metadata = {
+  title: "QRouter API Documentation",
+  description: "Build with the QRouter API for quantum workload evaluation, compilation, routing, and execution.",
+};
 
 const endpoints = [
   ["GET", "/api/v1/repositories/inspect", "Discover OpenQASM entrypoints in a connected GitHub repository."],
@@ -68,7 +75,7 @@ export default function DocsPage() {
         <div className="docs-sidebar-foot">
           <Link href="/dashboard"><KeyRound size={13} /> Back to console</Link>
           <a href="/openapi.json">OpenAPI <ExternalLink size={12} /></a>
-          <div><span>API version</span><b>v1</b><span>Base URL</span><code>api.qrouter.dev</code></div>
+          <div><span>API version</span><b>v1</b><span>Base URL</span><code>{PUBLIC_CONFIG.apiBaseUrl.replace("https://", "")}</code></div>
         </div>
       </aside>
 
@@ -76,7 +83,7 @@ export default function DocsPage() {
         <section className="docs-intro" id="quickstart">
           <p className="docs-eyebrow"><span /> QRouter / API v1</p>
           <h1>One contract for quantum compute.</h1>
-          <p>Submit OpenQASM once. QRouter analyzes the workload, selects an eligible provider, transpiles against its native target, locks a QCI-backed quote, and normalizes the result.</p>
+          <p>Submit OpenQASM once. The QCI Engine analyzes the workload, selects an eligible configured backend, transpiles against its native target, creates a quote, and normalizes the result.</p>
           <div className="docs-actions"><Link href="/dashboard/playground">Open deployments <ArrowRight size={14} /></Link><a href="/openapi.json">Download specification <FileJson size={14} /></a></div>
         </section>
 
@@ -103,7 +110,7 @@ export default function DocsPage() {
           <div className="docs-schema">
             <div><code>circuit</code><b>string · required</b><p>OpenQASM 2 or supported OpenQASM 3 source, up to 256 KB.</p></div>
             <div><code>shots</code><b>integer · 1–1,000,000</b><p>Measurement repetitions. Default: <code>1024</code>.</p></div>
-            <div><code>target</code><b>backend id | auto</b><p>Pin a target or let QCI select one. Default: <code>auto</code>.</p></div>
+            <div><code>target</code><b>backend id | auto</b><p>Pin a target or let the QCI Engine select one. Default: <code>auto</code>.</p></div>
             <div><code>routing_mode</code><b>enum</b><p><code>balanced</code>, <code>cost</code>, <code>speed</code>, or <code>quality</code>.</p></div>
             <div><code>optimization_level</code><b>integer · 0–3</b><p>Compiler optimization level. Default: <code>2</code>.</p></div>
             <div><code>constraints</code><b>object</b><p>Cost, queue, fidelity, compute type, and provider allow/deny filters.</p></div>
@@ -143,7 +150,8 @@ export default function DocsPage() {
         <section className="docs-section" id="pricing">
           <div className="docs-section-title"><CircleDollarSign size={17} /><div><h2>Pricing and settlement</h2><p>Quotes use the compiled circuit and a versioned QCI rate snapshot.</p></div></div>
           <div className="docs-formula"><span>Total</span><b>=</b><code>provider cost</code><b>+</b><code>transpiler fee</code><b>+</b><code>platform fee</code></div>
-          <p className="docs-copy-text">A quote expires after 15 minutes. QRouter reserves the quoted total before submission, records the provider-rate inputs in <code>rateSnapshot</code>, settles actual cost at completion, and releases unused credits after cancellation or failure.</p>
+          <p className="docs-copy-text">A quote expires after 15 minutes. QRouter reserves the quoted total before submission, records the provider-rate inputs in <code>rateSnapshot</code>, records settlement after completion, and releases reserved credits after cancellation or failure.</p>
+          <div className="docs-callout"><CircleDollarSign size={16} /><p><b>Unit compatibility:</b> public copy uses <b>QC-hour</b>. Legacy response fields named <code>pricePerNqh</code> and <code>estimatedNqh</code> represent that same normalized QC-hour unit and remain in v1 for API compatibility.</p></div>
         </section>
 
         <section className="docs-section" id="lifecycle">

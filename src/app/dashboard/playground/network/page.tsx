@@ -3,7 +3,7 @@ import { Clock3, Cpu, KeyRound, Network } from "lucide-react";
 import { BACKENDS } from "@/lib/qrouter/catalog";
 
 function rate(shot: number, task: number, nqh?: number) {
-  if (nqh != null) return `$${nqh.toFixed(2)}/NQH`;
+  if (nqh != null) return `$${nqh.toFixed(2)}/QC-hour`;
   if (task > 0) return `$${task.toFixed(3)} + $${shot.toFixed(6)}/shot`;
   return `$${shot.toFixed(6)}/shot`;
 }

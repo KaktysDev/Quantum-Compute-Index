@@ -9,26 +9,25 @@ import { getLatestSnapshot, getSeries } from "@/lib/qci/store";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Pricing — QuantumForge",
-  description:
-    "How the Quantum Compute Index is calculated",
+  title: "Quantum Compute Index and Pricing — QRouter",
+  description: "Methodology, data sources, update cadence, and limitations for the Quantum Compute Index.",
 };
 
 const STEPS = [
   {
     n: "01",
-    title: "Live rates",
-    body: "Every provider's price to run quantum work — per shot or per minute — pulled straight from their cloud.",
+    title: "Rate inputs",
+    body: "Configured provider adapters collect published or authenticated rate inputs. Sample benchmarks are shown when live snapshots are unavailable.",
   },
   {
     n: "02",
     title: "Scoring the hardware",
-    body: "Each machine earns a quality factor from its qubit count, speed (CLOPS) and error rate.",
+    body: "The model can apply a documented quality adjustment using supported capacity, throughput, and fidelity inputs.",
   },
   {
     n: "03",
     title: "Blending",
-    body: "A volume-weighted average price across every machine — weighted by that quality factor, so price and capability both matter.",
+    body: "Qualifying inputs are normalized to a QC-hour and blended into an indicative index snapshot.",
   },
 ];
 
@@ -49,8 +48,7 @@ export default async function PricingPage() {
           How the index is priced
         </h1>
         <p className="qci-subpage-lede mt-6 max-w-xl">
-          The Quantum Compute Index answers one question: how expensive and how useful is an hour of
-          quantum compute, right now?
+          The Quantum Compute Index is an indicative view of normalized quantum-compute pricing across its configured data basket.
         </p>
       </section>
 
@@ -76,16 +74,21 @@ export default async function PricingPage() {
       </section>
 
       {/* simplified formula */}
-      <section className="py-10">
+      <section className="py-10" id="methodology">
         <div className="glass-panel rounded-2xl p-7 text-center sm:p-9">
           <p className="mono-label">The index, in one line</p>
           <p className="tabular mx-auto mt-4 max-w-full text-lg leading-relaxed text-white sm:text-2xl">
             QCI = Σ(price × volume × quality) ÷ Σ(volume × quality)
           </p>
           <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-[var(--muted)]">
-            A volume-weighted average price across all qualifying machines, scaled by each one&apos;s
-            performance quality factor.
+            A modeled average across qualifying inputs, normalized to a QC-hour and adjusted by supported quality factors. This is not an audited transaction benchmark.
           </p>
+          <div className="mx-auto mt-8 grid max-w-4xl gap-4 text-left sm:grid-cols-2">
+            <div className="border-t border-white/10 pt-4"><p className="mono-label">What it represents</p><p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">An indicative normalized cost of quantum compute across the current index basket.</p></div>
+            <div className="border-t border-white/10 pt-4"><p className="mono-label">Data sources</p><p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">Configured provider adapters and documented seed benchmarks when authenticated data is unavailable.</p></div>
+            <div className="border-t border-white/10 pt-4"><p className="mono-label">Update cadence</p><p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">Snapshots are scheduled daily. The interface labels whether the current value is live or sample data.</p></div>
+            <div className="border-t border-white/10 pt-4"><p className="mono-label">Limitations</p><p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">Inputs may be estimated, carried forward, or normalized from different billing units. Values are not audited market transactions.</p></div>
+          </div>
         </div>
       </section>
 
@@ -117,9 +120,9 @@ export default async function PricingPage() {
 
       {/* providers */}
       <section className="py-16">
-        <h2 className="text-4xl font-medium tracking-tight text-white sm:text-5xl">Sourced from</h2>
+        <h2 className="text-4xl font-medium tracking-tight text-white sm:text-5xl">{latest.source === "sample" ? "Sample basket" : "Provider inputs"}</h2>
         <p className="mt-3 max-w-xl text-[var(--muted)]">
-          The index draws on the providers building the quantum cloud.
+          {latest.source === "sample" ? "The current display uses deterministic benchmark data until authenticated provider snapshots are available." : "The current snapshot uses configured provider data sources."}
         </p>
         <div className="mt-10">
           <CompanyLogos />

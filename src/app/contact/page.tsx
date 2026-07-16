@@ -4,8 +4,8 @@ import SiteFooter from "@/components/SiteFooter";
 import SiteHeader from "@/components/SiteHeader";
 
 export const metadata: Metadata = {
-  title: "Request access — QuantumForge",
-  description: "Request access to QuantumForge Exchange.",
+  title: "Request Access — QRouter",
+  description: "Request access to QRouter's quantum workload routing platform.",
 };
 
 export default function ContactPage() {
@@ -23,7 +23,7 @@ export default function ContactPage() {
             Request access
           </h1>
           <p className="qci-subpage-lede mt-6 max-w-md">
-            QuantumForge is invite-only while we onboard our first partners. Tell us who you are and
+            QRouter is invite-only while we onboard early-access users. Tell us who you are and
             we&apos;ll be in touch.
           </p>
         </div>

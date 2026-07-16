@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import Logo from "./Logo";
 import SignInButton from "./SignInButton";
 
-// One nav, used on every public page: QuantumForge (left) · History · Pricing ·
+// One nav, used on every public page: QRouter (left) · History · Pricing ·
 // Request access · Sign in (right).
 const NAV = [
   { href: "/history", label: "History" },
@@ -19,7 +19,7 @@ export default function SiteHeader() {
   return (
     <header className="qci-nav">
       <div className="qci-nav-inner">
-        <Link href="/" aria-label="QuantumForge home" className="qci-site-brand">
+        <Link href="/" aria-label="QRouter home" className="qci-site-brand">
           <Logo />
         </Link>
         <div className="flex items-center gap-1 sm:gap-2">

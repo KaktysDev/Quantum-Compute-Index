@@ -59,17 +59,17 @@ export default function PriceChart({
     const chart = createChart(el, {
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
-        textColor: "rgba(5,150,105,0.52)",
+        textColor: "rgba(255,255,255,0.56)",
         fontFamily: "var(--font-mono), monospace",
         attributionLogo: false,
       },
       grid: {
-        vertLines: { color: "rgba(5,150,105,0.08)" },
-        horzLines: { color: "rgba(5,150,105,0.08)" },
+        vertLines: { color: "rgba(255,255,255,0.07)" },
+        horzLines: { color: "rgba(255,255,255,0.07)" },
       },
-      rightPriceScale: { borderColor: "rgba(5,150,105,0.22)" },
+      rightPriceScale: { borderColor: "rgba(255,255,255,0.16)" },
       timeScale: {
-        borderColor: "rgba(5,150,105,0.22)",
+        borderColor: "rgba(255,255,255,0.16)",
         timeVisible: false,
         secondsVisible: false,
         fixLeftEdge: true,
@@ -77,17 +77,17 @@ export default function PriceChart({
       },
       crosshair: {
         mode: 0,
-        vertLine: { color: "rgba(5,150,105,0.48)", labelBackgroundColor: "#000000" },
-        horzLine: { color: "rgba(5,150,105,0.48)", labelBackgroundColor: "#000000" },
+        vertLine: { color: "rgba(255,255,255,0.48)", labelBackgroundColor: "#000000" },
+        horzLine: { color: "rgba(255,255,255,0.48)", labelBackgroundColor: "#000000" },
       },
       width: el.clientWidth,
       height: el.clientHeight || 320,
     });
     chartRef.current = chart;
     seriesRef.current = chart.addAreaSeries({
-      lineColor: "#059669",
-      topColor: "rgba(5,150,105,0.12)",
-      bottomColor: "rgba(5,150,105,0.0)",
+      lineColor: "#ffffff",
+      topColor: "transparent",
+      bottomColor: "transparent",
       lineWidth: 2,
       priceLineVisible: false,
       priceFormat: { type: "price", precision: 2, minMove: 0.01 },

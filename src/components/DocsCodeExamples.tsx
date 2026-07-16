@@ -2,10 +2,11 @@
 
 import { Check, Copy } from "lucide-react";
 import { useState } from "react";
+import { PUBLIC_JOBS_ENDPOINT } from "@/lib/publicConfig";
 
 const EXAMPLES = {
-  curl: `curl https://api.qrouter.dev/api/v1/jobs \\
-  -H "Authorization: Bearer $QCI_API_KEY" \\
+  curl: `curl ${PUBLIC_JOBS_ENDPOINT} \\
+  -H "Authorization: Bearer $QROUTER_API_KEY" \\
   -H "Content-Type: application/json" \\
   -H "Idempotency-Key: bell-001" \\
   -d '{
@@ -17,7 +18,7 @@ const EXAMPLES = {
   }'`,
   typescript: `import { QRouter } from "@qrouter/sdk";
 
-const qrouter = new QRouter(process.env.QCI_API_KEY!);
+const qrouter = new QRouter(process.env.QROUTER_API_KEY!);
 const circuit = await readFile("bell.qasm", "utf8");
 
 const job = await qrouter.jobs.create({
@@ -33,7 +34,7 @@ console.log(await qrouter.jobs.result(completed.id));`,
   python: `from qrouter import QRouter
 import os
 
-with QRouter(os.environ["QCI_API_KEY"]) as qrouter:
+with QRouter(os.environ["QROUTER_API_KEY"]) as qrouter:
     with open("bell.qasm") as source:
         job = qrouter.create_job(
             source.read(),

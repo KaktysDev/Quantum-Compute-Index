@@ -1,4 +1,4 @@
-# QRouter by QuantumForge
+# QRouter
 
 One API key for quantum compute. QRouter accepts OpenQASM, analyzes and
 transpiles the circuit, prices it against a versioned QCI snapshot, routes it to
@@ -8,7 +8,7 @@ job result.
 ## QRouter quick start
 
 ```bash
-curl https://your-domain.com/api/v1/jobs \
+curl https://api.qrouter.dev/api/v1/jobs \
   -H "Authorization: Bearer qci_live_..." \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: bell-001" \
@@ -71,7 +71,7 @@ contract is published at `/openapi.json`.
 The original Quantum Compute Index implementation remains the pricing oracle
 and is documented below.
 
-# QuantumForge Exchange
+# Quantum Compute Index
 
 The financial layer for quantum computing. A web app that publishes the **Quantum
 Compute Index (QCI)** — a performance-adjusted benchmark for the price and utility
@@ -115,7 +115,7 @@ seed benchmark basket in [`seed.ts`](src/lib/qci/seed.ts).
 **Documented modeling decisions (see code comments):**
 - The index is defined over *transactions*; until a real order book exists, `V_trans`
   uses a documented **volume proxy** (provider capacity × demand).
-- Provider prices use different units, normalized to an NQH via explicit assumptions.
+- Provider prices use different units, normalized to a QC-hour via explicit assumptions.
 - The research table's PQF values are *estimates* (e.g. IonQ AQ); the formula is
   implemented faithfully and the table is used only as seed/defaults.
 

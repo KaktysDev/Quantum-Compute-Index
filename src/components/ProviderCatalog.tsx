@@ -9,7 +9,7 @@ type CatalogView = "list" | "table";
 type CatalogKind = "all" | "qpu" | "simulator" | "connected";
 
 function priceLabel(backend: Backend) {
-  if (backend.pricePerNqh != null) return `$${backend.pricePerNqh.toFixed(2)} / NQH`;
+  if (backend.pricePerNqh != null) return `$${backend.pricePerNqh.toFixed(2)} / QC-hour`;
   if (backend.pricePerTask) return `$${backend.pricePerTask.toFixed(3)} + $${backend.pricePerShot.toFixed(6)} / shot`;
   return `$${backend.pricePerShot.toFixed(6)} / shot`;
 }

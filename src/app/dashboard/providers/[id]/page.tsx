@@ -5,7 +5,7 @@ import { getLatestSnapshot } from "@/lib/qci/store";
 import { withQciSnapshot } from "@/lib/qrouter/catalog";
 
 function price(shot: number, task: number, nqh?: number) {
-  if (nqh != null) return `$${nqh.toFixed(2)} / NQH`;
+  if (nqh != null) return `$${nqh.toFixed(2)} / QC-hour`;
   return `${task ? `$${task.toFixed(3)} task + ` : ""}$${shot.toFixed(6)} / shot`;
 }
 

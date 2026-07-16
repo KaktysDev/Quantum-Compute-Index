@@ -124,7 +124,7 @@ export default async function AdminHealthPage() {
             </p>
           </div>
           <div>
-            <p className="font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">$/NQH · level</p>
+            <p className="font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">$/QC-hour · level</p>
             <p className="mt-1 text-sm font-semibold text-white">{usd(latest.vwap)} · {latest.price.toFixed(2)}</p>
           </div>
           <div>

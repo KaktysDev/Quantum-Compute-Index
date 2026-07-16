@@ -4,9 +4,12 @@ import { GeistSans } from "geist/font/sans";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "QRouter — One API for quantum compute",
-  description:
-    "Transpile, route, and run quantum workloads across every major provider with one API key.",
+  title: "QRouter — Intelligent Routing for Quantum Compute",
+  description: "QRouter evaluates, compiles, prices, and intelligently routes quantum workloads across compatible backends through one API.",
+  openGraph: {
+    title: "QRouter — The Quantum Execution Layer",
+    description: "One API for workload-specific quantum backend evaluation, routing, and execution.",
+  },
 };
 
 export default function RootLayout({

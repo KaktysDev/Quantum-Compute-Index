@@ -98,34 +98,34 @@ export default function QciMarketPanel({
       height: element.clientHeight || 310,
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
-        textColor: "rgba(5,150,105,0.52)",
+        textColor: "rgba(255,255,255,0.56)",
         fontFamily: "var(--qr-mono), monospace",
         fontSize: 10,
         attributionLogo: false,
       },
       grid: {
         vertLines: { visible: false },
-        horzLines: { color: "rgba(5,150,105,0.08)", style: 1 },
+        horzLines: { color: "rgba(255,255,255,0.07)", style: 1 },
       },
       rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.12, bottom: 0.08 } },
       timeScale: { borderVisible: false, timeVisible: false, secondsVisible: false, rightOffset: 0 },
       crosshair: {
         mode: CrosshairMode.Normal,
-        vertLine: { color: "rgba(5,150,105,0.48)", width: 1, style: 2, labelVisible: false },
+        vertLine: { color: "rgba(255,255,255,0.48)", width: 1, style: 2, labelVisible: false },
         horzLine: { visible: false, labelVisible: false },
       },
       handleScroll: { mouseWheel: false, pressedMouseMove: false, horzTouchDrag: true, vertTouchDrag: false },
       handleScale: { mouseWheel: false, pinch: true, axisPressedMouseMove: false },
     });
     const series = chart.addAreaSeries({
-      lineColor: "#059669",
-      topColor: "rgba(5,150,105,0)",
-      bottomColor: "rgba(5,150,105,0)",
+      lineColor: "#ffffff",
+      topColor: "transparent",
+      bottomColor: "transparent",
       lineWidth: 2,
       priceLineVisible: false,
       lastValueVisible: false,
       crosshairMarkerBorderColor: "#000000",
-      crosshairMarkerBackgroundColor: "#059669",
+      crosshairMarkerBackgroundColor: "#ffffff",
       priceFormat: { type: "price", precision: 2, minMove: 0.01 },
     });
     chartRef.current = chart;
@@ -151,7 +151,7 @@ export default function QciMarketPanel({
 
   useEffect(() => {
     if (!seriesRef.current || visible.length === 0) return;
-    const color = "#059669";
+    const color = "#ffffff";
     seriesRef.current.applyOptions({
       lineColor: color,
       topColor: "transparent",
@@ -182,7 +182,7 @@ export default function QciMarketPanel({
               </p>
             </div>
             <dl>
-              <div><dt>Unit</dt><dd>USD / NQH</dd></div>
+              <div><dt>Unit</dt><dd>USD / QC-hour</dd></div>
               <div><dt>Basket weight</dt><dd>{(instrument.share * 100).toFixed(1)}%</dd></div>
               <div><dt>Rate state</dt><dd>{instrument.status}</dd></div>
             </dl>

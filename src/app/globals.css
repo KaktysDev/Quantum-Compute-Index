@@ -151,11 +151,27 @@ textarea {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(900px 520px at 72% -8%, rgba(22, 145, 98, 0.15), transparent 68%),
-    radial-gradient(700px 480px at 10% 22%, rgba(255, 255, 255, 0.035), transparent 70%),
-    repeating-linear-gradient(90deg, transparent 0 52px, rgba(24, 180, 125, 0.025) 52px 54px),
+    radial-gradient(900px 520px at 72% -8%, rgba(22, 145, 98, 0.12), transparent 68%),
+    repeating-linear-gradient(90deg, transparent 0 14px, rgba(91, 102, 95, 0.045) 14px 20px, transparent 20px 28px),
     linear-gradient(180deg, #0a0b0e 0%, #08090b 48%, #07080a 100%);
 }
+.curtain::before,
+.curtain::after {
+  content: "";
+  position: absolute;
+  right: -3%;
+  left: -3%;
+  height: min(34vh, 330px);
+  opacity: .5;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 9px, rgba(104, 112, 107, .16) 9px 15px, transparent 15px 22px),
+    repeating-linear-gradient(90deg, rgba(0,0,0,.18) 0 4px, transparent 4px 34px);
+  mask-image: linear-gradient(180deg, #000, rgba(0,0,0,.7) 58%, transparent);
+  animation: qr-signal-drift 24s ease-in-out infinite alternate;
+}
+.curtain::before { top: 0; }
+.curtain::after { bottom: 0; transform: rotate(180deg); animation-delay: -12s; }
+@keyframes qr-signal-drift { to { translate: 2% 0; opacity: .64; } }
 
 /* Restrained, mostly opaque surfaces. Blur is reserved for navigation chrome. */
 .glass,
@@ -291,7 +307,7 @@ textarea:focus-visible {
   padding: 1rem 2.5rem;
   border-bottom: 1px solid rgba(255,255,255,.09);
   background-color: rgba(7, 10, 8, .9);
-  background-image: repeating-linear-gradient(90deg, transparent 0 52px, rgba(38, 194, 132, .035) 52px 54px);
+  background-image: repeating-linear-gradient(90deg, transparent 0 13px, rgba(90, 104, 96, .08) 13px 18px, transparent 18px 27px);
   backdrop-filter: blur(18px);
 }
 
@@ -303,7 +319,7 @@ textarea:focus-visible {
   z-index: 40;
   border-bottom: 1px solid rgba(255, 255, 255, 0.09);
   background-color: rgba(7, 10, 8, 0.82);
-  background-image: repeating-linear-gradient(90deg, transparent 0 52px, rgba(38, 194, 132, 0.035) 52px 54px);
+  background-image: repeating-linear-gradient(90deg, transparent 0 13px, rgba(90, 104, 96, .08) 13px 18px, transparent 18px 27px);
   backdrop-filter: blur(18px);
 }
 .qci-nav-inner {
@@ -353,7 +369,8 @@ textarea:focus-visible {
   border-inline: 1px solid rgba(255,255,255,.045);
   background-image:
     radial-gradient(700px 360px at 78% 30%, rgba(10, 126, 82, .16), transparent 70%),
-    repeating-linear-gradient(90deg, transparent 0 52px, rgba(35, 194, 131, .04) 52px 54px);
+    linear-gradient(180deg, transparent 45%, rgba(0,0,0,.18)),
+    repeating-linear-gradient(90deg, transparent 0 12px, rgba(92, 106, 98, .08) 12px 17px, transparent 17px 25px);
 }
 .qci-subpage .mono-label { color: #72cfa5; }
 .qci-subpage .mono-label > span { background: #55d99f; }
@@ -389,6 +406,11 @@ textarea:focus-visible {
   .qci-site-footer { flex-direction: column; }
   .qci-subpage-hero::before { inset-inline: -1.5rem; }
   .qci-subpage-title { font-size: clamp(3.5rem, 16vw, 5rem); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .curtain::before,
+  .curtain::after { animation: none; }
 }
 
 /* Landing page — editorial market interface */

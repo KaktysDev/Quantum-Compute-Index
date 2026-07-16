@@ -127,7 +127,7 @@ export default async function AdminOverviewPage() {
           </div>
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">$/NQH</p>
+              <p className="font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">$/QC-hour</p>
               <p className="mt-1 text-xl font-semibold text-white">{usd(latest.vwap)}</p>
             </div>
             <div>

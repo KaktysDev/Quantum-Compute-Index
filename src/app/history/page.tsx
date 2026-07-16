@@ -4,7 +4,7 @@ import SiteHeader from "@/components/SiteHeader";
 import Timeline, { type TimelinePoint } from "@/components/Timeline";
 
 export const metadata: Metadata = {
-  title: "History — QuantumForge",
+  title: "History — QRouter",
   description:
     "How quantum computing began, where it stands today, and where it's headed — and why it needs a financial layer.",
 };
@@ -25,7 +25,7 @@ const POINTS: TimelinePoint[] = [
   {
     era: "2025 — Today · The market forms",
     title: "Compute you can rent",
-    body: "IBM, IonQ, Rigetti, IQM and others sell quantum time by the shot and the minute over the cloud. Pharma and finance are running their first real workloads — but there's no benchmark price, no way to hedge, no market structure.",
+    body: "Quantum-cloud providers offer access to different machines using different billing units and capability measures. Comparing those offers remains difficult because pricing and hardware characteristics are not standardized.",
     media: { kind: "image", src: "/history/currentquantum.jpg", alt: "Quantum computing today" },
   },
   {
