@@ -753,3 +753,97 @@ textarea:focus-visible {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PUBLIC PAGES — LIGHT THEME  (pricing / history / contact)
+   Matches the light editorial landing (--pl-* palette). Scoped to .qci-nav and
+   .qci-subpage so it can't affect the dashboard. Redefines the palette tokens
+   (so all var(--muted)/var(--bg)/etc. utilities flip automatically) and
+   overrides the remaining dark-specific rules + raw white/black Tailwind
+   utilities used inside these pages and their shared components.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.qci-nav,
+.qci-subpage {
+  --bg: #f8f8f5;
+  --fg: #111612;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --muted: #626963;
+  --muted-dim: #8b918a;
+  --line: #d9ddd8;
+  --glass: #ffffff;
+  --glass-border: #d9ddd8;
+  color: var(--fg);
+}
+.qci-subpage { background: var(--bg); }
+
+/* Header */
+.qci-nav {
+  border-bottom: 1px solid #d9ddd8;
+  background-color: rgba(248, 248, 245, 0.85);
+  background-image: none;
+}
+.qci-nav .qci-site-brand { border-color: #cfd4ce; }
+.qci-nav .qci-site-brand:hover { border-color: rgba(0, 156, 99, .5); background: rgba(0, 156, 99, .06); }
+.qci-nav .qci-site-link { color: #626963; }
+.qci-nav .qci-site-link:hover { color: #111612; background: rgba(17, 22, 18, .05); }
+.qci-nav .qci-site-link-active { color: #08764f; background: rgba(0, 156, 99, .1); }
+/* Sign-in button on the light header */
+.qci-nav .btn-glass { background: #fff; border-color: #cfd4ce; color: #111612; }
+.qci-nav .btn-glass:hover { border-color: #111612; background: #fff; }
+
+/* Footer */
+.qci-subpage .qci-site-footer { border-top: 1px solid #d9ddd8; }
+
+/* Hero: replace the dark glow with a soft light one */
+.qci-subpage-hero::before {
+  border-inline: 1px solid rgba(17, 22, 18, .05);
+  background-image:
+    radial-gradient(700px 360px at 78% 30%, rgba(0, 156, 99, .10), transparent 70%),
+    repeating-linear-gradient(90deg, transparent 0 12px, rgba(17, 22, 18, .035) 12px 17px, transparent 17px 25px);
+}
+.qci-subpage-lede { color: #626963; }
+.qci-subpage .mono-label { color: #08764f; }
+.qci-subpage .mono-label > span { background: #08764f; }
+
+/* Glass cards → white paper cards */
+.qci-subpage .glass,
+.qci-subpage .glass-panel,
+.qci-subpage .glass-strong {
+  border-color: #d9ddd8 !important;
+  background-color: #ffffff !important;
+  background-image: none !important;
+  box-shadow: 0 18px 45px rgba(28, 58, 39, .06) !important;
+}
+.qci-subpage .glass-hover:hover { border-color: #009c63 !important; background-color: #ffffff !important; }
+
+/* Inputs / textareas */
+.qci-subpage input,
+.qci-subpage textarea { background: #ffffff !important; border-color: #d9ddd8; color: #111612; }
+
+/* Raw white/black Tailwind utilities used in the pages + ContactForm/Timeline */
+.qci-subpage .text-white,
+.qci-subpage .text-white\/85 { color: #111612 !important; }
+.qci-subpage .text-white\/70 { color: #626963 !important; }
+.qci-subpage .bg-black\/40 { background-color: #ffffff !important; }
+.qci-subpage .border-white\/10,
+.qci-subpage .border-white\/15,
+.qci-subpage .border-white\/25 { border-color: #d9ddd8 !important; }
+.qci-subpage .bg-white\/5,
+.qci-subpage .bg-white\/10,
+.qci-subpage .bg-white\/\[0\.06\] { background-color: #eef2ee !important; }
+.qci-subpage .text-glow-strong { text-shadow: none !important; color: #111612 !important; }
+
+/* Public light pages: keep the dark <body> from bleeding through (header
+   translucency + side gutters), and adapt the Logo (white wordmark + white
+   half of the mark) to the light chrome. :has scopes it to these pages only. */
+body:has(.qci-subpage) { background: #f8f8f5; }
+.qci-nav .text-white { color: #111612 !important; }
+.qci-nav .qci-site-brand svg path:nth-of-type(2),
+.qci-subpage .qci-site-footer svg path:nth-of-type(2) { fill: #111612 !important; fill-opacity: .9; }
+
+/* Also light the html/body (and landing .pl-site) so no dark edge/scrollbar
+   gutter shows around the light public pages. Dashboard uses .console-shell,
+   so :has() never matches there. */
+html:has(.qci-subpage), html:has(.pl-site),
+body:has(.pl-site) { background: #f8f8f5; }

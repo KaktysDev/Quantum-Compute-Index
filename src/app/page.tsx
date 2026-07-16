@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight, Check, GitBranch, Route, ShieldCheck } from "lucide-react";
 import LandingHeroStage from "@/components/LandingHeroStage";
+import LandingPriceIndex, { type IndexPoint } from "@/components/LandingPriceIndex";
 import { PUBLIC_CONFIG, PUBLIC_FEATURE_STATUS } from "@/lib/publicConfig";
 import { BACKENDS } from "@/lib/qrouter/catalog";
-import { getLatestSnapshot } from "@/lib/qci/store";
+import { getLatestSnapshot, getSeries } from "@/lib/qci/store";
 import "./landing.css";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +34,7 @@ const productRows = [
 ] as const;
 
 export default async function LandingPage() {
-  const latest = await getLatestSnapshot();
+  const [latest, series] = await Promise.all([getLatestSnapshot(), getSeries(365)]);
   const routable = BACKENDS.filter((backend) => backend.available).length;
 
   return (
@@ -74,7 +75,7 @@ export default async function LandingPage() {
         {productRows.map((row) => (
           <article className={`pl-product-row ${row.side === "right" ? "reverse" : ""}`} id={row.id} key={row.id}>
             <div className="pl-product-copy"><p>{row.eyebrow}</p><h2>{row.title}</h2><span>{row.copy}</span><Link href={row.href}>{row.action} <ArrowUpRight /></Link></div>
-            <ProductVisual id={row.id} price={latest.vwap} source={latest.source} />
+            <ProductVisual id={row.id} price={latest.vwap} source={latest.source} series={series} />
           </article>
         ))}
       </section>
@@ -107,9 +108,9 @@ export default async function LandingPage() {
   );
 }
 
-function ProductVisual({ id, price, source }: { id: string; price: number; source: "live" | "sample" }) {
+function ProductVisual({ id, price, source, series }: { id: string; price: number; source: "live" | "sample"; series: IndexPoint[] }) {
   if (id === "route") return <div className="pl-product-visual"><div className="pl-ui-window"><header><Route /> ROUTE DECISION <span>SAMPLE</span></header><div className="pl-ui-rows"><div className="selected"><b>QPU Alpha</b><span>18m</span><span>99.0%</span><span>$0.74</span><strong>0.84</strong></div><div><b>QPU Beta</b><span>29m</span><span>98.6%</span><span>$0.62</span><strong>0.79</strong></div><div className="rejected"><b>QPU Gamma</b><span>7m</span><span>99.4%</span><span>$1.18</span><strong>REJECT</strong></div></div><footer><Check /> BALANCED POLICY · QPU ONLY · MAX $1.00</footer></div></div>;
   if (id === "transpile") return <div className="pl-product-visual"><div className="pl-code-compare"><pre><span>OPENQASM INPUT</span><code>{`h q[0];\ncx q[0], q[1];\nmeasure q -> c;`}</code></pre><i>→</i><pre><span>TARGET-AWARE OUTPUT</span><code>{`rz(pi/2) q[0];\nsx q[0];\necr q[0], q[1];`}</code></pre></div></div>;
-  if (id === "price") return <div className="pl-product-visual white"><div className="pl-index-card"><header><span>QUANTUM COMPUTE INDEX</span><b>{source === "sample" ? "SAMPLE DATA" : "PROVIDER SNAPSHOT"}</b></header><strong><sup>$</sup>{price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong><p>per QC-hour</p><div className="pl-index-line"><svg viewBox="0 0 500 120" preserveAspectRatio="none"><polyline points="0,92 50,83 100,88 150,65 200,71 250,55 300,61 350,39 400,47 450,27 500,34" /></svg></div><footer><Link href="/pricing#methodology">Methodology <ArrowRight /></Link><span>Indicative · not audited</span></footer></div></div>;
+  if (id === "price") return <LandingPriceIndex vwap={price} source={source} series={series} />;
   return <div className="pl-product-visual"><div className="pl-deploy-window"><header><GitBranch /> github.com/organization/quantum-circuits <span>main</span></header>{["Connect repository","Discover circuit","Set routing policy","Compile","Route","Execute","Receive result"].map((step, index) => <div key={step}><span>{String(index + 1).padStart(2, "0")}</span><b>{step}</b>{index < 6 ? <ArrowRight /> : <Check />}</div>)}<footer><ShieldCheck /> Signed webhook delivery supported</footer></div></div>;
 }

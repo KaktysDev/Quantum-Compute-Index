@@ -494,3 +494,11 @@
 @media (prefers-reduced-motion: reduce) {
   .pl-site * { scroll-behavior: auto !important; transition-duration: .01ms !important; animation: none !important; }
 }
+
+/* ── Landing index card: live range toggles + area fill (LandingPriceIndex) ── */
+.pl-index-ranges { display: flex; gap: .3rem; margin: 0 0 1.1rem; }
+.pl-index-ranges button { padding: .3rem .62rem; border: 1px solid var(--pl-line); background: #fff; color: var(--pl-muted); font: 660 .56rem var(--font-mono, monospace); letter-spacing: .05em; cursor: pointer; transition: color .14s ease, border-color .14s ease, background .14s ease; }
+.pl-index-ranges button:hover { color: var(--pl-ink); border-color: #c2c8c2; }
+.pl-index-ranges button.active { background: var(--pl-green); border-color: var(--pl-green); color: #fff; }
+.pl-index-area { fill: rgba(0, 156, 99, .09); stroke: none; }
+.pl-index-empty { display: grid; place-items: center; height: 100%; margin: 0; color: var(--pl-muted); font-size: .62rem; }
