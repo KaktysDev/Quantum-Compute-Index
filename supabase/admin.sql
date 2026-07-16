@@ -122,7 +122,7 @@ create policy "contact: admin update"
   with check (public.is_admin());
 
 -- ── 4. Backfill workspaces for pre-control-plane accounts ───────────────────
--- Accounts created before the QRouter tables existed have no organization /
+-- Accounts created before QRouter tables existed have no organization /
 -- credit account (the app shows "Local workspace"). Give each of them the same
 -- personal workspace + $10 starter balance that new signups get. Idempotent.
 do $$
