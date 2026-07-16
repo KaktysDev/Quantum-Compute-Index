@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowRight, ArrowUpRight, Check, GitBranch, Route, ShieldCheck } from "lucide-react";
 import LandingHeroStage from "@/components/LandingHeroStage";
 import LandingPriceIndex, { type IndexPoint } from "@/components/LandingPriceIndex";
+import LogoMark from "@/components/LogoMark";
 import { PUBLIC_CONFIG, PUBLIC_FEATURE_STATUS } from "@/lib/publicConfig";
 import { BACKENDS } from "@/lib/qrouter/catalog";
 import { getLatestSnapshot, getSeries } from "@/lib/qci/store";
@@ -97,7 +98,7 @@ export default async function LandingPage() {
 
       <footer className="pl-footer">
         <div className="pl-shell pl-footer-grid">
-          <div className="pl-footer-brand"><span>Q</span><strong>QRouter</strong><p>The quantum execution layer.</p></div>
+          <div className="pl-footer-brand"><LogoMark size={30} /><strong>QRouter</strong><p>The quantum execution layer.</p></div>
           <nav><h3>Product</h3><a href="#engine">QCI Engine</a><a href="#route">Routing</a><a href="#price">Quantum Compute Index</a><Link href="/pricing">Pricing</Link></nav>
           <nav><h3>Developers</h3><Link href="/docs">Documentation</Link><a href="/openapi.json">OpenAPI</a><Link href="/docs#repositories">Repositories</Link><Link href="/contact">Request access</Link></nav>
           <nav><h3>Company</h3><Link href="/history">History</Link><Link href="/contact">Contact</Link><span>Chicago, Illinois</span></nav>

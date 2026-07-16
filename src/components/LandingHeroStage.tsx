@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowRight, ArrowUpRight, Check, ChevronDown, Menu, Play, X } from "lucide-react";
 import { useState } from "react";
 import { PUBLIC_CONFIG } from "@/lib/publicConfig";
+import LogoMark from "@/components/LogoMark";
 import SignalBars from "@/components/SignalBars";
 
 const stages = [
@@ -23,7 +24,7 @@ export default function LandingHeroStage() {
     <>
       <div className="pl-announcement"><span>QRouter private beta</span><Link href="/contact">Request access <ArrowRight /></Link></div>
       <header className="pl-nav pl-shell">
-        <Link href="/" className="pl-logo"><span>q</span><strong>qrouter</strong></Link>
+        <Link href="/" className="pl-logo"><LogoMark size={24} /><strong>qrouter</strong></Link>
         <nav className={menuOpen ? "open" : ""}>
           <a href="#products">Products <ChevronDown /></a><a href="#engine">QCI Engine</a><Link href="/docs">Developers <ChevronDown /></Link><Link href="/pricing">Pricing</Link>
         </nav>
