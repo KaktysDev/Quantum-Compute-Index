@@ -57,19 +57,23 @@ export default function PriceChart({
     if (!el) return;
 
     const chart = createChart(el, {
+      // autoSize makes lightweight-charts observe the container itself — robust
+      // against the flex container having no size on the first paint (which was
+      // leaving the canvas stuck at its 300×150 default and drawing nothing).
+      autoSize: true,
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
-        textColor: "rgba(255,255,255,0.56)",
+        textColor: "rgba(17,22,18,0.5)",
         fontFamily: "var(--font-mono), monospace",
         attributionLogo: false,
       },
       grid: {
-        vertLines: { color: "rgba(255,255,255,0.07)" },
-        horzLines: { color: "rgba(255,255,255,0.07)" },
+        vertLines: { color: "rgba(17,22,18,0.06)" },
+        horzLines: { color: "rgba(17,22,18,0.06)" },
       },
-      rightPriceScale: { borderColor: "rgba(255,255,255,0.16)" },
+      rightPriceScale: { borderColor: "rgba(17,22,18,0.12)" },
       timeScale: {
-        borderColor: "rgba(255,255,255,0.16)",
+        borderColor: "rgba(17,22,18,0.12)",
         timeVisible: false,
         secondsVisible: false,
         fixLeftEdge: true,
@@ -77,29 +81,21 @@ export default function PriceChart({
       },
       crosshair: {
         mode: 0,
-        vertLine: { color: "rgba(255,255,255,0.48)", labelBackgroundColor: "#000000" },
-        horzLine: { color: "rgba(255,255,255,0.48)", labelBackgroundColor: "#000000" },
+        vertLine: { color: "rgba(0,156,99,0.45)", labelBackgroundColor: "#08764f" },
+        horzLine: { color: "rgba(0,156,99,0.45)", labelBackgroundColor: "#08764f" },
       },
-      width: el.clientWidth,
-      height: el.clientHeight || 320,
     });
     chartRef.current = chart;
     seriesRef.current = chart.addAreaSeries({
-      lineColor: "#ffffff",
-      topColor: "transparent",
-      bottomColor: "transparent",
+      lineColor: "#009c63",
+      topColor: "rgba(0,156,99,0.12)",
+      bottomColor: "rgba(0,156,99,0.0)",
       lineWidth: 2,
       priceLineVisible: false,
       priceFormat: { type: "price", precision: 2, minMove: 0.01 },
     });
 
-    const ro = new ResizeObserver(() => {
-      chart.applyOptions({ width: el.clientWidth, height: el.clientHeight });
-    });
-    ro.observe(el);
-
     return () => {
-      ro.disconnect();
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
