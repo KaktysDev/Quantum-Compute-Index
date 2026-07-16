@@ -19,6 +19,23 @@ import {
 import { normalizeAll } from "./normalize";
 import type { QciSnapshot, RawQpuMetrics } from "./types";
 
+// ── Pinned index basket ───────────────────────────────────────────────────────
+// The index basket is an EXPLICIT allowlist, not whatever the provider APIs
+// happen to report as online. Provider adapters (esp. AWS Braket) auto-discover
+// devices, so without this a brand-new backend coming online — e.g. Rigetti's
+// Cepheus device weeks after launch — would silently join the basket and reprice
+// the index. Only providers listed here are ever counted; anything else is
+// dropped. To intentionally add a provider to the index, add its display name
+// below (this is a deliberate composition change, made on purpose).
+const INDEX_PROVIDERS = new Set(
+  ["IBM", "IonQ", "IQM", "QuEra", "AQT", "Quandela"].map((p) => p.toLowerCase()),
+);
+
+/** Is this provider part of the pinned index basket? */
+export function isIndexProvider(provider: string): boolean {
+  return INDEX_PROVIDERS.has((provider ?? "").trim().toLowerCase());
+}
+
 function round(n: number, dp = 2): number {
   const f = 10 ** dp;
   return Math.round(n * f) / f;
@@ -76,7 +93,10 @@ export function computeQci(
   const ts = opts.ts ?? new Date().toISOString();
   const source = opts.source ?? "live";
 
-  const collapsed = collapseOnePerProvider(rawMetrics);
+  // Enforce the pinned basket first — a device from any non-listed provider
+  // (a new Braket backend, etc.) is dropped before it can affect the index.
+  const eligible = rawMetrics.filter((m) => isIndexProvider(m.provider));
+  const collapsed = collapseOnePerProvider(eligible);
   const normalized = normalizeAll(collapsed);
   const result: IndexResult = computeIndex(normalized);
   const mult = marketMultiplier(normalized, market);

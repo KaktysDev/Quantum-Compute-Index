@@ -12,7 +12,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptSecret } from "@/lib/crypto";
 import { fetchAllMetrics } from "@/lib/providers";
 import { mergeWithCarryForward } from "./carryForward";
-import { computeQci } from "./compute";
+import { computeQci, isIndexProvider } from "./compute";
 import type { QpuComponent } from "./types";
 
 export interface RefreshResult {
@@ -31,6 +31,9 @@ export interface RefreshResult {
   constituents?: string[];
   /** Providers whose data was carried forward this run (offline / failed pull). */
   stale?: string[];
+  /** Live providers that were DROPPED because they're not in the pinned basket
+   *  (e.g. a new backend a provider brought online). Flags silent join attempts. */
+  excluded?: string[];
 }
 
 /** Current calendar date in America/New_York (for the once-per-day guard). */
@@ -95,6 +98,12 @@ export async function computeAndStoreSnapshot(
   }
 
   const rawMetrics = await fetchAllMetrics(keys, now);
+
+  // Providers a live pull returned that are NOT in the pinned basket — dropped
+  // by computeQci, surfaced here so a silent join attempt is visible.
+  const excluded = [
+    ...new Set(rawMetrics.filter((m) => !isIndexProvider(m.provider)).map((m) => m.provider)),
+  ];
 
   // Previous snapshot: chain-link anchor AND the last-known-good store per
   // provider (its components double as the carry-forward source).
@@ -175,6 +184,7 @@ export async function computeAndStoreSnapshot(
     price: snapshot.price,
     changePct: snapshot.changePct,
     providers: Object.keys(keys),
+    excluded,
     qpus: snapshot.components.length,
     constituents: snapshot.components.map((c) => `${c.provider} · ${c.qpu}`),
     stale: snapshot.components.filter((c) => c.status === "stale").map((c) => c.provider),
