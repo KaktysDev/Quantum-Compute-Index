@@ -378,3 +378,91 @@
   .console-mobile-tabs { background: var(--surface-raised) !important; border-top: 1px solid var(--qr-line); }
   .provider-filter-rail { top: 0; height: auto; }
 }
+
+/* ═══ RouterTopbar additions ══════════════════════════════════════════════
+   The component that finally renders .router-topbar (see RouterTopbar.tsx).
+   More ▾ dropdown, mobile tab row, focus states, and page fade-in. */
+
+/* "More" dropdown lives inside the product nav and mimics its links. */
+.router-more-menu { display: flex; align-items: stretch; }
+.router-more-menu > summary.router-more-summary {
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  height: 100%;
+  padding: 0 .72rem;
+  border: 0;
+  color: #87928c;
+  font-size: .68rem;
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+  list-style: none;
+}
+.router-more-menu > summary.router-more-summary::-webkit-details-marker { display: none; }
+.router-more-menu > summary.router-more-summary:hover { color: #fff; }
+.router-more-menu > summary.router-more-summary.active { color: var(--qr-emerald); }
+.router-more-menu[open] > summary.router-more-summary { color: #fff; }
+.router-more-menu[open] > summary.router-more-summary svg { transform: rotate(180deg); }
+.router-more-menu > summary svg { transition: transform 150ms ease; }
+.router-more-menu > div { top: 52px; width: 200px; }
+.router-account-menu > div a.active { background: #08100b; color: var(--qr-emerald); }
+
+/* Account/More dropdown motion. */
+.router-account-menu > div { animation: router-menu-in 140ms ease; border-radius: 6px; }
+@keyframes router-menu-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.router-account-menu form { margin: 0; }
+
+/* Mobile: product tabs collapse into a scrollable second row. */
+@media (max-width: 900px) {
+  .console-shell { padding-top: 102px; }
+  .router-product-nav { display: none; }
+  .router-global-search { width: min(200px, 34vw); }
+  .router-mobile-nav {
+    display: flex;
+    height: 42px;
+    align-items: stretch;
+    overflow-x: auto;
+    padding: 0 .5rem;
+    border-top: 1px solid var(--qr-line);
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .router-mobile-nav::-webkit-scrollbar { display: none; }
+  .router-mobile-nav a {
+    position: relative;
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: .35rem;
+    padding: 0 .7rem;
+    color: #87928c;
+    font-size: .66rem;
+    font-weight: 550;
+    white-space: nowrap;
+  }
+  .router-mobile-nav a.active { color: var(--qr-emerald); }
+  .router-mobile-nav a.active::after {
+    content: "";
+    position: absolute;
+    inset: auto .6rem 0;
+    height: 2px;
+    background: var(--qr-emerald);
+  }
+  .router-credit-button { display: none; }
+}
+
+/* Keyboard focus — visible ring everywhere in the console chrome. */
+.router-topbar :is(a, button, summary, input):focus-visible {
+  outline: 2px solid var(--qr-emerald);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Smooth page entry. */
+.console-page { animation: console-page-in 260ms ease; }
+@keyframes console-page-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .console-page { animation: none; }
+  .router-account-menu > div { animation: none; }
+}

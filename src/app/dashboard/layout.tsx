@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import DashboardNav from "@/components/DashboardNav";
+import RouterTopbar from "@/components/RouterTopbar";
 import ThemeSync from "@/components/ThemeSync";
 import { checkIsAdmin } from "@/lib/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -41,7 +41,7 @@ export default async function DashboardLayout({
   return (
     <div className="console-shell min-h-screen">
       <ThemeSync theme={theme} />
-      <DashboardNav email={email} organization={organization} balance={balance} isAdmin={isAdmin} />
+      <RouterTopbar email={email} organization={organization} balance={balance} isAdmin={isAdmin} />
       <div className="console-main">{children}</div>
     </div>
   );
