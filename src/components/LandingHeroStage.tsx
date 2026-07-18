@@ -24,7 +24,7 @@ export default function LandingHeroStage() {
     <>
       <div className="pl-announcement"><span>QRouter private beta</span><Link href="/contact">Request access <ArrowRight /></Link></div>
       <header className="pl-nav pl-shell">
-        <Link href="/" className="pl-logo"><LogoMark size={24} /><strong>qrouter</strong></Link>
+        <Link href="/" className="pl-logo"><LogoMark size={24} /><strong>QROUTER</strong></Link>
         <nav className={menuOpen ? "open" : ""}>
           <a href="#products">Products <ChevronDown /></a><a href="#engine">QCI Engine</a><Link href="/docs">Developers <ChevronDown /></Link><Link href="/pricing">Pricing</Link>
         </nav>

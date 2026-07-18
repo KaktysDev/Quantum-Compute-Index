@@ -59,7 +59,7 @@
   font-weight: 760;
   line-height: 1;
 }
-.pl-logo strong { font-size: .92rem; font-weight: 680; letter-spacing: -.025em; }
+.pl-logo strong { font-size: .92rem; font-weight: 800; text-transform: uppercase; letter-spacing: .02em; }
 
 .pl-nav > nav { display: flex; align-items: center; gap: clamp(1.4rem, 2.6vw, 2.8rem); }
 .pl-nav > nav a,
@@ -386,7 +386,7 @@
 .pl-footer-grid { display: grid; grid-template-columns: 1.5fr repeat(3, 1fr); padding: clamp(3.5rem, 6vw, 6rem) clamp(1.25rem, 3vw, 3.25rem) 1.8rem; }
 .pl-footer-brand { align-self: start; display: flex; flex-direction: column; align-items: flex-start; }
 .pl-footer-brand > span, .pl-footer-brand > svg { margin-bottom: .85rem; }
-.pl-footer-brand strong { font-size: .95rem; font-weight: 680; }
+.pl-footer-brand strong { font-size: .95rem; font-weight: 800; text-transform: uppercase; letter-spacing: .02em; }
 .pl-footer-brand p { margin: .6rem 0 0; color: var(--pl-muted); font-size: .69rem; }
 .pl-footer nav { display: flex; flex-direction: column; align-items: flex-start; gap: .8rem; }
 .pl-footer nav h3 { margin: 0 0 .6rem; color: #959b96; font-size: .57rem; font-weight: 650; }
@@ -502,3 +502,146 @@
 .pl-index-ranges button.active { background: var(--pl-green); border-color: var(--pl-green); color: #fff; }
 .pl-index-area { fill: rgba(0, 156, 99, .09); stroke: none; }
 .pl-index-empty { display: grid; place-items: center; height: 100%; margin: 0; color: var(--pl-muted); font-size: .62rem; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Bold depth + motion layer — layered elevation, ambient glow, parallax float,
+   and richer entrance/hover choreography. Everything here is additive so the
+   base layout is untouched. Honors prefers-reduced-motion (the global rule at
+   the top of this file force-disables these animations for that audience).
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Ambient drifting glow behind the whole page for atmosphere/depth. */
+.pl-site { position: relative; }
+.pl-site::before {
+  content: "";
+  position: fixed;
+  z-index: 0;
+  top: -20%;
+  left: 50%;
+  width: 120vw;
+  height: 90vh;
+  transform: translateX(-50%);
+  background:
+    radial-gradient(38% 46% at 22% 32%, rgba(0, 156, 99, .10), transparent 70%),
+    radial-gradient(34% 40% at 82% 20%, rgba(0, 156, 99, .07), transparent 72%);
+  pointer-events: none;
+  animation: pl-ambient 22s ease-in-out infinite alternate;
+}
+.pl-site > * { position: relative; z-index: 1; }
+
+@keyframes pl-ambient {
+  0%   { transform: translateX(-52%) translateY(0) scale(1); opacity: .85; }
+  100% { transform: translateX(-48%) translateY(24px) scale(1.08); opacity: 1; }
+}
+
+/* Nav gains real elevation + blur to lift it off the ambient glow layer. */
+.pl-nav {
+  z-index: 30;
+  backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: 0 1px 0 rgba(21, 83, 60, .06), 0 14px 40px -28px rgba(15, 52, 36, .55);
+}
+.pl-logo { transition: transform 240ms cubic-bezier(.22,1,.36,1); }
+.pl-logo:hover { transform: translateY(-1px); }
+.pl-logo svg { transition: filter 240ms ease, transform 240ms cubic-bezier(.22,1,.36,1); }
+.pl-logo:hover svg { transform: rotate(-4deg) scale(1.06); filter: drop-shadow(0 4px 12px rgba(0, 156, 99, .45)); }
+
+/* Buttons: elevation + spring lift + emerald aura on the primary CTA. */
+.pl-button {
+  position: relative;
+  border-radius: 9px;
+  box-shadow: 0 1px 2px rgba(17, 22, 18, .08), 0 8px 22px -14px rgba(17, 22, 18, .4);
+  transition: transform 200ms cubic-bezier(.22,1,.36,1), box-shadow 200ms ease, border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+.pl-button:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(17, 22, 18, .12), 0 18px 40px -18px rgba(17, 22, 18, .45); }
+.pl-button:active { transform: translateY(0); }
+.pl-button.primary { box-shadow: 0 2px 8px rgba(0, 124, 78, .35), 0 14px 32px -14px rgba(0, 124, 78, .6); }
+.pl-button.primary:hover { box-shadow: 0 4px 14px rgba(0, 124, 78, .45), 0 22px 48px -16px rgba(0, 124, 78, .7); }
+
+/* Hero demo: perspective depth + slow float + pulsing ambient rings. */
+.pl-hero-demo {
+  border-radius: 16px;
+  box-shadow:
+    0 2px 4px rgba(10, 12, 11, .3),
+    0 40px 90px -50px rgba(6, 34, 22, .9),
+    inset 0 1px 0 rgba(255, 255, 255, .04);
+  animation: pl-hero-enter 900ms 300ms both cubic-bezier(.22,1,.36,1), pl-float 9s ease-in-out 1.4s infinite;
+}
+@keyframes pl-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-10px); }
+}
+.pl-hero-demo::before,
+.pl-hero-demo::after { animation: pl-ring-pulse 8s ease-in-out infinite; }
+.pl-hero-demo::after { animation-delay: 2.5s; }
+@keyframes pl-ring-pulse {
+  0%, 100% { opacity: .5; transform: scale(1); }
+  50%      { opacity: 1; transform: scale(1.06); }
+}
+
+/* Floating prompt card inside the hero gains a deeper, warmer shadow. */
+.pl-demo-prompt {
+  border-radius: 12px;
+  box-shadow: 0 30px 80px -30px rgba(6, 34, 22, .55), 0 4px 12px rgba(6, 34, 22, .12);
+}
+.pl-demo-result { border-radius: 8px; }
+
+/* Proof cards: hover lift, emerald wash, and a top accent bar that grows. */
+.pl-proof article {
+  position: relative;
+  transition: transform 260ms cubic-bezier(.22,1,.36,1), background-color 260ms ease, box-shadow 260ms ease;
+}
+.pl-proof article::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 2px;
+  background: var(--pl-green);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 320ms cubic-bezier(.22,1,.36,1);
+}
+.pl-proof article:hover {
+  transform: translateY(-4px);
+  background: linear-gradient(180deg, rgba(0, 156, 99, .05), transparent 70%);
+  box-shadow: 0 24px 50px -30px rgba(6, 34, 22, .5);
+  z-index: 2;
+}
+.pl-proof article:hover::before { transform: scaleX(1); }
+
+/* Product showcase windows: real elevation + lift + emerald edge on hover. */
+.pl-ui-window,
+.pl-deploy-window,
+.pl-code-compare > pre,
+.pl-plot,
+.pl-index-card {
+  border-radius: 12px;
+  transition: transform 300ms cubic-bezier(.22,1,.36,1), box-shadow 300ms ease, border-color 300ms ease;
+}
+.pl-ui-window { box-shadow: 0 30px 70px -34px rgba(6, 34, 22, .5), 0 3px 10px rgba(6, 34, 22, .08); }
+.pl-product-visual:hover .pl-ui-window,
+.pl-product-visual:hover .pl-deploy-window,
+.pl-product-visual:hover .pl-plot {
+  transform: translateY(-6px);
+  box-shadow: 0 42px 90px -34px rgba(6, 34, 22, .6);
+  border-color: rgba(0, 156, 99, .4);
+}
+
+/* Plot: selected route dot gently pulses to draw the eye. */
+.pl-dot.alpha {
+  box-shadow: 0 0 0 1px var(--pl-green), 0 0 0 6px rgba(0, 156, 99, .18);
+  animation: pl-dot-pulse 2.6s ease-in-out infinite;
+}
+@keyframes pl-dot-pulse {
+  0%, 100% { box-shadow: 0 0 0 1px var(--pl-green), 0 0 0 5px rgba(0, 156, 99, .22); }
+  50%      { box-shadow: 0 0 0 1px var(--pl-green), 0 0 0 11px rgba(0, 156, 99, 0); }
+}
+
+/* Stronger, springier section reveals as you scroll. */
+@supports (animation-timeline: view()) {
+  @keyframes pl-section-enter {
+    from { opacity: 0; transform: translateY(46px) scale(.985); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .pl-proof > div { animation: pl-section-enter linear both; animation-timeline: view(); animation-range: entry 4% cover 24%; }
+}
