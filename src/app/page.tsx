@@ -13,11 +13,11 @@ import LandingNav from "@/components/landing/LandingNav";
 import QuantumParticles from "@/components/landing/QuantumParticles";
 import Reveal from "@/components/landing/Reveal";
 import LandingPriceIndex, { type IndexPoint } from "@/components/LandingPriceIndex";
+import LandingSignin from "@/components/LandingSignin";
 import LogoMark from "@/components/LogoMark";
 import { PUBLIC_CONFIG, PUBLIC_FEATURE_STATUS } from "@/lib/publicConfig";
 import { BACKENDS } from "@/lib/qrouter/catalog";
 import { getLatestSnapshot, getSeries } from "@/lib/qci/store";
-import "./landing.css";
 
 export const dynamic = "force-dynamic";
 
@@ -96,6 +96,9 @@ export default async function LandingPage() {
       <div className="ql-aurora" aria-hidden="true"><i /><i /><i /></div>
       <div className="ql-gridfloor" aria-hidden="true" />
       <div className="ql-orbits" aria-hidden="true"><i /><i /><i /></div>
+
+      {/* Sign-in modal — opens on ?signin=required (middleware bounce) and the qr:signin event. */}
+      <LandingSignin />
 
       <LandingNav />
 

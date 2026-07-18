@@ -5,11 +5,11 @@
    nothing can clash with dashboard.css after client-side navigation. */
 
 .onboarding-page {
-  --qr-bg: #0b0b0c;
+  --qr-bg: #030705;
   --qr-line: rgba(255, 255, 255, 0.09);
   --qr-muted: #8e8e95;
-  --qr-orange: #38e08a;
-  --qr-orange-hover: #5eecac;
+  --qr-orange: #42e59e;
+  --qr-orange-hover: #63eeb2;
   --qr-green: #4ade80;
 
   min-height: 100vh;
@@ -31,7 +31,7 @@
   justify-content: space-between;
   padding: 0 2rem;
   border-bottom: 1px solid var(--qr-line);
-  background: rgba(11, 11, 12, 0.9);
+  background: rgba(3, 7, 5, 0.85);
 }
 .onboarding-page > header > span,
 .onboarding-page > footer {
@@ -49,9 +49,9 @@
   width: min(520px, calc(100% - 2rem));
   margin: clamp(2rem, 8vh, 6rem) auto;
   padding: 2rem;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 8px;
-  background: rgba(18, 18, 20, 0.96);
+  background: linear-gradient(165deg, #0d1511, #070b09);
   box-shadow: 0 30px 100px rgba(0, 0, 0, 0.35);
 }
 .onboarding-card h1 {
@@ -87,7 +87,7 @@
 .onboarding-progress span.active {
   border-color: var(--qr-orange);
   background: var(--qr-orange);
-  color: #090909;
+  color: #04120b;
 }
 .onboarding-progress i {
   flex: 1;
@@ -112,14 +112,14 @@
   width: 100%;
   height: 38px;
   border: 1px solid var(--qr-line);
-  border-radius: 5px;
-  background: #0d0d0f;
+  border-radius: 9px;
+  background: rgba(2, 6, 4, 0.75);
   color: #eee;
   padding: 0 0.7rem;
   outline: 0;
 }
 .onboarding-fields input:focus {
-  border-color: rgba(56, 224, 138, 0.6);
+  border-color: rgba(66, 229, 158, 0.6);
 }
 
 .onboarding-page .qr-eyebrow {
@@ -141,12 +141,13 @@
   font-size: 0.75rem;
   font-weight: 700;
   cursor: pointer;
-  border: 1px solid #38e08a;
-  background: var(--qr-orange);
-  color: #090909;
+  border: 0;
+  background: linear-gradient(120deg, var(--qr-orange), #35c98a);
+  color: #04120b;
+  box-shadow: 0 0 24px rgba(66, 229, 158, 0.18);
 }
 .onboarding-page .console-primary:hover {
-  background: var(--qr-orange-hover);
+  box-shadow: 0 6px 34px rgba(66, 229, 158, 0.32);
 }
 .onboarding-page .console-primary:disabled {
   opacity: 0.5;

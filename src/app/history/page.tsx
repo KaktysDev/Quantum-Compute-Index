@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import SiteFooter from "@/components/SiteFooter";
-import SiteHeader from "@/components/SiteHeader";
+import LandingNav from "@/components/landing/LandingNav";
 import Timeline, { type TimelinePoint } from "@/components/Timeline";
 
 export const metadata: Metadata = {
@@ -39,7 +39,7 @@ const POINTS: TimelinePoint[] = [
 export default function HistoryPage() {
   return (
     <>
-      <SiteHeader />
+      <LandingNav />
       <main className="qci-subpage relative mx-auto w-full max-w-7xl px-6 sm:px-10">
       {/* hero */}
       <section className="qci-subpage-hero py-16 sm:py-20">
@@ -66,7 +66,7 @@ export default function HistoryPage() {
 
       {/* closing */}
       <section className="py-24 text-center">
-        <h2 className="serif mx-auto max-w-3xl text-4xl font-normal tracking-[-0.04em] text-white sm:text-6xl">
+        <h2 className="mx-auto max-w-3xl text-4xl font-medium tracking-[-0.035em] text-white sm:text-6xl">
           A technology this important deserves a market.
         </h2>
         <p className="mx-auto mt-6 max-w-xl text-[var(--muted)]">

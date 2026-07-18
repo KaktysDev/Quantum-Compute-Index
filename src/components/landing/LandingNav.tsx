@@ -1,9 +1,12 @@
 "use client";
 
-// Sticky landing nav: organized tabs with scroll-spy for on-page sections,
-// a working mobile drawer, and a glass background once the page scrolls.
+// Sticky site nav, shared by the landing and the public subpages: organized
+// tabs with scroll-spy for on-page sections, a working mobile drawer, and a
+// glass background once the page scrolls. Section links carry the "/" prefix
+// so they navigate home first when clicked from a subpage.
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ArrowUpRight, Menu, X } from "lucide-react";
 import LogoMark from "@/components/LogoMark";
@@ -17,10 +20,12 @@ const SECTION_TABS = [
 
 const PAGE_TABS = [
   { href: "/pricing", label: "Pricing" },
+  { href: "/history", label: "History" },
   { href: "/docs", label: "Docs" },
 ] as const;
 
 export default function LandingNav() {
+  const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<string>("");
@@ -81,7 +86,7 @@ export default function LandingNav() {
           {SECTION_TABS.map((tab) => (
             <a
               key={tab.id}
-              href={`#${tab.id}`}
+              href={`/#${tab.id}`}
               className={active === tab.id ? "active" : ""}
               onClick={() => setOpen(false)}
             >
@@ -89,7 +94,12 @@ export default function LandingNav() {
             </a>
           ))}
           {PAGE_TABS.map((tab) => (
-            <Link key={tab.href} href={tab.href} onClick={() => setOpen(false)}>
+            <Link
+              key={tab.href}
+              href={tab.href}
+              className={pathname === tab.href ? "active" : ""}
+              onClick={() => setOpen(false)}
+            >
               {tab.label}
             </Link>
           ))}

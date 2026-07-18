@@ -118,14 +118,14 @@ export default function QciMarketPanel({
       handleScale: { mouseWheel: false, pinch: true, axisPressedMouseMove: false },
     });
     const series = chart.addAreaSeries({
-      lineColor: "#ffffff",
-      topColor: "transparent",
+      lineColor: "#42e59e",
+      topColor: "rgba(66, 229, 158, 0.16)",
       bottomColor: "transparent",
       lineWidth: 2,
       priceLineVisible: false,
       lastValueVisible: false,
-      crosshairMarkerBorderColor: "#000000",
-      crosshairMarkerBackgroundColor: "#ffffff",
+      crosshairMarkerBorderColor: "#04120b",
+      crosshairMarkerBackgroundColor: "#42e59e",
       priceFormat: { type: "price", precision: 2, minMove: 0.01 },
     });
     chartRef.current = chart;
@@ -151,10 +151,10 @@ export default function QciMarketPanel({
 
   useEffect(() => {
     if (!seriesRef.current || visible.length === 0) return;
-    const color = "#ffffff";
+    const color = "#42e59e";
     seriesRef.current.applyOptions({
       lineColor: color,
-      topColor: "transparent",
+      topColor: "rgba(66, 229, 158, 0.16)",
       bottomColor: "transparent",
       crosshairMarkerBackgroundColor: color,
     });

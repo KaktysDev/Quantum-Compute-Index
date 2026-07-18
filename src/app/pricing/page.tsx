@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import CompanyLogos from "@/components/CompanyLogos";
 import PriceChart from "@/components/PriceChart";
 import SiteFooter from "@/components/SiteFooter";
-import SiteHeader from "@/components/SiteHeader";
+import LandingNav from "@/components/landing/LandingNav";
 import { formatUsd } from "@/lib/qci/format";
 import { getLatestSnapshot, getSeries } from "@/lib/qci/store";
 
@@ -36,7 +36,7 @@ export default async function PricingPage() {
 
   return (
     <>
-      <SiteHeader />
+      <LandingNav />
       <main className="qci-subpage relative mx-auto w-full max-w-7xl px-6 sm:px-10">
       {/* hero */}
       <section className="qci-subpage-hero py-16 sm:py-20">
@@ -57,7 +57,7 @@ export default async function PricingPage() {
         <div className="grid items-stretch gap-4 md:grid-cols-3">
           {STEPS.map((s, i) => (
             <div key={s.n} className="relative glass glass-hover sheen rounded-2xl p-7">
-              <p className="serif text-4xl leading-none text-white/30">{s.n}</p>
+              <p className="tabular text-3xl leading-none text-emerald-300/70">{s.n}</p>
               <h3 className="mt-4 text-xl font-medium text-white">{s.title}</h3>
               <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">{s.body}</p>
               {i < STEPS.length - 1 && (
@@ -98,8 +98,8 @@ export default async function PricingPage() {
           <div className="mb-5 flex items-center justify-between">
             <div>
               <p className="mono-label">$ / QC-hour</p>
-              <p className="serif mt-2 text-4xl text-white sm:text-5xl">
-                <span className="align-top text-xl text-[var(--muted)] sm:text-2xl">$</span>
+              <p className="tabular mt-2 text-4xl text-white sm:text-5xl">
+                <span className="align-top text-xl text-[var(--accent)] sm:text-2xl">$</span>
                 {formatUsd(latest.vwap)}
               </p>
             </div>

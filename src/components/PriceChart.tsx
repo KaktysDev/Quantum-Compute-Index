@@ -63,17 +63,17 @@ export default function PriceChart({
       autoSize: true,
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
-        textColor: "rgba(17,22,18,0.5)",
+        textColor: "rgba(238,244,241,0.5)",
         fontFamily: "var(--font-mono), monospace",
         attributionLogo: false,
       },
       grid: {
-        vertLines: { color: "rgba(17,22,18,0.06)" },
-        horzLines: { color: "rgba(17,22,18,0.06)" },
+        vertLines: { color: "rgba(255,255,255,0.05)" },
+        horzLines: { color: "rgba(255,255,255,0.05)" },
       },
-      rightPriceScale: { borderColor: "rgba(17,22,18,0.12)" },
+      rightPriceScale: { borderColor: "rgba(255,255,255,0.12)" },
       timeScale: {
-        borderColor: "rgba(17,22,18,0.12)",
+        borderColor: "rgba(255,255,255,0.12)",
         timeVisible: false,
         secondsVisible: false,
         fixLeftEdge: true,
@@ -81,15 +81,15 @@ export default function PriceChart({
       },
       crosshair: {
         mode: 0,
-        vertLine: { color: "rgba(0,156,99,0.45)", labelBackgroundColor: "#08764f" },
-        horzLine: { color: "rgba(0,156,99,0.45)", labelBackgroundColor: "#08764f" },
+        vertLine: { color: "rgba(66,229,158,0.45)", labelBackgroundColor: "#0c8a58" },
+        horzLine: { color: "rgba(66,229,158,0.45)", labelBackgroundColor: "#0c8a58" },
       },
     });
     chartRef.current = chart;
     seriesRef.current = chart.addAreaSeries({
-      lineColor: "#009c63",
-      topColor: "rgba(0,156,99,0.12)",
-      bottomColor: "rgba(0,156,99,0.0)",
+      lineColor: "#42e59e",
+      topColor: "rgba(66,229,158,0.14)",
+      bottomColor: "rgba(66,229,158,0.0)",
       lineWidth: 2,
       priceLineVisible: false,
       priceFormat: { type: "price", precision: 2, minMove: 0.01 },

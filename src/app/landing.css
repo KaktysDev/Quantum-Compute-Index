@@ -6,7 +6,9 @@
    prefers-reduced-motion at the bottom of this file.
    ═════════════════════════════════════════════════════════════════════════ */
 
-.ql-site {
+/* Tokens live on :root so the shared nav / footer / sign-in modal keep their
+   palette on public subpages rendered outside the .ql-site wrapper. */
+:root {
   --ql-bg: #030705;
   --ql-bg-2: #06110c;
   --ql-panel: rgba(9, 15, 12, 0.78);
@@ -22,7 +24,9 @@
   --ql-dim: #5d6f67;
   --ql-mono: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
   --ql-glow: 0 0 24px rgba(66, 229, 158, 0.18);
+}
 
+.ql-site {
   position: relative;
   min-height: 100vh;
   overflow: clip;
@@ -129,6 +133,9 @@
 /* ── Nav ──────────────────────────────────────────────────────────────── */
 
 .ql-nav-wrap { position: sticky; top: 0; z-index: 60; }
+/* Outside .ql-site (public subpages) the nav still needs its icon sizing. */
+.ql-nav-wrap svg { width: 1em; height: 1em; stroke-width: 1.7; }
+.ql-nav-wrap a { color: inherit; text-decoration: none; }
 .ql-announce {
   display: flex;
   align-items: center;
@@ -810,6 +817,64 @@
   color: var(--ql-dim);
   font-size: 0.62rem;
 }
+
+/* ── Sign-in modal ────────────────────────────────────────────────────── */
+
+.qh-signin-backdrop {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(1, 4, 3, 0.78);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.qh-signin-card {
+  position: relative;
+  width: min(430px, 100%);
+  padding: 2.2rem;
+  border: 1px solid var(--ql-line-strong);
+  border-radius: 16px;
+  background: linear-gradient(165deg, #0d1511, #070b09);
+  box-shadow: 0 40px 120px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  animation: qh-signin-in 260ms cubic-bezier(0.2, 0.9, 0.3, 1.1);
+}
+@keyframes qh-signin-in { from { opacity: 0; transform: translateY(14px) scale(0.97); } to { opacity: 1; transform: none; } }
+.qh-signin-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid var(--ql-line);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ql-muted);
+  cursor: pointer;
+  transition: color 150ms ease, border-color 150ms ease;
+}
+.qh-signin-close:hover { color: #fff; border-color: var(--ql-line-strong); }
+.qh-signin-mark {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 1.4rem;
+  place-items: center;
+  border: 1px solid rgba(66, 229, 158, 0.4);
+  border-radius: 12px;
+  background: var(--ql-emerald-dim);
+  color: var(--ql-emerald);
+  box-shadow: var(--ql-glow);
+}
+.qh-signin-eyebrow { margin: 0 0 0.5rem; color: var(--ql-emerald); font: 650 0.6rem var(--ql-mono); letter-spacing: 0.22em; }
+.qh-signin-card h2 { margin: 0; font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
+.qh-signin-lede { margin: 0.8rem 0 1.6rem; color: var(--ql-muted); font-size: 0.8rem; line-height: 1.6; }
+.qh-signin-actions { display: grid; gap: 0.55rem; }
+.qh-signin-fine { display: block; margin-top: 1.1rem; color: var(--ql-dim); font-size: 0.62rem; }
 
 /* ── Reveal ───────────────────────────────────────────────────────────── */
 

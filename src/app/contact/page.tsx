@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import ContactForm from "@/components/ContactForm";
 import SiteFooter from "@/components/SiteFooter";
-import SiteHeader from "@/components/SiteHeader";
+import LandingNav from "@/components/landing/LandingNav";
 
 export const metadata: Metadata = {
   title: "Request Access — QRouter",
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function ContactPage() {
   return (
     <>
-      <SiteHeader />
+      <LandingNav />
       <main className="qci-subpage relative mx-auto w-full max-w-7xl px-6 sm:px-10">
       <section className="qci-subpage-hero grid gap-12 py-16 lg:grid-cols-2 lg:py-24">
         <div>
