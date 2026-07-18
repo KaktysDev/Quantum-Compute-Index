@@ -679,3 +679,164 @@
   .repo-project-row > span:nth-child(5)::before { content: "Actions"; }
   .repo-project-row > span:last-child { justify-content: flex-start; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Console depth + motion layer — reintroduces elevation, soft rounding, and
+   ambient glow on top of the strict-black terminal base. Selectors are scoped
+   under `.console-shell` so they out-specify the global flat reset
+   (`.console-shell *`) and can restore shadow / radius with !important.
+   Respects prefers-reduced-motion (handled by the reduce blocks above).
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Ambient emerald aura + subtle vignette behind the whole console. */
+.console-shell {
+  background-image:
+    radial-gradient(60% 55% at 78% -8%, rgba(24, 169, 107, .12), transparent 60%),
+    radial-gradient(50% 50% at 8% 108%, rgba(24, 169, 107, .07), transparent 60%),
+    repeating-linear-gradient(90deg, rgba(50, 183, 125, 0.03) 0 1px, transparent 1px 52px);
+  background-attachment: fixed;
+}
+.console-main::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: radial-gradient(48% 40% at 50% 0%, rgba(24, 169, 107, .08), transparent 70%);
+  pointer-events: none;
+}
+.console-main > * { position: relative; z-index: 1; }
+
+/* Sidebar: subtle raised gradient + emerald edge glow. */
+.console-shell .console-sidebar {
+  background-image:
+    linear-gradient(180deg, rgba(24, 169, 107, .06), transparent 220px),
+    repeating-linear-gradient(90deg, rgba(37,181,120,.03) 0 1px, transparent 1px 31px) !important;
+  box-shadow: 1px 0 0 rgba(24, 169, 107, .07), 24px 0 60px -40px rgba(0, 0, 0, .9) !important;
+}
+.console-shell .console-brand-row svg { filter: drop-shadow(0 0 10px rgba(24, 169, 107, .5)); }
+
+/* Sidebar cards: rounded + inset depth. */
+.console-shell .console-workspace,
+.console-shell .console-credit-meter {
+  border-radius: 9px !important;
+  background: linear-gradient(180deg, #081210, #040a07) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.03), 0 10px 24px -18px rgba(0,0,0,.9) !important;
+}
+.console-shell .workspace-avatar { border-radius: 8px !important; box-shadow: 0 0 0 1px rgba(24,169,107,.25), 0 4px 12px -4px rgba(24,169,107,.4) !important; }
+
+/* Panels + status strips: real elevation, rounding, and a hover lift. */
+.console-shell .console-panel,
+.console-shell .console-status-strip,
+.console-shell .market-watchlist,
+.console-shell .qci-console-links {
+  border-radius: 12px !important;
+  background:
+    linear-gradient(180deg, rgba(24,169,107,.035), transparent 120px),
+    linear-gradient(180deg, #0a1310, #05100b) !important;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.03) inset,
+    0 0 0 1px rgba(24,169,107,.05),
+    0 30px 70px -45px rgba(0,0,0,.95) !important;
+  transition: transform 320ms cubic-bezier(.22,1,.36,1), box-shadow 320ms ease, border-color 320ms ease;
+}
+.console-shell .console-panel:hover {
+  transform: translateY(-3px);
+  border-color: rgba(24,169,107,.4) !important;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.04) inset,
+    0 0 0 1px rgba(24,169,107,.18),
+    0 44px 90px -44px rgba(0,0,0,1),
+    0 0 44px -14px rgba(24,169,107,.35) !important;
+}
+.console-shell .panel-title { border-radius: 12px 12px 0 0 !important; background: linear-gradient(180deg, #08120d, #060d09) !important; }
+.console-shell .panel-title > svg { filter: drop-shadow(0 0 6px rgba(24,169,107,.55)); }
+
+/* Status tiles: individual hover highlight. */
+.console-shell .console-status-strip > div { transition: background 260ms ease; }
+.console-shell .console-status-strip > div:hover { background: rgba(24,169,107,.05); }
+
+/* Buttons: rounded, elevated, spring lift + emerald aura. */
+.console-shell .console-primary,
+.console-shell .console-secondary,
+.console-shell .console-danger {
+  border-radius: 8px !important;
+  box-shadow: 0 6px 18px -10px rgba(0,0,0,.9), 0 0 0 1px rgba(24,169,107,.06) !important;
+  transition: transform 180ms cubic-bezier(.22,1,.36,1), box-shadow 200ms ease, border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+.console-shell .console-primary:hover,
+.console-shell .console-secondary:hover,
+.console-shell .console-danger:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 26px -10px rgba(24,169,107,.5), 0 0 0 1px rgba(24,169,107,.28) !important;
+}
+.console-shell .console-primary:active,
+.console-shell .console-secondary:active,
+.console-shell .console-danger:active { transform: translateY(0); }
+
+/* Restore the "signal" glow on live/status dots that the flat reset stripped. */
+.console-shell .qr-eyebrow > span,
+.console-shell .status-word i,
+.console-shell .live-chip i,
+.console-shell .router-trace i {
+  box-shadow: 0 0 10px currentColor, 0 0 4px currentColor !important;
+  border-radius: 50% !important;
+}
+.console-shell .qr-eyebrow > span { animation: qr-pulse 2.4s ease-in-out infinite; }
+@keyframes qr-pulse {
+  0%, 100% { box-shadow: 0 0 10px currentColor, 0 0 4px currentColor; opacity: 1; }
+  50%      { box-shadow: 0 0 18px currentColor, 0 0 7px currentColor; opacity: .7; }
+}
+
+/* Router core gets a rounded, glowing focal treatment. */
+.console-shell .router-core {
+  border-radius: 10px !important;
+  box-shadow: 0 0 0 1px rgba(24,169,107,.2), 0 0 40px -8px rgba(24,169,107,.35) !important;
+  animation: qr-core-glow 4s ease-in-out infinite;
+}
+@keyframes qr-core-glow {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(24,169,107,.2), 0 0 40px -8px rgba(24,169,107,.3); }
+  50%      { box-shadow: 0 0 0 1px rgba(24,169,107,.35), 0 0 56px -6px rgba(24,169,107,.5); }
+}
+
+/* Staggered entrance for page content. */
+@keyframes qr-rise {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.console-page > * { animation: qr-rise 620ms both cubic-bezier(.22,1,.36,1); }
+.console-page > *:nth-child(2) { animation-delay: 70ms; }
+.console-page > *:nth-child(3) { animation-delay: 140ms; }
+.console-page > *:nth-child(4) { animation-delay: 210ms; }
+.console-page > *:nth-child(5) { animation-delay: 280ms; }
+.console-page > *:nth-child(n+6) { animation-delay: 340ms; }
+
+/* Provider catalog (default post-login view): rounded, raised cards that
+   lift and glow on hover, plus a depth treatment for the table + filters. */
+.console-shell .provider-listing,
+.console-shell .provider-table,
+.console-shell .ranking-list {
+  border-radius: 11px !important;
+  background:
+    linear-gradient(180deg, rgba(24,169,107,.03), transparent 90px),
+    linear-gradient(180deg, #0a1310, #05100b) !important;
+  box-shadow: 0 0 0 1px rgba(24,169,107,.04), 0 20px 50px -38px rgba(0,0,0,.95) !important;
+  transition: transform 260ms cubic-bezier(.22,1,.36,1), box-shadow 260ms ease, border-color 260ms ease;
+}
+.console-shell .provider-listing:hover {
+  transform: translateY(-3px);
+  border-color: rgba(24,169,107,.4) !important;
+  box-shadow: 0 0 0 1px rgba(24,169,107,.16), 0 34px 70px -34px rgba(0,0,0,1), 0 0 36px -14px rgba(24,169,107,.32) !important;
+}
+.console-shell .provider-mark { border-radius: 8px !important; box-shadow: 0 0 0 1px rgba(24,169,107,.2), 0 4px 12px -5px rgba(24,169,107,.4) !important; }
+.console-shell .catalog-live i { box-shadow: 0 0 8px currentColor !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .console-shell .console-panel,
+  .console-shell .console-primary,
+  .console-shell .console-secondary,
+  .console-shell .console-danger,
+  .console-shell .provider-listing { transition: none !important; }
+  .console-page > *,
+  .console-shell .qr-eyebrow > span,
+  .console-shell .router-core { animation: none !important; }
+}
