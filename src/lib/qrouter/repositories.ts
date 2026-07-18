@@ -21,6 +21,9 @@ export interface ProjectSettings {
   target: string;
   routingMode: "balanced" | "cost" | "speed" | "quality";
   optimizationLevel: number;
+  failover: boolean;
+  maxAttempts: number;
+  timeoutSeconds: number;
 }
 
 export interface QRouterProject {

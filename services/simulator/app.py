@@ -3,11 +3,14 @@ from __future__ import annotations
 import os
 import base64
 import io
+import json
 import secrets
+import sqlite3
 import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from typing import Literal, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Response
@@ -23,7 +26,74 @@ MAX_QUBITS = int(os.environ.get("MAX_QUBITS", "30"))
 MAX_SHOTS = int(os.environ.get("MAX_SHOTS", "1000000"))
 EXECUTOR = ThreadPoolExecutor(max_workers=int(os.environ.get("WORKERS", "2")))
 LOCK = threading.Lock()
-JOBS: dict[str, dict] = {}
+JOB_DB_PATH = os.environ.get("JOB_DB_PATH", "/tmp/qrouter-simulator/jobs.sqlite3")
+
+
+def database():
+    os.makedirs(os.path.dirname(JOB_DB_PATH) or ".", exist_ok=True)
+    connection = sqlite3.connect(JOB_DB_PATH, timeout=30)
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
+def initialize_database():
+    with database() as connection:
+        connection.execute("""
+            create table if not exists jobs (
+                id text primary key,
+                idempotency_key text unique,
+                status text not null,
+                qasm text not null,
+                shots integer not null,
+                result text,
+                error text,
+                created_at real not null,
+                updated_at real not null
+            )
+        """)
+
+
+def deserialize_job(row):
+    if row is None:
+        return None
+    job = {"id": row["id"], "status": row["status"], "createdAt": row["created_at"]}
+    if row["result"]:
+        job["result"] = json.loads(row["result"])
+    if row["error"]:
+        job["error"] = row["error"]
+    return job
+
+
+def get_stored_job(job_id: str):
+    with database() as connection:
+        return deserialize_job(connection.execute("select * from jobs where id=?", (job_id,)).fetchone())
+
+
+def get_idempotent_job(idempotency_key: str):
+    with database() as connection:
+        return deserialize_job(connection.execute("select * from jobs where idempotency_key=?", (idempotency_key,)).fetchone())
+
+
+def insert_stored_job(job_id: str, payload, idempotency_key: Optional[str] = None):
+    now = time.time()
+    with database() as connection:
+        connection.execute(
+            "insert into jobs(id,idempotency_key,status,qasm,shots,created_at,updated_at) values(?,?,?,?,?,?,?)",
+            (job_id, idempotency_key, "submitted", payload.qasm, payload.shots, now, now),
+        )
+    return get_stored_job(job_id)
+
+
+def update_stored_job(job_id: str, *, status: str, result=None, error=None, unless_cancelled=False):
+    clause = " and status!='cancelled'" if unless_cancelled else ""
+    with database() as connection:
+        connection.execute(
+            f"update jobs set status=?,result=?,error=?,updated_at=? where id=?{clause}",
+            (status, json.dumps(result) if result is not None else None, error, time.time(), job_id),
+        )
+
+
+initialize_database()
 
 
 class JobInput(BaseModel):
@@ -208,9 +278,10 @@ def serialize_runtime_result(result):
 def execute(job_id: str, payload: JobInput):
     started = time.perf_counter()
     with LOCK:
-        if JOBS[job_id]["status"] == "cancelled":
+        job = get_stored_job(job_id)
+        if not job or job["status"] == "cancelled":
             return
-        JOBS[job_id]["status"] = "processing"
+        update_stored_job(job_id, status="processing")
     try:
         circuit = qasm2.loads(payload.qasm)
         if circuit.num_qubits > MAX_QUBITS:
@@ -220,17 +291,30 @@ def execute(job_id: str, payload: JobInput):
         result = simulator.run(compiled, shots=payload.shots).result()
         counts = {str(state): int(count) for state, count in result.get_counts(compiled).items()}
         probabilities = {state: count / payload.shots for state, count in counts.items()}
-        update = {"status": "completed", "result": {"counts": counts, "probabilities": probabilities,
-                  "shots": payload.shots, "backend": "qci-aer-gpu", "executionMs": round((time.perf_counter() - started) * 1000, 2),
-                  "metadata": {"engine": "Qiskit Aer", "device": device, "qubits": circuit.num_qubits, "depth": compiled.depth()}}}
+        status = "completed"
+        result_payload = {"counts": counts, "probabilities": probabilities,
+                          "shots": payload.shots, "backend": "qci-aer-gpu", "executionMs": round((time.perf_counter() - started) * 1000, 2),
+                          "metadata": {"engine": "Qiskit Aer", "device": device, "qubits": circuit.num_qubits, "depth": compiled.depth()}}
+        error_message = None
     except Exception as error:
-        update = {"status": "failed", "error": str(error)}
+        status = "failed"
+        result_payload = None
+        error_message = str(error)
     with LOCK:
-        if JOBS.get(job_id, {}).get("status") != "cancelled":
-            JOBS[job_id].update(update)
+        update_stored_job(job_id, status=status, result=result_payload, error=error_message, unless_cancelled=True)
 
 
-app = FastAPI(title="QRouter GPU Simulator", version="1.0.0")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    with database() as connection:
+        rows = connection.execute("select id,qasm,shots from jobs where status in ('submitted','processing')").fetchall()
+        connection.execute("update jobs set status='submitted',updated_at=? where status='processing'", (time.time(),))
+    for row in rows:
+        EXECUTOR.submit(execute, row["id"], JobInput(qasm=row["qasm"], shots=row["shots"]))
+    yield
+
+
+app = FastAPI(title="QRouter GPU Simulator", version="1.0.0", lifespan=lifespan)
 
 
 @app.get("/health")
@@ -287,30 +371,33 @@ def cancel_ibm_job(job_id: str):
 
 
 @app.post("/v1/jobs", dependencies=[Depends(authorize)], status_code=202)
-def create_job(payload: JobInput):
-    job_id = str(uuid.uuid4())
+def create_job(payload: JobInput, idempotency_key: Optional[str] = Header(default=None, alias="Idempotency-Key")):
     with LOCK:
-        JOBS[job_id] = {"id": job_id, "status": "submitted", "createdAt": time.time()}
+        if idempotency_key:
+            existing = get_idempotent_job(idempotency_key)
+            if existing:
+                return existing
+        job_id = str(uuid.uuid4())
+        job = insert_stored_job(job_id, payload, idempotency_key)
     EXECUTOR.submit(execute, job_id, payload)
-    return JOBS[job_id]
+    return job
 
 
 @app.get("/v1/jobs/{job_id}", dependencies=[Depends(authorize)])
 def get_job(job_id: str):
-    with LOCK:
-        job = JOBS.get(job_id)
-        if not job:
-            raise HTTPException(status_code=404, detail="Job not found")
-        return dict(job)
+    job = get_stored_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
 
 
 @app.delete("/v1/jobs/{job_id}", dependencies=[Depends(authorize)], status_code=204)
 def cancel_job(job_id: str):
     with LOCK:
-        job = JOBS.get(job_id)
+        job = get_stored_job(job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
         if job["status"] not in {"submitted", "queued"}:
             raise HTTPException(status_code=409, detail="Job has already started")
-        job["status"] = "cancelled"
+        update_stored_job(job_id, status="cancelled")
     return Response(status_code=204)

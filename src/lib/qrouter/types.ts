@@ -9,6 +9,7 @@ export type JobStatus =
   | "awaiting_payment"
   | "funds_reserved"
   | "queued"
+  | "dispatching"
   | "submitted"
   | "processing"
   | "completed"
@@ -50,6 +51,7 @@ export interface Backend {
   description: string;
   region?: string;
   available: boolean;
+  health?: { reachable: boolean; consecutiveFailures: number; detail: string; checkedAt: string };
 }
 
 export interface RoutingConstraints {

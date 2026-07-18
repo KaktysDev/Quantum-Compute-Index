@@ -8,6 +8,9 @@ export const createJobSchema = z.object({
   target: z.string().default("auto"),
   routing_mode: z.enum(["balanced", "cost", "speed", "quality"]).default("balanced"),
   optimization_level: z.number().int().min(0).max(3).default(2),
+  failover: z.boolean().default(true),
+  max_attempts: z.number().int().min(1).max(5).default(3),
+  timeout_seconds: z.number().int().min(60).max(604_800).default(7_200),
   constraints: z.object({
     maxCost: z.number().positive().optional(),
     maxQueueSeconds: z.number().int().nonnegative().optional(),

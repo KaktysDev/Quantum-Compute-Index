@@ -34,14 +34,14 @@ export const BACKENDS: Backend[] = [
     available: Boolean(process.env.IBM_QUANTUM_TOKEN),
   },
   {
-    id: "ionq-aria-1", provider: "aws-braket", displayName: "IonQ Aria 1", kind: "qpu",
+    id: "ionq-aria-1", provider: "ionq", displayName: "IonQ Aria 1", kind: "qpu",
     backendName: "aria-1",
     status: "online", qubits: 25, nativeGates: same(["gpi", "gpi2", "ms", "measure"]),
     basisGates: same(["x", "y", "z", "h", "s", "si", "t", "ti", "v", "vi", "rx", "ry", "rz", "cnot", "measure"]),
     connectivity: "all-to-all",
     queueSeconds: 1200, fidelity: 0.996, reliability: 0.96, pricePerShot: 0.00022,
     pricePerTask: 0.3, description: "High-fidelity trapped-ion QPU", region: "us-east-1",
-    available: Boolean(process.env.AWS_ACCESS_KEY_ID && process.env.BRAKET_OUTPUT_BUCKET),
+    available: Boolean(process.env.IONQ_API_KEY || (process.env.AWS_ACCESS_KEY_ID && process.env.BRAKET_OUTPUT_BUCKET)),
   },
   {
     id: "iqm-garnet", provider: "aws-braket", displayName: "IQM Garnet", kind: "qpu",

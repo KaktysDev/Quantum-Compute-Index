@@ -306,6 +306,16 @@ alter table public.backends enable row level security;
 drop policy if exists "backends: public read" on public.backends;
 create policy "backends: public read" on public.backends for select to anon, authenticated using (true);
 
+create table if not exists public.provider_health (
+  backend_id text primary key references public.backends(id) on delete cascade,
+  configured boolean not null default false,
+  reachable boolean not null default false,
+  consecutive_failures integer not null default 0 check (consecutive_failures >= 0),
+  detail text not null default '',
+  checked_at timestamptz not null default now()
+);
+alter table public.provider_health enable row level security;
+
 create table if not exists public.jobs (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -334,8 +344,20 @@ create table if not exists public.jobs (
   completed_at timestamptz,
   unique(organization_id, idempotency_key)
 );
+alter table public.jobs add column if not exists project_id uuid references public.projects(id) on delete set null;
+alter table public.jobs add column if not exists failover_enabled boolean not null default true;
+alter table public.jobs add column if not exists max_attempts smallint not null default 3 check(max_attempts between 1 and 5);
+alter table public.jobs add column if not exists next_attempt_at timestamptz not null default now();
+alter table public.jobs add column if not exists lease_expires_at timestamptz;
+alter table public.jobs add column if not exists execution_timeout_seconds integer not null default 7200 check(execution_timeout_seconds between 60 and 604800);
+alter table public.jobs add column if not exists execution_deadline_at timestamptz;
+alter table public.jobs add column if not exists timeout_failover_pending boolean not null default false;
+alter table public.jobs add column if not exists request_id text;
+alter table public.jobs drop constraint if exists jobs_status_check;
+alter table public.jobs add constraint jobs_status_check check (status in ('created','analyzing','quoted','awaiting_payment','funds_reserved','queued','dispatching','submitted','processing','completed','failed','cancellation_requested','cancelled'));
 create index if not exists jobs_org_created_idx on public.jobs(organization_id, created_at desc);
 create index if not exists jobs_status_idx on public.jobs(status, updated_at);
+create index if not exists jobs_dispatch_idx on public.jobs(status, next_attempt_at, lease_expires_at);
 alter table public.jobs enable row level security;
 drop policy if exists "jobs: member read" on public.jobs;
 create policy "jobs: member read" on public.jobs for select using (public.is_org_member(organization_id));
@@ -394,6 +416,113 @@ create index if not exists job_events_job_idx on public.job_events(job_id, id);
 alter table public.job_events enable row level security;
 drop policy if exists "events: member read" on public.job_events;
 create policy "events: member read" on public.job_events for select using (exists(select 1 from public.jobs j where j.id = job_id and public.is_org_member(j.organization_id)));
+
+create or replace function public.claim_qrouter_jobs(p_limit integer default 25, p_lease_seconds integer default 120)
+returns setof public.jobs language sql security definer set search_path=public as $$
+  with candidates as (
+    select id from public.jobs
+    where (status = 'queued' and next_attempt_at <= now())
+       or (status = 'dispatching' and lease_expires_at <= now())
+    order by next_attempt_at, created_at
+    for update skip locked
+    limit greatest(1, least(p_limit, 100))
+  )
+  update public.jobs as job
+  set status = 'dispatching', lease_expires_at = now() + make_interval(secs => greatest(30, p_lease_seconds)), updated_at = now()
+  from candidates where job.id = candidates.id
+  returning job.*
+$$;
+revoke all on function public.claim_qrouter_jobs(integer, integer) from public;
+grant execute on function public.claim_qrouter_jobs(integer, integer) to service_role;
+
+create or replace function public.claim_qrouter_poll_jobs(p_limit integer default 25, p_lease_seconds integer default 120)
+returns setof public.jobs language sql security definer set search_path=public as $$
+  with candidates as (
+    select id from public.jobs
+    where status in ('submitted','processing','cancellation_requested')
+      and provider_job_id is not null
+      and (lease_expires_at is null or lease_expires_at <= now())
+    order by updated_at, created_at
+    for update skip locked
+    limit greatest(1, least(p_limit, 100))
+  )
+  update public.jobs as job
+  set lease_expires_at = now() + make_interval(secs => greatest(30, p_lease_seconds))
+  from candidates where job.id = candidates.id
+  returning job.*
+$$;
+revoke all on function public.claim_qrouter_poll_jobs(integer, integer) from public;
+grant execute on function public.claim_qrouter_poll_jobs(integer, integer) to service_role;
+
+create or replace function public.finalize_qrouter_job(
+  p_job_id uuid,
+  p_status text,
+  p_result jsonb default null,
+  p_error text default null,
+  p_actual_provider_cost numeric default null
+) returns boolean language plpgsql security definer set search_path=public as $$
+declare
+  current_job public.jobs%rowtype;
+  job_quote public.quotes%rowtype;
+  actual_total numeric;
+  balance numeric;
+begin
+  if p_status not in ('completed','failed','cancelled') then raise exception 'invalid terminal status'; end if;
+  select * into current_job from public.jobs where id=p_job_id for update;
+  if not found then raise exception 'job not found'; end if;
+  if current_job.status in ('completed','failed','cancelled') then return false; end if;
+
+  select * into job_quote from public.quotes where id=current_job.quote_id;
+  update public.jobs set
+    status=p_status,
+    result=case when p_status='completed' then p_result else null end,
+    error=case when p_error is null then null else jsonb_build_object('message',p_error) end,
+    lease_expires_at=null,
+    execution_deadline_at=null,
+    timeout_failover_pending=false,
+    updated_at=now(),
+    completed_at=now()
+  where id=p_job_id;
+
+  insert into public.webhook_deliveries(endpoint_id,job_id,event_type,payload)
+  select endpoint.id,p_job_id,'job.'||p_status,jsonb_build_object(
+    'id','evt_'||replace(gen_random_uuid()::text,'-',''),
+    'type','job.'||p_status,
+    'created',now(),
+    'data',jsonb_build_object('object',jsonb_build_object(
+      'id',p_job_id,'organization_id',current_job.organization_id,'status',p_status,
+      'selected_backend_id',current_job.selected_backend_id,
+      'result',case when p_status='completed' then p_result else null end,
+      'error',case when p_error is null then null else jsonb_build_object('message',p_error) end,
+      'created_at',current_job.created_at,'completed_at',now()
+    ))
+  ) from public.webhook_endpoints endpoint
+  where endpoint.organization_id=current_job.organization_id and endpoint.enabled=true;
+
+  if job_quote.id is not null and current_job.status in ('funds_reserved','queued','dispatching','submitted','processing','cancellation_requested') then
+    if p_status='completed' then
+      actual_total=case when p_actual_provider_cost is null then job_quote.total else least(job_quote.total,greatest(0,job_quote.total-job_quote.provider_cost+p_actual_provider_cost)) end;
+      update public.credit_accounts set
+        available=available+greatest(job_quote.total-actual_total,0),
+        reserved=greatest(reserved-job_quote.total,0),
+        updated_at=now()
+      where organization_id=current_job.organization_id returning available into balance;
+      insert into public.ledger_entries(organization_id,job_id,type,amount,balance_after,metadata)
+      values(current_job.organization_id,p_job_id,'charge',-actual_total,balance,jsonb_build_object('reserved',job_quote.total));
+    else
+      update public.credit_accounts set
+        available=available+job_quote.total,
+        reserved=greatest(reserved-job_quote.total,0),
+        updated_at=now()
+      where organization_id=current_job.organization_id returning available into balance;
+      insert into public.ledger_entries(organization_id,job_id,type,amount,balance_after)
+      values(current_job.organization_id,p_job_id,'release',job_quote.total,balance);
+    end if;
+  end if;
+  return true;
+end$$;
+revoke all on function public.finalize_qrouter_job(uuid,text,jsonb,text,numeric) from public;
+grant execute on function public.finalize_qrouter_job(uuid,text,jsonb,text,numeric) to service_role;
 
 create table if not exists public.credit_accounts (
   organization_id uuid primary key references public.organizations(id) on delete cascade,
@@ -478,13 +607,49 @@ create table if not exists public.webhook_endpoints (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
   url text not null,
-  secret_hash text not null,
+  signing_secret_encrypted text not null,
   enabled boolean not null default true,
   created_at timestamptz not null default now()
 );
 alter table public.webhook_endpoints enable row level security;
 drop policy if exists "webhooks: admin all" on public.webhook_endpoints;
 create policy "webhooks: admin all" on public.webhook_endpoints for all using (public.is_org_admin(organization_id)) with check (public.is_org_admin(organization_id));
+
+create table if not exists public.webhook_deliveries (
+  id uuid primary key default gen_random_uuid(),
+  endpoint_id uuid not null references public.webhook_endpoints(id) on delete cascade,
+  job_id uuid references public.jobs(id) on delete cascade,
+  event_type text not null,
+  payload jsonb not null default '{}'::jsonb,
+  attempt integer not null default 0,
+  response_status integer,
+  error text,
+  next_attempt_at timestamptz not null default now(),
+  lease_expires_at timestamptz,
+  delivered_at timestamptz,
+  failed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists webhook_delivery_queue_idx on public.webhook_deliveries(delivered_at,failed_at,next_attempt_at);
+alter table public.webhook_deliveries enable row level security;
+drop policy if exists "deliveries: member read" on public.webhook_deliveries;
+create policy "deliveries: member read" on public.webhook_deliveries for select using (exists(select 1 from public.webhook_endpoints e where e.id=endpoint_id and public.is_org_member(e.organization_id)));
+
+create or replace function public.claim_webhook_deliveries(p_limit integer default 25,p_lease_seconds integer default 60)
+returns setof public.webhook_deliveries language sql security definer set search_path=public as $$
+  with candidates as (
+    select id from public.webhook_deliveries
+    where delivered_at is null and failed_at is null and next_attempt_at<=now()
+      and (lease_expires_at is null or lease_expires_at<=now())
+    order by next_attempt_at,created_at for update skip locked
+    limit greatest(1,least(p_limit,100))
+  )
+  update public.webhook_deliveries as delivery
+  set lease_expires_at=now()+make_interval(secs=>greatest(15,p_lease_seconds))
+  from candidates where delivery.id=candidates.id returning delivery.*
+$$;
+revoke all on function public.claim_webhook_deliveries(integer,integer) from public;
+grant execute on function public.claim_webhook_deliveries(integer,integer) to service_role;
 
 -- A new account receives a personal workspace and a small test balance.
 create or replace function public.handle_new_user()
@@ -511,13 +676,13 @@ insert into public.backends(id, provider, display_name, kind, qubits, native_gat
   ('qci-aer-gpu', 'qci', 'QCI Aer GPU', 'simulator', 30, array['id','x','y','z','h','s','sdg','t','tdg','rx','ry','rz','cx','cz','swap','measure'], 2, 1, 0.999, 0.000001, 0.002, '{"region":"ord","accelerator":"NVIDIA cuQuantum"}'),
   ('ibm-brisbane', 'ibm', 'IBM Brisbane', 'qpu', 127, array['id','rz','sx','x','ecr','measure'], 780, 0.992, 0.975, 0.00035, 0.30, '{"execution":"runtime"}'),
   ('aws-sv1', 'aws-braket', 'Amazon SV1', 'simulator', 34, array['x','y','z','h','s','t','rx','ry','rz','cnot','cz','swap'], 8, 1, 0.995, 0.000075, 0, '{"region":"us-east-1"}'),
-  ('ionq-aria-1', 'aws-braket', 'IonQ Aria 1', 'qpu', 25, array['gpi','gpi2','ms'], 1200, 0.996, 0.96, 0.00022, 0.30, '{"architecture":"trapped-ion"}'),
+  ('ionq-aria-1', 'ionq', 'IonQ Aria 1', 'qpu', 25, array['gpi','gpi2','ms'], 1200, 0.996, 0.96, 0.00022, 0.30, '{"architecture":"trapped-ion"}'),
   ('iqm-garnet', 'aws-braket', 'IQM Garnet', 'qpu', 20, array['prx','cz','measure'], 480, 0.994, 0.965, 0.00145, 0.30, '{"architecture":"superconducting"}'),
   ('xanadu-borealis', 'xanadu', 'Xanadu Borealis', 'qpu', 216, array['squeezing','displacement','beamsplitter','measure'], 1800, 0.94, 0.91, 0.002, 1.00, '{"architecture":"photonic","availability":"partner"}'),
   ('quandela-mosaiq', 'quandela', 'Quandela MosaiQ', 'qpu', 12, array['phase','beamsplitter','measure'], 960, 0.96, 0.93, 0.0015, 0.50, '{"architecture":"photonic","availability":"partner"}'),
   ('qi-starmon-5', 'quantum-inspire', 'Starmon-5', 'qpu', 5, array['x','y','z','h','rx','ry','rz','cz','measure'], 300, 0.97, 0.94, 0.0005, 0.10, '{"architecture":"superconducting"}')
 on conflict (id) do update set
-  display_name = excluded.display_name, status = excluded.status, qubits = excluded.qubits,
+  provider = excluded.provider, display_name = excluded.display_name, status = excluded.status, qubits = excluded.qubits,
   native_gates = excluded.native_gates, queue_seconds = excluded.queue_seconds,
   fidelity = excluded.fidelity, reliability = excluded.reliability,
   price_per_shot = excluded.price_per_shot, price_per_task = excluded.price_per_task,

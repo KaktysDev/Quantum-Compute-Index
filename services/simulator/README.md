@@ -7,14 +7,16 @@ container runtime:
 docker build -t registry.example.com/qrouter-simulator:latest .
 docker run --gpus all -p 8080:8080 \
   -e SIMULATOR_TOKEN="$VULTR_SIMULATOR_TOKEN" \
+  -e JOB_DB_PATH=/var/lib/qrouter/jobs.sqlite3 \
+  -v qrouter-jobs:/var/lib/qrouter \
   registry.example.com/qrouter-simulator:latest
 ```
 
 Point `VULTR_SIMULATOR_URL` at the TLS-terminated worker URL. The public health
 endpoint reports whether Aer selected GPU or CPU; all job endpoints require the
-shared bearer token. Production deployments should place at least two workers
-behind a Vultr load balancer and replace the in-memory queue with a durable queue
-before allowing instance replacement during active work.
+shared bearer token. Simulator jobs and idempotency keys are persisted in SQLite,
+and interrupted jobs resume when the worker restarts. Use a persistent volume for
+`JOB_DB_PATH`.
 
 The same image exposes `POST /v1/transpile`. QRouter sends a provider target,
 basis gates, connectivity, optimization level, and deterministic seed. For IBM,
@@ -27,7 +29,6 @@ under `/v1/providers/ibm/jobs`. The web tier sends the exact transpiled circuit
 as QPY and the worker submits it through Qiskit Runtime `SamplerV2`; IBM tokens
 never pass through the public API response.
 
-Before production, attach durable storage or a durable queue for asynchronous
-simulator jobs. Provider jobs remain durable at IBM, IonQ, or Braket, but the
-bundled simulator queue is process-local and should not be placed behind a
-multi-instance load balancer without shared job state.
+SQLite is appropriate for one worker instance. A multi-instance deployment still
+needs a shared queue/database, or sticky routing to workers with separately
+addressable job stores. Provider jobs remain durable at IBM, IonQ, or Braket.

@@ -18,6 +18,9 @@ curl https://api.qrouter.dev/api/v1/jobs \
     "shots": 1024,
     "target": "auto",
     "routing_mode": "balanced",
+    "failover": true,
+    "max_attempts": 3,
+    "timeout_seconds": 7200,
     "constraints": { "maxCost": 2.00 }
   }'
 ```
@@ -64,9 +67,36 @@ contract is published at `/openapi.json`.
 1. Apply `supabase/schema.sql` and `supabase/qrouter.sql`.
 2. Deploy `services/simulator` behind TLS and configure matching compiler/worker tokens.
 3. Configure Supabase, Stripe, artifact encryption, cron, and provider credentials from `.env.local.example`.
-4. Configure the one-minute `/api/internal/jobs` cron and Stripe webhook.
+4. Configure an external one-minute scheduler for `GET /api/internal/jobs`, an every-two-minute scheduler for `GET /api/internal/providers/health`, and the Stripe webhook.
 5. Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`.
 6. Run credentialed smoke jobs against each enabled paid provider before exposing that backend in production.
+
+`vercel.json` intentionally contains only the once-daily index refresh cron so
+the project can deploy on Vercel Hobby. The QRouter execution pollers run more
+than once per day, so host those on Vercel Pro Cron, GitHub Actions, or a small
+Vultr instance running cron. Send `Authorization: Bearer $CRON_SECRET` with each
+poller request.
+
+The execution worker atomically leases queued jobs and active provider polls.
+Failed attempts can move to the next compatible route candidate when `failover`
+is enabled, but only when that candidate stays within the accepted provider-cost
+quote. `GET /api/v1/jobs/{id}` returns both the attempt history and event trace.
+Two fresh provider-health failures open a routing circuit breaker. Execution
+deadlines cancel the active provider job before failover, provider results are
+normalized to `counts`, `probabilities`, `shots`, and `backend`, and signed
+webhooks use a durable retry outbox instead of one-shot delivery.
+
+### Optional infrastructure substitutions
+
+QRouter's routing and pricing logic stays provider-neutral. Vultr can be used as
+an implementation detail where it replaces infrastructure cleanly:
+
+- `VULTR_INFERENCE_*` powers the generic Route Advisor UI without changing
+  backend selection.
+- `VULTR_OBJECT_STORAGE_*` stores encrypted source/transpiled/result artifacts in
+  S3-compatible object storage instead of Supabase Storage.
+- `VULTR_SIMULATOR_URL` can point at the Qiskit/Aer simulator/compiler worker
+  when that service is hosted on Vultr GPU compute.
 
 The original Quantum Compute Index implementation remains the pricing oracle
 and is documented below.

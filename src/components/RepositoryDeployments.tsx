@@ -22,11 +22,12 @@ const TERMINAL_IDLE = [
   { kind: "prompt", text: "$ qrouter deploy --source git" },
   { kind: "muted", text: "waiting for a project deployment" },
 ];
+const DEFAULT_SETTINGS: ProjectSettings = { shots: 1024, target: "auto", routingMode: "balanced", optimizationLevel: 2, failover: true, maxAttempts: 3, timeoutSeconds: 7200 };
 
 export default function RepositoryDeployments({ requestedTarget }: { requestedTarget?: string }) {
   const [projects, setProjects] = useState<QRouterProject[]>([]);
   const [selectedId, setSelectedId] = useState("");
-  const [settings, setSettings] = useState<ProjectSettings>({ shots: 1024, target: "auto", routingMode: "balanced", optimizationLevel: 2 });
+  const [settings, setSettings] = useState<ProjectSettings>(DEFAULT_SETTINGS);
   const [ref, setRef] = useState("");
   const [circuitPath, setCircuitPath] = useState("");
   const [inspection, setInspection] = useState<RepositoryInspection | null>(null);
@@ -61,7 +62,7 @@ export default function RepositoryDeployments({ requestedTarget }: { requestedTa
 
   useEffect(() => {
     if (!selected) return;
-    setSettings({ ...selected.settings, target: requestedTarget || selected.settings.target });
+    setSettings({ ...DEFAULT_SETTINGS, ...selected.settings, target: requestedTarget || selected.settings.target });
     setRef(selected.production_branch);
     setCircuitPath(selected.circuit_path);
     setInspection(null);
@@ -152,6 +153,9 @@ export default function RepositoryDeployments({ requestedTarget }: { requestedTa
               <label><span>Routing</span><select value={settings.routingMode} onChange={(event) => setSettings({ ...settings, routingMode: event.target.value as ProjectSettings["routingMode"] })}><option value="balanced">balanced</option><option value="cost">cost</option><option value="speed">speed</option><option value="quality">quality</option></select></label>
               <label><span>Target</span><select value={settings.target} onChange={(event) => setSettings({ ...settings, target: event.target.value })}><option value="auto">auto</option><option value="qci-aer-gpu">QCI Aer GPU</option><option value="ibm-brisbane">IBM Brisbane</option><option value="ionq-aria-1">IonQ Aria 1</option><option value="iqm-garnet">IQM Garnet</option></select></label>
               <label><span>Optimization</span><select value={settings.optimizationLevel} onChange={(event) => setSettings({ ...settings, optimizationLevel: Number(event.target.value) })}><option value={0}>0</option><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option></select></label>
+              <label className="deployment-toggle"><span>Provider failover</span><input type="checkbox" checked={settings.failover} onChange={(event) => setSettings({ ...settings, failover: event.target.checked })} /></label>
+              <label><span>Maximum attempts</span><select value={settings.maxAttempts} disabled={!settings.failover} onChange={(event) => setSettings({ ...settings, maxAttempts: Number(event.target.value) })}><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option><option value={4}>4</option><option value={5}>5</option></select></label>
+              <label><span>Execution timeout (seconds)</span><input type="number" min={60} max={604800} value={settings.timeoutSeconds} onChange={(event) => setSettings({ ...settings, timeoutSeconds: Number(event.target.value) })} /></label>
             </div>
             <button className="console-primary deploy-command" onClick={deploy} disabled={busy || !circuitPath}>{busy ? <Loader2 className="spin" size={14} /> : <Play size={14} fill="currentColor" />} Deploy from repository</button>
             {error && <p className="form-error">{error}</p>}

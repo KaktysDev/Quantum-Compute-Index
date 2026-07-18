@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, Braces, Check, Cpu, Gauge, GitBranch, Play, Route, ServerCog, X } from "lucide-react";
+import RouteAdvisor from "@/components/RouteAdvisor";
 import { BACKENDS } from "@/lib/qrouter/catalog";
 
 const policies = [
@@ -28,5 +29,6 @@ export default function RoutingPage() {
       <section className="console-panel"><div className="panel-title"><Check size={16} /><div><h2>Hard constraints</h2><small>Applied before ranking</small></div></div><div className="constraint-list"><div><Check size={12} /><span>Qubit capacity and input compatibility</span></div><div><Check size={12} /><span>Maximum cost and queue duration</span></div><div><Check size={12} /><span>Minimum two-qubit fidelity</span></div><div><Check size={12} /><span>Provider allow and deny lists</span></div><div><X size={12} /><span>Unavailable credentials or offline target</span></div></div></section>
     </div>
     <section className="console-panel candidate-panel"><div className="panel-title"><Cpu size={16} /><div><h2>Current candidate inputs</h2><small>Live router catalog</small></div><Link href="/dashboard/playground/network">Full network <ArrowRight size={12} /></Link></div><div className="candidate-head"><span>Target</span><span>Kind</span><span>Queue</span><span>Fidelity</span><span>Reliability</span><span>State</span></div>{BACKENDS.slice(0, 6).map((backend) => <div className="candidate-row" key={backend.id}><span><b>{backend.displayName}</b><small>{backend.id}</small></span><span>{backend.kind}</span><span>{backend.queueSeconds}s</span><span>{(backend.fidelity * 100).toFixed(2)}%</span><span>{(backend.reliability * 100).toFixed(2)}%</span><span className={backend.available ? "terminal-ok" : "terminal-muted"}>{backend.available ? "eligible" : "credential required"}</span></div>)}</section>
+    <RouteAdvisor targets={BACKENDS.map((backend) => ({ id: backend.id, displayName: backend.displayName }))} />
   </div>;
 }

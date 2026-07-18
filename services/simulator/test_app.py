@@ -4,7 +4,7 @@ import unittest
 
 from qiskit import qpy
 
-from app import JOBS, JobInput, TranspileInput, TranspileTarget, compile_circuit, execute
+from app import JobInput, TranspileInput, TranspileTarget, compile_circuit, create_job, execute, get_stored_job, insert_stored_job
 
 
 BELL = '''OPENQASM 2.0;
@@ -19,11 +19,22 @@ measure q -> c;'''
 class CompilerTest(unittest.TestCase):
     def test_executes_bell_circuit_on_an_available_aer_device(self):
         job_id = "test-bell"
-        JOBS[job_id] = {"id": job_id, "status": "submitted"}
-        execute(job_id, JobInput(qasm=BELL, shots=128))
-        self.assertEqual(JOBS[job_id]["status"], "completed")
-        self.assertEqual(sum(JOBS[job_id]["result"]["counts"].values()), 128)
-        self.assertTrue(set(JOBS[job_id]["result"]["counts"]).issubset({"00", "11"}))
+        payload = JobInput(qasm=BELL, shots=128)
+        try:
+            insert_stored_job(job_id, payload)
+        except Exception:
+            pass
+        execute(job_id, payload)
+        job = get_stored_job(job_id)
+        self.assertEqual(job["status"], "completed")
+        self.assertEqual(sum(job["result"]["counts"].values()), 128)
+        self.assertTrue(set(job["result"]["counts"]).issubset({"00", "11"}))
+
+    def test_reuses_a_persisted_job_for_the_same_idempotency_key(self):
+        payload = JobInput(qasm=BELL, shots=16)
+        first = create_job(payload, "simulator-idempotency-test")
+        second = create_job(payload, "simulator-idempotency-test")
+        self.assertEqual(first["id"], second["id"])
 
     def test_compiles_to_coupling_map_and_round_trips_qpy(self):
         result = compile_circuit(TranspileInput(

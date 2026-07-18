@@ -11,9 +11,9 @@ const stages = [
 ];
 
 const snippets = {
-  Python: `from qrouter import QRouter\n\nclient = QRouter(api_key=os.environ["QROUTER_API_KEY"])\njob = client.jobs.create(\n    circuit=open("bell.qasm").read(),\n    routing={"policy": "balanced", "failover": True},\n    shots=1024,\n)\nresult = job.wait()\nprint(result.counts)`,
-  TypeScript: `const client = new QRouter({ apiKey: process.env.QROUTER_API_KEY });\n\nconst job = await client.jobs.create({\n  circuit: await readFile("bell.qasm", "utf8"),\n  routing: { policy: "balanced", failover: true },\n  shots: 1024,\n});\nconst result = await job.wait();\nconsole.log(result.counts);`,
-  cURL: `curl -X POST https://api.qrouter.dev/api/v1/jobs \\\n  -H "Authorization: Bearer $QROUTER_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{"circuit":"OPENQASM 3;…","routing":{"policy":"balanced","failover":false},"shots":1024}'`,
+  Python: `from qrouter import QRouter\n\nclient = QRouter(os.environ["QROUTER_API_KEY"])\njob = client.create_job(\n    open("bell.qasm").read(),\n    routing_mode="balanced",\n    failover=True,\n    shots=1024,\n)\nresult = client.wait(job["id"])\nprint(result["result"]["counts"])`,
+  TypeScript: `const client = new QRouter(process.env.QROUTER_API_KEY!);\n\nconst job = await client.jobs.create({\n  circuit: await readFile("bell.qasm", "utf8"),\n  routing_mode: "balanced",\n  failover: true,\n  shots: 1024,\n});\nconst result = await client.jobs.wait(job.id);\nconsole.log(result.result);`,
+  cURL: `curl -X POST https://api.qrouter.dev/api/v1/jobs \\\n  -H "Authorization: Bearer $QROUTER_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{"circuit":"OPENQASM 3;…","routing_mode":"balanced","failover":true,"shots":1024}'`,
 };
 
 export function RoutingProcess() {
@@ -29,7 +29,7 @@ export function ApiWorkbench() {
   const [language, setLanguage] = useState<keyof typeof snippets>("Python");
   return <div className="qr-api-workbench">
     <div className="qr-code-pane"><div className="qr-code-tabs" role="tablist" aria-label="API language">{Object.keys(snippets).map((item) => <button key={item} role="tab" aria-selected={language === item} className={language === item ? "active" : ""} onClick={() => setLanguage(item as keyof typeof snippets)}>{item}</button>)}</div><pre><code>{snippets[language]}</code></pre></div>
-    <div className="qr-response-pane"><header><span>NORMALIZED RESPONSE</span><b>200 OK</b></header><pre><code>{`{\n  "id": "job_sample_92ac7f",\n  "status": "completed",\n  "backend": "qci-aer-gpu",\n  "routing": {\n    "policy": "balanced",\n    "score": 0.96,\n    "failover_ready": false\n  },\n  "result": {\n    "shots": 1024,\n    "counts": { "00": 507, "11": 517 }\n  }\n}`}</code></pre></div>
-    <footer><span>TRANSPILE <b>✓</b></span><span>ROUTE <b>✓</b></span><span>FAILOVER IN DEVELOPMENT</span><span>NORMALIZED RESULT <b>✓</b></span></footer>
+    <div className="qr-response-pane"><header><span>NORMALIZED RESPONSE</span><b>200 OK</b></header><pre><code>{`{\n  "id": "job_sample_92ac7f",\n  "status": "completed",\n  "backend": "qci-aer-gpu",\n  "routing": {\n    "policy": "balanced",\n    "score": 0.96,\n    "failover_ready": true\n  },\n  "result": {\n    "shots": 1024,\n    "counts": { "00": 507, "11": 517 }\n  }\n}`}</code></pre></div>
+    <footer><span>TRANSPILE <b>✓</b></span><span>ROUTE <b>✓</b></span><span>FAILOVER <b>✓</b></span><span>NORMALIZED RESULT <b>✓</b></span></footer>
   </div>;
 }

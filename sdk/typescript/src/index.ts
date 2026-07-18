@@ -9,6 +9,9 @@ export interface CreateJob {
   target?: string;
   routing_mode?: RoutingMode;
   optimization_level?: 0 | 1 | 2 | 3;
+  failover?: boolean;
+  max_attempts?: 1 | 2 | 3 | 4 | 5;
+  timeout_seconds?: number;
   constraints?: Record<string, unknown>;
   name?: string;
 }

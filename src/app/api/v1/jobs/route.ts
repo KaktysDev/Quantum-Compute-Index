@@ -3,12 +3,14 @@ import { NextResponse } from "next/server";
 import type { QpuComponent } from "@/lib/qci/types";
 import { getLatestSnapshot } from "@/lib/qci/store";
 import { analyzeCircuit } from "@/lib/qrouter/analyze";
+import { storeArtifact } from "@/lib/qrouter/artifacts";
 import { resolvePrincipal } from "@/lib/qrouter/auth";
 import { withQciSnapshot } from "@/lib/qrouter/catalog";
 import { demoJobs, type StoredJob } from "@/lib/qrouter/demo-store";
 import { submitToProvider } from "@/lib/qrouter/execution";
 import { apiError } from "@/lib/qrouter/http";
 import { prepareExecution } from "@/lib/qrouter/pipeline";
+import { applyProviderHealth, loadPersistedBackendHealth } from "@/lib/qrouter/providerHealth";
 import { publicTranspilation } from "@/lib/qrouter/transpiler";
 import { createJobSchema } from "@/lib/qrouter/validation";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -23,7 +25,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ object: "list", data });
     }
     const admin = createAdminClient();
-    const { data, error } = await admin.from("jobs").select("id,project_id,name,input_format,shots,target,routing_mode,status,selected_backend_id,analysis,route_decision,result,error,created_at,updated_at,completed_at").eq("organization_id", principal.organizationId).order("created_at", { ascending: false }).limit(100);
+    const { data, error } = await admin.from("jobs").select("id,project_id,request_id,name,input_format,shots,target,routing_mode,status,selected_backend_id,failover_enabled,max_attempts,execution_deadline_at,analysis,route_decision,result,error,created_at,updated_at,completed_at").eq("organization_id", principal.organizationId).order("created_at", { ascending: false }).limit(100);
     if (error) throw error;
     return NextResponse.json({ object: "list", data });
   } catch (error) {
@@ -57,8 +59,9 @@ export async function POST(request: Request) {
         components: (data?.components ?? []) as QpuComponent[],
       };
     }
+    const backendHealth = principal.demo ? [] : await loadPersistedBackendHealth();
     const prepared = await prepareExecution({
-      backends: withQciSnapshot(snapshot.components),
+      backends: applyProviderHealth(withQciSnapshot(snapshot.components), backendHealth),
       analysis: originalAnalysis,
       shots: input.shots,
       target: input.target,
@@ -71,6 +74,7 @@ export async function POST(request: Request) {
     const { decision, quote, executionAnalysis } = prepared;
     const analysis = { ...originalAnalysis, transpilation: publicTranspilation(prepared.transpilation) };
     const idempotencyKey = request.headers.get("idempotency-key")?.trim() || null;
+    const requestId = request.headers.get("x-request-id")?.trim() || randomUUID();
     const now = new Date().toISOString();
     const jobId = randomUUID();
 
@@ -109,11 +113,22 @@ export async function POST(request: Request) {
     const { error: jobError } = await admin.from("jobs").insert({
       id: jobId, organization_id: principal.organizationId, user_id: principal.userId,
       api_key_id: principal.apiKeyId, idempotency_key: idempotencyKey, name: input.name,
+      request_id: requestId,
       input_format: input.format, source: input.circuit, source_hash: sourceHash, shots: input.shots,
       target: input.target, routing_mode: input.routing_mode, constraints: input.constraints,
       analysis, route_decision: decision, selected_backend_id: decision.selected.id, status: "quoted",
+      failover_enabled: input.failover, max_attempts: input.max_attempts, execution_timeout_seconds: input.timeout_seconds, next_attempt_at: now,
     });
     if (jobError) throw jobError;
+    await Promise.all([
+      storeArtifact({ jobId, organizationId: principal.organizationId, kind: "source", content: input.circuit }),
+      storeArtifact({
+        jobId,
+        organizationId: principal.organizationId,
+        kind: "transpiled",
+        content: prepared.transpilation.artifactQasm ?? prepared.transpilation.qasm,
+      }),
+    ]);
     const { data: quoteRow, error: quoteError } = await admin.from("quotes").insert({
       job_id: jobId, organization_id: principal.organizationId, provider_cost: quote.providerCost,
       transpiler_fee: quote.transpilerFee, platform_fee: quote.platformFee, total: quote.total,
@@ -127,22 +142,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: { type: "insufficient_credits", message: "Add credits before running this task.", quote, job_id: jobId } }, { status: 402 });
     }
     await admin.from("job_events").insert({ job_id: jobId, type: "credits.reserved", from_status: "quoted", to_status: "funds_reserved", payload: { amount: quote.total } });
-    try {
-      const submission = await submitToProvider(decision.selected.id, executionAnalysis, input.shots, jobId);
-      const status = submission.status === "completed" ? "completed" : "submitted";
-      await admin.from("jobs").update({ status, provider_job_id: submission.providerJobId, result: submission.result ?? null, started_at: now, completed_at: status === "completed" ? new Date().toISOString() : null, updated_at: new Date().toISOString() }).eq("id", jobId);
-      await admin.from("job_attempts").insert({ job_id: jobId, attempt: 1, backend_id: decision.selected.id, provider_job_id: submission.providerJobId, status, request: { shots: input.shots }, response: submission.result ?? {} , finished_at: status === "completed" ? new Date().toISOString() : null });
-      await admin.from("job_events").insert({ job_id: jobId, type: `job.${status}`, from_status: "funds_reserved", to_status: status, payload: { providerJobId: submission.providerJobId } });
-      if (status === "completed") await admin.rpc("settle_job_credits", { p_job_id: jobId, p_reserved: quote.total, p_actual: quote.total });
-    } catch (executionError) {
-      const message = executionError instanceof Error ? executionError.message : "Provider submission failed.";
-      await admin.from("jobs").update({ status: "failed", error: { message }, completed_at: new Date().toISOString() }).eq("id", jobId);
-      await admin.rpc("release_job_credits", { p_job_id: jobId, p_amount: quote.total });
-      throw executionError;
-    }
+    await admin.from("jobs").update({ status: "queued", next_attempt_at: now, updated_at: new Date().toISOString() }).eq("id", jobId);
+    await admin.from("job_events").insert({ job_id: jobId, type: "job.queued", from_status: "funds_reserved", to_status: "queued", payload: { failover: input.failover, maxAttempts: input.max_attempts, requestId } });
     const { data: created, error } = await admin.from("jobs").select("*").eq("id", jobId).single();
     if (error) throw error;
-    return NextResponse.json({ ...created, quote }, { status: 201 });
+    return NextResponse.json({ ...created, quote }, { status: 202 });
   } catch (error) {
     return apiError(error);
   }

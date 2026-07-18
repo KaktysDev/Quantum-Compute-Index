@@ -5,7 +5,7 @@ import { resolvePrincipal } from "@/lib/qrouter/auth";
 import { demoJobs, demoProjects } from "@/lib/qrouter/demo-store";
 import { apiError } from "@/lib/qrouter/http";
 import { getGithubAccessToken } from "@/lib/qrouter/github";
-import { normalizeCircuitPath, normalizeRef, readCircuitFromRepository, type QRouterProject } from "@/lib/qrouter/repositories";
+import { normalizeCircuitPath, normalizeRef, readCircuitFromRepository, type ProjectSettings, type QRouterProject } from "@/lib/qrouter/repositories";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const schema = z.object({
@@ -18,6 +18,9 @@ const schema = z.object({
     target: z.string(),
     routingMode: z.enum(["balanced", "cost", "speed", "quality"]),
     optimizationLevel: z.number().int().min(0).max(3),
+    failover: z.boolean().optional(),
+    maxAttempts: z.number().int().min(1).max(5).optional(),
+    timeoutSeconds: z.number().int().min(60).max(604_800).optional(),
   }).optional(),
 });
 
@@ -61,7 +64,7 @@ export async function POST(request: Request) {
 
     const ref = normalizeRef(parsed.data.ref || project.production_branch);
     const circuitPath = normalizeCircuitPath(parsed.data.circuit_path || project.circuit_path);
-    const settings = parsed.data.settings ?? project.settings;
+    const settings: ProjectSettings = Object.assign({ failover: true, maxAttempts: 3, timeoutSeconds: 7200 }, project.settings, parsed.data.settings ?? {});
     const source = await readCircuitFromRepository(project.repository, ref, circuitPath, await getGithubAccessToken(principal));
     const headers = new Headers(request.headers);
     headers.set("content-type", "application/json");
@@ -77,6 +80,9 @@ export async function POST(request: Request) {
         target: settings.target,
         routing_mode: settings.routingMode,
         optimization_level: settings.optimizationLevel,
+        failover: settings.failover,
+        max_attempts: settings.maxAttempts,
+        timeout_seconds: settings.timeoutSeconds,
       }),
     }));
     const job = await jobResponse.json() as Record<string, unknown>;

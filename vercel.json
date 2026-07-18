@@ -4,14 +4,6 @@
     {
       "path": "/api/cron/refresh",
       "schedule": "30 13 * * *"
-    },
-    {
-      "path": "/api/internal/jobs",
-      "schedule": "35 13 * * *"
-    },
-    {
-      "path": "/api/internal/providers/health",
-      "schedule": "40 13 * * *"
     }
   ]
 }

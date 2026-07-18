@@ -41,7 +41,8 @@ class QRouter:
 
     @staticmethod
     def _job_input(circuit: str, shots: int, target: str, routing_mode: str,
-                   optimization_level: int, constraints, name):
+                   optimization_level: int, constraints, name, failover=True, max_attempts=3,
+                   timeout_seconds=7200):
         return {
             "circuit": circuit,
             "format": "openqasm3" if "OPENQASM 3" in circuit else "openqasm2",
@@ -49,6 +50,9 @@ class QRouter:
             "target": target,
             "routing_mode": routing_mode,
             "optimization_level": optimization_level,
+            "failover": failover,
+            "max_attempts": max_attempts,
+            "timeout_seconds": timeout_seconds,
             "constraints": constraints or {},
             "name": name,
         }
@@ -64,12 +68,14 @@ class QRouter:
 
     def create_job(self, circuit: str, *, shots: int = 1024, target: str = "auto",
                    routing_mode: str = "balanced", optimization_level: int = 2,
-                   constraints=None, name=None, idempotency_key=None):
+                   constraints=None, name=None, failover: bool = True,
+                   max_attempts: int = 3, timeout_seconds: int = 7200,
+                   idempotency_key=None):
         return self._request(
             "POST",
             "/api/v1/jobs",
             headers={"Idempotency-Key": idempotency_key or str(uuid.uuid4())},
-            json=self._job_input(circuit, shots, target, routing_mode, optimization_level, constraints, name),
+            json=self._job_input(circuit, shots, target, routing_mode, optimization_level, constraints, name, failover, max_attempts, timeout_seconds),
         )
 
     def list_jobs(self):

@@ -8,8 +8,11 @@ export interface ProviderStatus { status: "submitted" | "processing" | "complete
 
 const BRAKET_DEVICES: Record<string, { arn: string; region: string }> = {
   "aws-sv1": { arn: "arn:aws:braket:::device/quantum-simulator/amazon/sv1", region: "us-east-1" },
+  "ionq-aria-1": { arn: "arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1", region: "us-east-1" },
   "iqm-garnet": { arn: "arn:aws:braket:eu-north-1::device/qpu/iqm/Garnet", region: "eu-north-1" },
 };
+
+const providerTimeout = () => AbortSignal.timeout(Number(process.env.QROUTER_PROVIDER_TIMEOUT_MS ?? 20_000));
 
 export function qasm2ToQasm3(source: string) {
   return source
@@ -22,15 +25,16 @@ export function qasm2ToQasm3(source: string) {
     .replace(/measure\s+(\w+)\[(\d+)]\s*->\s*(\w+)\[(\d+)]\s*;/g, "$3[$4] = measure $1[$2];");
 }
 
-async function submitVultr(analysis: CircuitAnalysis, shots: number): Promise<Submission> {
+async function submitVultr(analysis: CircuitAnalysis, shots: number, idempotencyKey: string): Promise<Submission> {
   const endpoint = process.env.VULTR_SIMULATOR_URL;
   if (!endpoint) {
     return { providerJobId: `local_${crypto.randomUUID()}`, status: "completed", result: simulateCircuit(analysis, shots) as unknown as Record<string, unknown> };
   }
   const response = await fetch(`${endpoint.replace(/\/$/, "")}/v1/jobs`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${process.env.VULTR_SIMULATOR_TOKEN ?? ""}` },
+    headers: { "content-type": "application/json", authorization: `Bearer ${process.env.VULTR_SIMULATOR_TOKEN ?? ""}`, "idempotency-key": idempotencyKey },
     body: JSON.stringify({ qasm: analysis.normalizedQasm2, shots }),
+    signal: providerTimeout(),
   });
   if (!response.ok) throw new Error(`Vultr simulator rejected the job (${response.status}).`);
   const data = await response.json() as { id: string; result?: Record<string, unknown> };
@@ -63,6 +67,7 @@ async function submitIbm(analysis: CircuitAnalysis, shots: number): Promise<Subm
       program_id: "sampler", backend: process.env.IBM_QUANTUM_BACKEND ?? "ibm_brisbane", hub, group, project,
       params: { pubs: [[qasm2ToQasm3(analysis.normalizedQasm2)]], options: { default_shots: shots }, version: 2 },
     }),
+    signal: providerTimeout(),
   });
   if (!response.ok) throw new Error(`IBM Quantum rejected the job (${response.status}): ${await response.text()}`);
   const data = await response.json() as { id?: string };
@@ -111,6 +116,7 @@ async function submitIonq(analysis: CircuitAnalysis, shots: number, jobId: strin
         circuit: qasm2ToIonqCircuit(analysis.normalizedQasm2),
       },
     }),
+    signal: providerTimeout(),
   });
   if (!response.ok) throw new Error(`IonQ rejected the job (${response.status}): ${await response.text()}`);
   const data = await response.json() as { id?: string };
@@ -119,9 +125,9 @@ async function submitIonq(analysis: CircuitAnalysis, shots: number, jobId: strin
 }
 
 export async function submitToProvider(backendId: string, analysis: CircuitAnalysis, shots: number, jobId: string): Promise<Submission> {
-  if (backendId === "qci-aer-gpu") return submitVultr(analysis, shots);
+  if (backendId === "qci-aer-gpu") return submitVultr(analysis, shots, jobId);
   if (backendId === "ibm-brisbane") return submitIbm(analysis, shots);
-  if (backendId === "ionq-aria-1") return submitIonq(analysis, shots, jobId);
+  if (backendId === "ionq-aria-1" && process.env.IONQ_API_KEY) return submitIonq(analysis, shots, jobId);
   if (BRAKET_DEVICES[backendId]) return submitBraket(backendId, analysis, shots, jobId);
   throw new Error(`Execution adapter for ${backendId} is not enabled.`);
 }
@@ -142,7 +148,7 @@ function normalizeIonqProbabilities(probabilities: Record<string, number>, qubit
 }
 
 async function getIonqStatus(providerJobId: string): Promise<ProviderStatus> {
-  const response = await fetch(`https://api.ionq.co/v0.4/jobs/${encodeURIComponent(providerJobId)}`, { headers: ionqHeaders() });
+  const response = await fetch(`https://api.ionq.co/v0.4/jobs/${encodeURIComponent(providerJobId)}`, { headers: ionqHeaders(), signal: providerTimeout() });
   if (!response.ok) throw new Error(`IonQ status request failed (${response.status}).`);
   const data = await response.json() as {
     status?: string;
@@ -158,7 +164,7 @@ async function getIonqStatus(providerJobId: string): Promise<ProviderStatus> {
     const probabilitySource = data.results?.probabilities;
     let probabilities: Record<string, number> = {};
     if (probabilitySource && "url" in probabilitySource && typeof probabilitySource.url === "string") {
-      const resultResponse = await fetch(probabilitySource.url, { headers: ionqHeaders() });
+      const resultResponse = await fetch(probabilitySource.url, { headers: ionqHeaders(), signal: providerTimeout() });
       if (!resultResponse.ok) throw new Error(`IonQ result request failed (${resultResponse.status}).`);
       probabilities = await resultResponse.json() as Record<string, number>;
     } else if (probabilitySource) {
@@ -168,7 +174,7 @@ async function getIonqStatus(providerJobId: string): Promise<ProviderStatus> {
     const shots = data.shots ?? 0;
     const counts = Object.fromEntries(Object.entries(normalized).map(([state, probability]) => [state, Math.round(probability * shots)]));
     let actualProviderCost: number | undefined;
-    const costResponse = await fetch(`https://api.ionq.co/v0.4/jobs/${encodeURIComponent(providerJobId)}/cost`, { headers: ionqHeaders() });
+    const costResponse = await fetch(`https://api.ionq.co/v0.4/jobs/${encodeURIComponent(providerJobId)}/cost`, { headers: ionqHeaders(), signal: providerTimeout() });
     if (costResponse.ok) {
       const cost = await costResponse.json() as { cost?: number };
       actualProviderCost = cost.cost;
@@ -182,12 +188,12 @@ async function getIonqStatus(providerJobId: string): Promise<ProviderStatus> {
 
 export async function getProviderStatus(backendId: string, providerJobId: string): Promise<ProviderStatus> {
   if (backendId === "qci-aer-gpu" && process.env.VULTR_SIMULATOR_URL) {
-    const response = await fetch(`${process.env.VULTR_SIMULATOR_URL.replace(/\/$/, "")}/v1/jobs/${encodeURIComponent(providerJobId)}`, { headers: { authorization: `Bearer ${process.env.VULTR_SIMULATOR_TOKEN ?? ""}` } });
+    const response = await fetch(`${process.env.VULTR_SIMULATOR_URL.replace(/\/$/, "")}/v1/jobs/${encodeURIComponent(providerJobId)}`, { headers: { authorization: `Bearer ${process.env.VULTR_SIMULATOR_TOKEN ?? ""}` }, signal: providerTimeout() });
     if (!response.ok) throw new Error(`Vultr status request failed (${response.status}).`);
     return response.json() as Promise<ProviderStatus>;
   }
   if (backendId === "ibm-brisbane") {
-    const response = await fetch(`https://api.quantum-computing.ibm.com/runtime/jobs/${encodeURIComponent(providerJobId)}`, { headers: { accept: "application/json", authorization: `Bearer ${process.env.IBM_QUANTUM_TOKEN ?? ""}` } });
+    const response = await fetch(`https://api.quantum-computing.ibm.com/runtime/jobs/${encodeURIComponent(providerJobId)}`, { headers: { accept: "application/json", authorization: `Bearer ${process.env.IBM_QUANTUM_TOKEN ?? ""}` }, signal: providerTimeout() });
     if (!response.ok) throw new Error(`IBM status request failed (${response.status}).`);
     const data = await response.json() as { state?: { status?: string; reason?: string }; status?: string; results?: Record<string, unknown> };
     const raw = (data.state?.status ?? data.status ?? "queued").toLowerCase();
@@ -196,7 +202,7 @@ export async function getProviderStatus(backendId: string, providerJobId: string
     if (["cancelled", "canceled"].includes(raw)) return { status: "cancelled" };
     return { status: ["running", "executing"].includes(raw) ? "processing" : "submitted" };
   }
-  if (backendId === "ionq-aria-1") return getIonqStatus(providerJobId);
+  if (backendId === "ionq-aria-1" && !providerJobId.startsWith("arn:aws:braket:")) return getIonqStatus(providerJobId);
   const device = BRAKET_DEVICES[backendId];
   if (device) {
     const client = new BraketClient({ region: device.region });
@@ -219,17 +225,17 @@ export async function getProviderStatus(backendId: string, providerJobId: string
 
 export async function cancelProviderJob(backendId: string, providerJobId: string) {
   if (backendId === "qci-aer-gpu" && process.env.VULTR_SIMULATOR_URL) {
-    const response = await fetch(`${process.env.VULTR_SIMULATOR_URL.replace(/\/$/, "")}/v1/jobs/${encodeURIComponent(providerJobId)}`, { method: "DELETE", headers: { authorization: `Bearer ${process.env.VULTR_SIMULATOR_TOKEN ?? ""}` } });
+    const response = await fetch(`${process.env.VULTR_SIMULATOR_URL.replace(/\/$/, "")}/v1/jobs/${encodeURIComponent(providerJobId)}`, { method: "DELETE", headers: { authorization: `Bearer ${process.env.VULTR_SIMULATOR_TOKEN ?? ""}` }, signal: providerTimeout() });
     if (!response.ok) throw new Error(`Vultr cancellation failed (${response.status}).`);
     return;
   }
   if (backendId === "ibm-brisbane") {
-    const response = await fetch(`https://api.quantum-computing.ibm.com/runtime/jobs/${encodeURIComponent(providerJobId)}/cancel`, { method: "POST", headers: { authorization: `Bearer ${process.env.IBM_QUANTUM_TOKEN ?? ""}` } });
+    const response = await fetch(`https://api.quantum-computing.ibm.com/runtime/jobs/${encodeURIComponent(providerJobId)}/cancel`, { method: "POST", headers: { authorization: `Bearer ${process.env.IBM_QUANTUM_TOKEN ?? ""}` }, signal: providerTimeout() });
     if (!response.ok) throw new Error(`IBM cancellation failed (${response.status}).`);
     return;
   }
-  if (backendId === "ionq-aria-1") {
-    const response = await fetch(`https://api.ionq.co/v0.4/jobs/${encodeURIComponent(providerJobId)}`, { method: "DELETE", headers: ionqHeaders() });
+  if (backendId === "ionq-aria-1" && !providerJobId.startsWith("arn:aws:braket:")) {
+    const response = await fetch(`https://api.ionq.co/v0.4/jobs/${encodeURIComponent(providerJobId)}`, { method: "DELETE", headers: ionqHeaders(), signal: providerTimeout() });
     if (!response.ok) throw new Error(`IonQ cancellation failed (${response.status}).`);
     return;
   }

@@ -37,6 +37,9 @@
           "target": { "type": "string", "default": "auto" },
           "routing_mode": { "enum": ["balanced", "cost", "speed", "quality"], "default": "balanced" },
           "optimization_level": { "type": "integer", "minimum": 0, "maximum": 3, "default": 2 },
+          "failover": { "type": "boolean", "default": true, "description": "Try another compatible backend after a provider failure without exceeding the accepted quote." },
+          "max_attempts": { "type": "integer", "minimum": 1, "maximum": 5, "default": 3 },
+          "timeout_seconds": { "type": "integer", "minimum": 60, "maximum": 604800, "default": 7200 },
           "constraints": { "$ref": "#/components/schemas/Constraints" }
         }
       },
@@ -47,7 +50,10 @@
           "shots": { "type": "integer", "minimum": 1, "maximum": 1000000, "default": 1024 },
           "target": { "type": "string", "default": "auto" },
           "routingMode": { "enum": ["balanced", "cost", "speed", "quality"], "default": "balanced" },
-          "optimizationLevel": { "type": "integer", "minimum": 0, "maximum": 3, "default": 2 }
+          "optimizationLevel": { "type": "integer", "minimum": 0, "maximum": 3, "default": 2 },
+          "failover": { "type": "boolean", "default": true },
+          "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 5, "default": 3 },
+          "timeoutSeconds": { "type": "integer", "minimum": 60, "maximum": 604800, "default": 7200 }
         }
       },
       "CreateProject": {
@@ -75,7 +81,7 @@
         "type": "object",
         "properties": {
           "id": { "type": "string", "format": "uuid" },
-          "status": { "enum": ["created", "analyzing", "quoted", "awaiting_payment", "funds_reserved", "queued", "submitted", "processing", "completed", "failed", "cancellation_requested", "cancelled"] },
+          "status": { "enum": ["created", "analyzing", "quoted", "awaiting_payment", "funds_reserved", "queued", "dispatching", "submitted", "processing", "completed", "failed", "cancellation_requested", "cancelled"] },
           "selected_backend_id": { "type": "string" },
           "analysis": { "type": "object" },
           "route_decision": { "type": "object" },
@@ -135,10 +141,10 @@
     "/api/v1/jobs": {
       "get": { "summary": "List jobs", "responses": { "200": { "description": "Job list" } } },
       "post": {
-        "summary": "Compile, quote, route, and submit a circuit",
+        "summary": "Compile, quote, route, and durably queue a circuit",
         "parameters": [{ "in": "header", "name": "Idempotency-Key", "schema": { "type": "string" } }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateJob" } } } },
-        "responses": { "201": { "description": "Job created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Job" } } } }, "402": { "description": "Insufficient credits" }, "422": { "description": "Invalid circuit or no compatible backend" }, "503": { "description": "Compiler or provider unavailable" } }
+        "responses": { "201": { "description": "Demo job created" }, "202": { "description": "Job accepted into the durable execution queue", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Job" } } } }, "402": { "description": "Insufficient credits" }, "422": { "description": "Invalid circuit or no compatible backend" }, "503": { "description": "Compiler unavailable" } }
       }
     },
     "/api/v1/jobs/{id}": {
@@ -159,6 +165,9 @@
     "/api/v1/webhooks": {
       "get": { "summary": "List signed webhook endpoints", "responses": { "200": { "description": "Webhook endpoint list" } } },
       "post": { "summary": "Create a webhook endpoint", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["url"], "properties": { "url": { "type": "string", "format": "uri" } } } } } }, "responses": { "201": { "description": "Endpoint created; signing secret is returned once" } } }
+    },
+    "/api/v1/webhooks/deliveries": {
+      "get": { "summary": "List webhook delivery attempts and retry state", "responses": { "200": { "description": "Recent delivery history" } } }
     }
   }
 }

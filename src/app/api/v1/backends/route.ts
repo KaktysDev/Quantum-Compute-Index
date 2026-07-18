@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { BACKENDS } from "@/lib/qrouter/catalog";
+import { applyProviderHealth, loadPersistedBackendHealth } from "@/lib/qrouter/providerHealth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return NextResponse.json({ object: "list", data: BACKENDS, updated_at: new Date().toISOString() });
+  const health = await loadPersistedBackendHealth();
+  return NextResponse.json({ object: "list", data: applyProviderHealth(BACKENDS, health), updated_at: new Date().toISOString() });
 }
-

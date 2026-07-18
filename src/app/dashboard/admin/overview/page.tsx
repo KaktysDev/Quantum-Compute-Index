@@ -99,7 +99,7 @@ export default async function AdminOverviewPage() {
         <StatCard
           label="Jobs (recent 2000)"
           value={String(jobs.length)}
-          sub={`${statusCounts.completed ?? 0} completed · ${statusCounts.failed ?? 0} failed · ${(statusCounts.queued ?? 0) + (statusCounts.processing ?? 0) + (statusCounts.submitted ?? 0)} in flight`}
+          sub={`${statusCounts.completed ?? 0} completed · ${statusCounts.failed ?? 0} failed · ${(statusCounts.queued ?? 0) + (statusCounts.dispatching ?? 0) + (statusCounts.processing ?? 0) + (statusCounts.submitted ?? 0)} in flight`}
           icon={<Activity size={15} />}
         />
         <StatCard

@@ -36,6 +36,7 @@ const endpoints = [
   ["GET", "/api/v1/jobs/{id}/transpiled", "Download the provider-targeted OpenQASM artifact."],
   ["POST", "/api/v1/jobs/{id}/cancel", "Request cancellation and release reserved credits."],
   ["POST", "/api/v1/webhooks", "Register an HTTPS endpoint and issue a signing secret."],
+  ["GET", "/api/v1/webhooks/deliveries", "Inspect delivery attempts, retries, and terminal failures."],
 ];
 
 export default function DocsPage() {
@@ -113,6 +114,8 @@ export default function DocsPage() {
             <div><code>target</code><b>backend id | auto</b><p>Pin a target or let the QCI Engine select one. Default: <code>auto</code>.</p></div>
             <div><code>routing_mode</code><b>enum</b><p><code>balanced</code>, <code>cost</code>, <code>speed</code>, or <code>quality</code>.</p></div>
             <div><code>optimization_level</code><b>integer · 0–3</b><p>Compiler optimization level. Default: <code>2</code>.</p></div>
+            <div><code>failover</code><b>boolean</b><p>Try another quoted compatible backend after failure. Default: <code>true</code>.</p></div>
+            <div><code>timeout_seconds</code><b>integer · 60–604,800</b><p>Cancel an overdue provider job before failover. Default: <code>7200</code>.</p></div>
             <div><code>constraints</code><b>object</b><p>Cost, queue, fidelity, compute type, and provider allow/deny filters.</p></div>
           </div>
           <p className="docs-copy-text">Include a stable <code>Idempotency-Key</code> header when creating a job. Repeating a request with the same key returns the original workspace job instead of spending twice.</p>
@@ -156,14 +159,14 @@ export default function DocsPage() {
 
         <section className="docs-section" id="lifecycle">
           <div className="docs-section-title"><Clock3 size={17} /><div><h2>Lifecycle and artifacts</h2><p>Every provider maps into one observable state machine.</p></div></div>
-          <div className="docs-lifecycle"><span>quoted</span><i /><span>funds_reserved</span><i /><span>submitted</span><i /><span>processing</span><i /><span>completed</span></div>
-          <p className="docs-copy-text">Poll <code>GET /api/v1/jobs/{'{id}'}</code> until <code>completed</code>, <code>failed</code>, or <code>cancelled</code>. Results and transpiled OpenQASM use dedicated artifact endpoints so clients do not need provider-specific storage APIs.</p>
+          <div className="docs-lifecycle"><span>quoted</span><i /><span>queued</span><i /><span>dispatching</span><i /><span>submitted</span><i /><span>processing</span><i /><span>completed</span></div>
+          <p className="docs-copy-text">Poll <code>GET /api/v1/jobs/{'{id}'}</code> until <code>completed</code>, <code>failed</code>, or <code>cancelled</code>. The response includes the attempt and event history. Results and transpiled OpenQASM use dedicated artifact endpoints so clients do not need provider-specific storage APIs.</p>
         </section>
 
         <section className="docs-section" id="webhooks">
           <div className="docs-section-title"><Webhook size={17} /><div><h2>Signed webhooks</h2><p>Receive asynchronous job transitions over HTTPS.</p></div></div>
           <pre className="docs-inline-code"><code>{`POST /api/v1/webhooks\n{ "url": "https://example.com/qrouter/events" }`}</code></pre>
-          <p className="docs-copy-text">The endpoint returns its signing secret once. Store it outside source control and validate each delivery before processing its payload.</p>
+          <p className="docs-copy-text">The endpoint returns its signing secret once. Store it outside source control and validate each delivery before processing its payload. Failed deliveries retry with exponential backoff and are visible through <code>GET /api/v1/webhooks/deliveries</code>.</p>
         </section>
 
         <section className="docs-section" id="errors">
@@ -173,7 +176,7 @@ export default function DocsPage() {
 
         <section className="docs-section" id="production">
           <div className="docs-section-title"><ShieldCheck size={17} /><div><h2>Production checklist</h2><p>Required before enabling paid physical backends.</p></div></div>
-          <ol className="docs-checklist"><li>Apply <code>supabase/schema.sql</code> and <code>supabase/qrouter.sql</code>.</li><li>Configure Supabase, Stripe, artifact encryption, and provider credentials.</li><li>Create the GitHub App, set its callback URL, and configure <code>GITHUB_APP_ID</code>, <code>GITHUB_APP_SLUG</code>, and <code>GITHUB_APP_PRIVATE_KEY</code>.</li><li>Deploy the authenticated Qiskit compiler/worker and set <code>QROUTER_COMPILER_URL</code>.</li><li>Configure the internal job poller, refresh cron, and Stripe webhook.</li><li>Run credentialed smoke jobs against every enabled paid provider.</li><li>Run lint, typecheck, Node tests, Python worker tests, SDK builds, and the production web build.</li></ol>
+          <ol className="docs-checklist"><li>Apply <code>supabase/schema.sql</code> and <code>supabase/qrouter.sql</code>.</li><li>Configure Supabase, Stripe, artifact encryption, and provider credentials.</li><li>Create the GitHub App, set its callback URL, and configure <code>GITHUB_APP_ID</code>, <code>GITHUB_APP_SLUG</code>, and <code>GITHUB_APP_PRIVATE_KEY</code>.</li><li>Deploy the authenticated Qiskit compiler/worker and set <code>QROUTER_COMPILER_URL</code>.</li><li>Configure an external one-minute scheduler for <code>GET /api/internal/jobs</code>, an every-two-minute scheduler for <code>GET /api/internal/providers/health</code>, the daily refresh cron, and the Stripe webhook.</li><li>Run credentialed smoke jobs against every enabled paid provider.</li><li>Run lint, typecheck, Node tests, Python worker tests, SDK builds, and the production web build.</li></ol>
         </section>
 
         <section className="docs-end"><p>Ready to deploy a repository circuit?</p><Link href="/dashboard/playground">Open deployments <ArrowRight size={14} /></Link></section>

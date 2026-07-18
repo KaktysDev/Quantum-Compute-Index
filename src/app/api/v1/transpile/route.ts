@@ -7,6 +7,7 @@ import { resolvePrincipal } from "@/lib/qrouter/auth";
 import { withQciSnapshot } from "@/lib/qrouter/catalog";
 import { apiError } from "@/lib/qrouter/http";
 import { prepareExecution } from "@/lib/qrouter/pipeline";
+import { applyProviderHealth, loadPersistedBackendHealth } from "@/lib/qrouter/providerHealth";
 import { createJobSchema } from "@/lib/qrouter/validation";
 import { publicTranspilation } from "@/lib/qrouter/transpiler";
 
@@ -37,8 +38,9 @@ export async function POST(request: Request) {
     }
     const input = parsed.data;
     const originalAnalysis = analyzeCircuit(input.circuit, input.format);
+    const backendHealth = principal.demo ? [] : await loadPersistedBackendHealth();
     const result = await prepareExecution({
-      backends: withQciSnapshot(snapshot.components),
+      backends: applyProviderHealth(withQciSnapshot(snapshot.components), backendHealth),
       analysis: originalAnalysis,
       shots: input.shots,
       target: input.target,

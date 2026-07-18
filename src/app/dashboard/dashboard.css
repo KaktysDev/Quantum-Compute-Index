@@ -589,6 +589,7 @@
 .deployment-grid { display: grid; grid-template-columns: minmax(360px,.72fr) minmax(0,1.28fr); gap: 1rem; }
 .deployment-fields { display: flex; flex-direction: column; gap: .9rem; padding: 1rem; }
 .deployment-field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
+.deployment-toggle { flex-direction: row!important; align-items: center; justify-content: space-between; min-height: 38px; }.deployment-toggle input { width: 36px!important; height: 20px!important; accent-color: var(--qr-emerald); }
 .deploy-command { width: max-content; }
 .deployment-terminal { display: flex; min-height: 430px; flex-direction: column; }
 .terminal-screen { min-height: 330px; flex: 1; padding: 1rem; background: #000; }

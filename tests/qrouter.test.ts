@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { BraketClient } from "@aws-sdk/client-braket";
 import { POST as createJob } from "@/app/api/v1/jobs/route";
+import { POST as createRouteAdvice } from "@/app/api/v1/ai/route-advice/route";
 import { POST as createProject } from "@/app/api/v1/projects/route";
 import { GET as listRepositoryJobs, POST as createRepositoryJob } from "@/app/api/v1/repository-jobs/route";
 import { sampleProviderSeries, sampleSnapshot } from "@/lib/qci/sample";
@@ -7,6 +9,10 @@ import { analyzeCircuit, CircuitValidationError } from "@/lib/qrouter/analyze";
 import { BACKENDS, withQciSnapshot } from "@/lib/qrouter/catalog";
 import { demoJobs, demoProjects } from "@/lib/qrouter/demo-store";
 import { normalizeCircuitPath, normalizeRef, normalizeRepository } from "@/lib/qrouter/repositories";
+import { nextAttemptCandidate, retryDelaySeconds } from "@/lib/qrouter/orchestration";
+import { applyProviderHealth } from "@/lib/qrouter/providerHealth";
+import { normalizeProviderResult } from "@/lib/qrouter/results";
+import { validateWebhookDestination } from "@/lib/qrouter/webhooks";
 import { buildQuote, routeCircuit } from "@/lib/qrouter/route";
 import { simulateCircuit } from "@/lib/qrouter/simulator";
 import { getProviderStatus, submitToProvider } from "@/lib/qrouter/execution";
@@ -23,9 +29,16 @@ measure q -> c;`;
 describe("QRouter circuit pipeline", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
     delete process.env.IONQ_API_KEY;
     delete process.env.QROUTER_COMPILER_URL;
     delete process.env.VULTR_SIMULATOR_URL;
+    delete process.env.VULTR_INFERENCE_API_KEY;
+    delete process.env.VULTR_INFERENCE_BASE_URL;
+    delete process.env.VULTR_MAIN_MODEL;
+    delete process.env.VULTR_FALLBACK_MODEL;
+    delete process.env.AWS_ACCESS_KEY_ID;
+    delete process.env.BRAKET_OUTPUT_BUCKET;
     demoJobs.clear();
     demoProjects.clear();
   });
@@ -107,6 +120,73 @@ describe("QRouter circuit pipeline", () => {
     expect(quote.rateSnapshot.qciSnapshotId).toBe(42);
   });
 
+  it("fails over only to an untried backend within the accepted quote", () => {
+    const analysis = analyzeCircuit(bell, "openqasm2");
+    const decision = routeCircuit({ backends: BACKENDS, analysis, shots: 1024, target: "auto", mode: "balanced" });
+    const primary = decision.candidates.find((candidate) => candidate.backend.id === decision.selected.id)!;
+    decision.candidates.push(
+      { ...primary, backend: { ...primary.backend, id: "quoted-fallback", displayName: "Quoted fallback" }, score: primary.score - 0.01 },
+      { ...primary, backend: { ...primary.backend, id: "expensive-fallback", displayName: "Expensive fallback" }, estimatedProviderCost: primary.estimatedProviderCost + 1, score: primary.score - 0.02 },
+    );
+
+    expect(nextAttemptCandidate({ decision, attemptedBackendIds: [], failoverEnabled: true, maxAttempts: 3 })?.backend.id).toBe(decision.selected.id);
+    expect(nextAttemptCandidate({ decision, attemptedBackendIds: [decision.selected.id], failoverEnabled: true, maxAttempts: 3 })?.backend.id).toBe("quoted-fallback");
+    expect(nextAttemptCandidate({ decision, attemptedBackendIds: [decision.selected.id], failoverEnabled: false, maxAttempts: 3 })).toBeNull();
+    expect(nextAttemptCandidate({ decision, attemptedBackendIds: [decision.selected.id, "quoted-fallback"], failoverEnabled: true, maxAttempts: 3 })).toBeNull();
+    expect([retryDelaySeconds(1), retryDelaySeconds(2), retryDelaySeconds(10)]).toEqual([5, 10, 300]);
+  });
+
+  it("opens a routing circuit breaker after two fresh health failures", () => {
+    const checkedAt = new Date().toISOString();
+    const oneFailure = applyProviderHealth(BACKENDS, [{ backend_id: "qci-aer-gpu", configured: true, reachable: false, consecutive_failures: 1, detail: "timeout", checked_at: checkedAt }]);
+    const twoFailures = applyProviderHealth(BACKENDS, [{ backend_id: "qci-aer-gpu", configured: true, reachable: false, consecutive_failures: 2, detail: "timeout", checked_at: checkedAt }]);
+    expect(oneFailure[0]).toMatchObject({ status: "degraded", available: true });
+    expect(twoFailures[0]).toMatchObject({ status: "offline", available: false, health: { consecutiveFailures: 2 } });
+  });
+
+  it("normalizes Braket-style measurements and preserves shot totals", () => {
+    const result = normalizeProviderResult("aws-sv1", { measurementProbabilities: { "00": 0.501, "11": 0.499 } }, 101);
+    expect(result).toMatchObject({ backend: "aws-sv1", shots: 101, probabilities: { "00": 0.501, "11": 0.499 }, metadata: { normalized: true } });
+    expect(Object.values(result.counts).reduce((sum, count) => sum + count, 0)).toBe(101);
+  });
+
+  it("blocks private webhook destinations", async () => {
+    await expect(validateWebhookDestination("https://10.0.0.1/hooks")).rejects.toThrow("private network");
+    await expect(validateWebhookDestination("http://localhost:9000/hooks")).resolves.toBeInstanceOf(URL);
+  });
+
+  it("generates route advice from a deterministic router decision", async () => {
+    process.env.VULTR_INFERENCE_API_KEY = "test-inference-key";
+    process.env.VULTR_INFERENCE_BASE_URL = "https://inference.test/v1";
+    process.env.VULTR_MAIN_MODEL = "test/main-model";
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input instanceof Request ? input.url : input);
+      expect(url).toBe("https://inference.test/v1/chat/completions");
+      const body = JSON.parse(String(init?.body));
+      expect(body).toMatchObject({ model: "test/main-model", stream: false });
+      expect(body.messages[1].content).toContain("qci-aer-gpu");
+      return Response.json({
+        model: "test/main-model",
+        choices: [{ message: { content: "- QCI Aer GPU is the fastest low-cost match.\n- Try reducing two-qubit gates next." } }],
+        usage: { total_tokens: 42 },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await createRouteAdvice(new Request("http://localhost/api/v1/ai/route-advice", {
+      method: "POST",
+      headers: { authorization: "Bearer qci_test_local_development", "content-type": "application/json" },
+      body: JSON.stringify({ circuit: bell, shots: 256, target: "auto", routing_mode: "balanced" }),
+    }));
+    const payload = await response.json();
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      model: "test/main-model",
+      decision: { selected: { id: "qci-aer-gpu" } },
+      analysis: { qubits: 2, complexity: "light" },
+    });
+    expect(payload.advice).toContain("QCI Aer GPU");
+  });
+
   it("anchors every sample provider history to its current normalized rate", () => {
     const now = new Date("2026-07-12T14:00:00Z");
     const snapshot = sampleSnapshot(now);
@@ -176,6 +256,18 @@ describe("QRouter circuit pipeline", () => {
     expect(init.headers).toMatchObject({ authorization: "apiKey test-token" });
     expect(body).toMatchObject({ type: "ionq.circuit.v1", shots: 500, metadata: { qrouter_qubits: "2" }, input: { qubits: 2, gateset: "qis" } });
     expect(body.input.circuit.map((gate: { gate: string }) => gate.gate)).toEqual(["h", "cnot"]);
+  });
+
+  it("falls back to Amazon Braket when direct IonQ credentials are absent", async () => {
+    process.env.AWS_ACCESS_KEY_ID = "test-aws-key";
+    process.env.BRAKET_OUTPUT_BUCKET = "test-results";
+    const send = vi.spyOn(BraketClient.prototype, "send").mockResolvedValue({ quantumTaskArn: "arn:aws:braket:us-east-1:123:quantum-task/test" } as never);
+    const analysis = analyzeCircuit(bell, "openqasm2");
+    await expect(submitToProvider("ionq-aria-1", analysis, 32, "job-attempt-1")).resolves.toMatchObject({
+      providerJobId: "arn:aws:braket:us-east-1:123:quantum-task/test",
+      status: "submitted",
+    });
+    expect(send).toHaveBeenCalledOnce();
   });
 
   it("normalizes IonQ integer result states to fixed-width bitstrings", async () => {

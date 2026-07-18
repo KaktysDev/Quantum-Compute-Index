@@ -6,6 +6,8 @@ import { apiError } from "@/lib/qrouter/http";
 import { normalizeCircuitPath, normalizeRef } from "@/lib/qrouter/repositories";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+const settingDefaults = { failover: true, maxAttempts: 3, timeoutSeconds: 7200 };
+
 const patchSchema = z.object({
   production_branch: z.string().optional(),
   circuit_path: z.string().optional(),
@@ -14,6 +16,9 @@ const patchSchema = z.object({
     target: z.string(),
     routingMode: z.enum(["balanced", "cost", "speed", "quality"]),
     optimizationLevel: z.number().int().min(0).max(3),
+    failover: z.boolean().optional(),
+    maxAttempts: z.number().int().min(1).max(5).optional(),
+    timeoutSeconds: z.number().int().min(60).max(604_800).optional(),
   }).optional(),
 });
 
@@ -23,20 +28,26 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const { id } = await context.params;
     const parsed = patchSchema.safeParse(await request.json());
     if (!parsed.success) return NextResponse.json({ error: { type: "invalid_request", message: "The project update is invalid." } }, { status: 400 });
-    const update = {
+    const update: Record<string, unknown> = {
       ...(parsed.data.production_branch ? { production_branch: normalizeRef(parsed.data.production_branch) } : {}),
       ...(parsed.data.circuit_path ? { circuit_path: normalizeCircuitPath(parsed.data.circuit_path) } : {}),
-      ...(parsed.data.settings ? { settings: parsed.data.settings } : {}),
       updated_at: new Date().toISOString(),
     };
     if (principal.demo) {
       const project = demoProjects.get(id);
       if (!project || project.organization_id !== principal.organizationId) return NextResponse.json({ error: { type: "not_found", message: "Project not found." } }, { status: 404 });
-      const next = { ...project, ...update };
+      const next = { ...project, ...update, ...(parsed.data.settings ? { settings: { ...settingDefaults, ...project.settings, ...parsed.data.settings } } : {}) } as typeof project;
       demoProjects.set(id, next);
       return NextResponse.json(next);
     }
-    const { data, error } = await createAdminClient().from("projects").update(update).eq("id", id).eq("organization_id", principal.organizationId).select("*").maybeSingle();
+    const admin = createAdminClient();
+    if (parsed.data.settings) {
+      const { data: existing, error: existingError } = await admin.from("projects").select("settings").eq("id", id).eq("organization_id", principal.organizationId).maybeSingle();
+      if (existingError) throw existingError;
+      if (!existing) return NextResponse.json({ error: { type: "not_found", message: "Project not found." } }, { status: 404 });
+      update.settings = { ...settingDefaults, ...(existing.settings ?? {}), ...parsed.data.settings };
+    }
+    const { data, error } = await admin.from("projects").update(update).eq("id", id).eq("organization_id", principal.organizationId).select("*").maybeSingle();
     if (error) throw error;
     if (!data) return NextResponse.json({ error: { type: "not_found", message: "Project not found." } }, { status: 404 });
     return NextResponse.json(data);

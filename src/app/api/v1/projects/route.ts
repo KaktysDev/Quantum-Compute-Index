@@ -17,6 +17,9 @@ const schema = z.object({
     target: z.string().optional(),
     routingMode: z.enum(["balanced", "cost", "speed", "quality"]).optional(),
     optimizationLevel: z.number().int().min(0).max(3).optional(),
+    failover: z.boolean().optional(),
+    maxAttempts: z.number().int().min(1).max(5).optional(),
+    timeoutSeconds: z.number().int().min(60).max(604_800).optional(),
   }).optional(),
 });
 
@@ -56,6 +59,9 @@ export async function POST(request: Request) {
       target: parsed.data.settings?.target ?? (typeof config.target === "string" ? config.target : "auto"),
       routingMode: parsed.data.settings?.routingMode ?? configMode,
       optimizationLevel: parsed.data.settings?.optimizationLevel ?? (typeof config.optimization_level === "number" && Number.isInteger(config.optimization_level) && config.optimization_level >= 0 && config.optimization_level <= 3 ? config.optimization_level : 2),
+      failover: parsed.data.settings?.failover ?? (typeof config.failover === "boolean" ? config.failover : true),
+      maxAttempts: parsed.data.settings?.maxAttempts ?? (typeof config.max_attempts === "number" && Number.isInteger(config.max_attempts) && config.max_attempts >= 1 && config.max_attempts <= 5 ? config.max_attempts : 3),
+      timeoutSeconds: parsed.data.settings?.timeoutSeconds ?? (typeof config.timeout_seconds === "number" && Number.isInteger(config.timeout_seconds) && config.timeout_seconds >= 60 && config.timeout_seconds <= 604_800 ? config.timeout_seconds : 7200),
     };
 
     if (principal.demo) {

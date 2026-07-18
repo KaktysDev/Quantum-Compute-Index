@@ -7,11 +7,15 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  const requestId = request.headers.get("x-request-id")?.slice(0, 128) || crypto.randomUUID();
+  const forwardedHeaders = new Headers(request.headers);
+  forwardedHeaders.set("x-request-id", requestId);
+  let response = NextResponse.next({ request: { headers: forwardedHeaders } });
 
   // If Supabase isn't configured yet (or env still has placeholders), let
   // everything through so the public site works in sample-data mode.
   if (!/^https?:\/\/.+\..+/.test(SUPABASE_URL) || SUPABASE_ANON_KEY.length <= 20) {
+    response.headers.set("x-request-id", requestId);
     return response;
   }
 
@@ -22,7 +26,7 @@ export async function middleware(request: NextRequest) {
       },
       setAll(cookiesToSet: CookieToSet[]) {
         cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-        response = NextResponse.next({ request });
+        response = NextResponse.next({ request: { headers: forwardedHeaders } });
         cookiesToSet.forEach(({ name, value, options }) =>
           response.cookies.set(name, value, options),
         );
@@ -40,9 +44,12 @@ export async function middleware(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     url.searchParams.set("signin", "required");
-    return NextResponse.redirect(url);
+    const redirect = NextResponse.redirect(url);
+    redirect.headers.set("x-request-id", requestId);
+    return redirect;
   }
 
+  response.headers.set("x-request-id", requestId);
   return response;
 }
 
