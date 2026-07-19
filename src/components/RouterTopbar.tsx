@@ -30,14 +30,17 @@ import {
   Server,
   Settings,
   ShieldCheck,
+  Sparkles,
   Wallet,
 } from "lucide-react";
 import Logo from "./Logo";
 
 type NavItem = { href: string; label: string; icon: typeof Cpu };
 
-// Primary tabs — the surfaces people live in.
+// Primary tabs — the surfaces people live in. "/dashboard" (the assistant)
+// is the console home and matches exactly, never as a prefix.
 const PRIMARY: NavItem[] = [
+  { href: "/dashboard", label: "Assistant", icon: Sparkles },
   { href: "/dashboard/providers", label: "Providers", icon: Cpu },
   { href: "/dashboard/playground", label: "Playground", icon: Rocket },
   { href: "/dashboard/tasks", label: "Activity", icon: Activity },
@@ -69,7 +72,10 @@ export default function RouterTopbar({
   const moreRef = useRef<HTMLDetailsElement>(null);
   const accountRef = useRef<HTMLDetailsElement>(null);
 
-  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  const isActive = (href: string) =>
+    href === "/dashboard"
+      ? pathname === "/dashboard" || pathname === "/dashboard/submit"
+      : pathname === href || pathname.startsWith(`${href}/`);
   const moreActive = MORE.some((item) => isActive(item.href));
 
   // ⌘K / Ctrl-K focuses the global search.

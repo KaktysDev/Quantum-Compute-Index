@@ -4,6 +4,7 @@ import { checkIsAdmin } from "@/lib/admin";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import "./console.css";
+import "./chat.css";
 
 export const dynamic = "force-dynamic";
 
