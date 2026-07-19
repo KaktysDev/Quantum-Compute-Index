@@ -121,22 +121,36 @@
 .qc-particle-canvas { width: 100%; height: 100%; display: block; cursor: crosshair; }
 .qc-welcome h1 { margin: 0.6rem 0 0; font-size: clamp(1.15rem, 2vw, 1.5rem); font-weight: 570; letter-spacing: -0.02em; }
 .qc-welcome > p { max-width: 520px; margin: 0.7rem 0 0; color: var(--qr-muted); font-size: 0.74rem; line-height: 1.65; }
-.qc-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; max-width: 660px; margin-top: 1.6rem; }
-.qc-chips button {
-  padding: 0.55rem 0.8rem;
-  border: 1px solid var(--qr-line);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.02);
-  color: var(--qr-muted);
-  font-size: 0.66rem;
+/* Rotating ghost suggestion: types, holds, fades, advances. */
+.qc-ghost {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  min-height: 2.1rem;
+  max-width: min(680px, 94%);
+  margin-top: 1.7rem;
+  padding: 0.35rem 0.6rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
   cursor: pointer;
-  transition: color 150ms ease, border-color 150ms ease, transform 150ms ease, background-color 150ms ease;
+  opacity: 1;
+  transition: opacity 420ms ease, background-color 160ms ease;
 }
-.qc-chips button:hover {
-  transform: translateY(-1px);
-  border-color: rgba(66, 229, 158, 0.45);
-  background: var(--qr-emerald-soft);
-  color: var(--qr-emerald);
+.qc-ghost.fade { opacity: 0; }
+.qc-ghost:hover { background: rgba(66, 229, 158, 0.06); }
+.qc-ghost:disabled { cursor: default; opacity: 0.4; }
+.qc-ghost-try { color: var(--qr-dim); font: 650 0.56rem var(--qr-mono); letter-spacing: 0.18em; text-transform: uppercase; }
+.qc-ghost-text { color: var(--qr-muted); font-size: 0.78rem; text-align: left; line-height: 1.5; }
+.qc-ghost:hover .qc-ghost-text { color: #d7e4dd; }
+.qc-ghost-caret {
+  display: inline-block;
+  width: 7px;
+  height: 0.9em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--qr-emerald);
+  animation: qc-blink 0.8s steps(1) infinite;
 }
 
 /* messages */
@@ -344,12 +358,14 @@
   position: relative;
   display: flex;
   align-items: flex-end;
-  gap: 0.6rem;
-  margin-top: 0.4rem;
-  padding: 0.65rem 0.65rem 0.65rem 0.95rem;
+  gap: 0.7rem;
+  margin-top: 0.6rem;
+  margin-bottom: 0.4rem;
+  padding: 0.9rem 0.8rem 0.9rem 1.15rem;
   border: 1px solid var(--qr-line-strong);
-  border-radius: 14px;
+  border-radius: 16px;
   background: #0a0f0c;
+  box-shadow: 0 -18px 40px rgba(3, 6, 5, 0.55);
   transition: border-color 180ms ease, box-shadow 180ms ease;
 }
 .qc-composer:focus-within { border-color: rgba(66, 229, 158, 0.5); box-shadow: 0 0 0 3px rgba(66, 229, 158, 0.08), 0 0 30px rgba(66, 229, 158, 0.06); }
@@ -357,23 +373,24 @@
 .qc-composer textarea {
   flex: 1;
   min-width: 0;
-  max-height: 180px;
+  min-height: 52px;
+  max-height: 220px;
   border: 0;
   outline: 0;
   resize: none;
   background: transparent;
   color: #e8f0eb;
-  font: 0.76rem/1.6 var(--font-sans), sans-serif;
+  font: 0.85rem/1.65 var(--font-sans), sans-serif;
 }
 .qc-composer textarea::placeholder { color: var(--qr-dim); }
 .qc-send {
   display: grid;
   flex: none;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 42px;
+  height: 42px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 11px;
   background: var(--qr-emerald);
   color: #04120b;
   cursor: pointer;
@@ -382,7 +399,7 @@
 .qc-send:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 18px rgba(66, 229, 158, 0.3); }
 .qc-send:disabled { opacity: 0.35; cursor: not-allowed; }
 .qc-send.stop { background: rgba(139, 123, 255, 0.18); color: #b9aefc; border: 1px solid rgba(139, 123, 255, 0.5); }
-.qc-footnote { margin: 0.5rem 0 0.9rem; color: var(--qr-dim); font-size: 0.56rem; text-align: center; }
+.qc-footnote { margin: 0.55rem 0 1.5rem; color: var(--qr-dim); font-size: 0.56rem; text-align: center; }
 
 /* ── shared ───────────────────────────────────────────────────────────── */
 
@@ -402,5 +419,6 @@
   .qc-msg, .qc-proposal, .qc-counts i { animation: none; }
   .qc-thinking.live { animation: none; }
   .qc-thinking.live .qc-orbit { animation: none; }
-  .qc-caret, .qc-warming i { animation: none; }
+  .qc-caret, .qc-warming i, .qc-ghost-caret { animation: none; }
+  .qc-ghost { transition: none; }
 }

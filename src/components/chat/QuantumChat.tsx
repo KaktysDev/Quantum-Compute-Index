@@ -77,6 +77,79 @@ const SUGGESTIONS = [
   "Run a Bell state with 1,024 shots on the best available backend.",
 ];
 
+/**
+ * Rotating ghost suggestion: types one prompt out, holds ~2s, fades, then
+ * moves to the next. Clicking sends the full suggestion. Reduced motion gets
+ * a simple no-typing rotation.
+ */
+function GhostSuggestion({
+  items,
+  onPick,
+  disabled,
+}: {
+  items: readonly string[];
+  onPick: (text: string) => void;
+  disabled: boolean;
+}) {
+  const [index, setIndex] = useState(0);
+  const [chars, setChars] = useState(0);
+  const [phase, setPhase] = useState<"typing" | "hold" | "fade">("typing");
+  const reduced = useRef(false);
+
+  useEffect(() => {
+    reduced.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }, []);
+
+  useEffect(() => {
+    const text = items[index];
+    if (reduced.current) {
+      setChars(text.length);
+      setPhase("hold");
+      const next = window.setTimeout(() => {
+        setChars(0);
+        setIndex((i) => (i + 1) % items.length);
+      }, 3600);
+      return () => window.clearTimeout(next);
+    }
+    if (phase === "typing") {
+      if (chars >= text.length) {
+        setPhase("hold");
+        return;
+      }
+      const t = window.setTimeout(() => setChars((c) => c + 1), 26);
+      return () => window.clearTimeout(t);
+    }
+    if (phase === "hold") {
+      const t = window.setTimeout(() => setPhase("fade"), 2_000);
+      return () => window.clearTimeout(t);
+    }
+    // fade → advance after the CSS transition
+    const t = window.setTimeout(() => {
+      setChars(0);
+      setPhase("typing");
+      setIndex((i) => (i + 1) % items.length);
+    }, 450);
+    return () => window.clearTimeout(t);
+  }, [phase, chars, index, items]);
+
+  const text = items[index];
+  return (
+    <button
+      type="button"
+      className={`qc-ghost ${phase === "fade" ? "fade" : ""}`}
+      onClick={() => onPick(text)}
+      disabled={disabled}
+      aria-label={`Try: ${text}`}
+    >
+      <span className="qc-ghost-try">try</span>
+      <span className="qc-ghost-text">
+        {text.slice(0, chars)}
+        <i className="qc-ghost-caret" aria-hidden="true" />
+      </span>
+    </button>
+  );
+}
+
 // ── markdown-lite ────────────────────────────────────────────────────────────
 
 function renderInline(raw: string, keyBase: string): ReactNode[] {
@@ -701,13 +774,7 @@ export default function QuantumChat({
                   Compare providers, size a workload, inspect a GitHub repo, or ask me to prepare a run —
                   you approve every job before it executes.
                 </p>
-                <div className="qc-chips">
-                  {SUGGESTIONS.map((suggestion) => (
-                    <button key={suggestion} type="button" onClick={() => send(suggestion)} disabled={busy}>
-                      {suggestion}
-                    </button>
-                  ))}
-                </div>
+                <GhostSuggestion items={SUGGESTIONS} onPick={send} disabled={busy} />
               </div>
             ) : (
               <div className="qc-thread">
@@ -749,7 +816,7 @@ export default function QuantumChat({
             <textarea
               ref={inputRef}
               value={input}
-              rows={1}
+              rows={2}
               placeholder='Describe a job, paste a GitHub repo URL, or ask anything quantum… ("run bell.qasm with 2048 shots")'
               onChange={(event) => {
                 setInput(event.target.value);
