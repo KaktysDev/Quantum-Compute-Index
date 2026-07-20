@@ -9,8 +9,8 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import HeroConsole from "@/components/landing/HeroConsole";
+import HeroParticleText from "@/components/landing/HeroParticleText";
 import LandingNav from "@/components/landing/LandingNav";
-import QuantumParticles from "@/components/landing/QuantumParticles";
 import Reveal from "@/components/landing/Reveal";
 import LandingPriceIndex, { type IndexPoint } from "@/components/LandingPriceIndex";
 import LandingSignin from "@/components/LandingSignin";
@@ -82,6 +82,13 @@ export default async function LandingPage() {
   const [latest, series] = await Promise.all([getLatestSnapshot(), getSeries(365)]);
   const routable = BACKENDS.filter((backend) => backend.available).length;
   const qpuCount = BACKENDS.filter((backend) => backend.kind === "qpu").length;
+  const chartBackends = BACKENDS.slice(0, 6).map((backend) => {
+    const estimatedCost = Math.max(.001, backend.pricePerTask + backend.pricePerShot * 1024);
+    return { ...backend, estimatedCost };
+  });
+  const chartCosts = chartBackends.map((backend) => Math.log10(backend.estimatedCost));
+  const minChartCost = Math.min(...chartCosts);
+  const maxChartCost = Math.max(...chartCosts);
   const tickerItems = [
     ...BACKENDS.map((b) => ({
       name: b.displayName,
@@ -92,11 +99,6 @@ export default async function LandingPage() {
 
   return (
     <main className="ql-site">
-      {/* Ambient layers */}
-      <div className="ql-aurora" aria-hidden="true"><i /><i /><i /></div>
-      <div className="ql-gridfloor" aria-hidden="true" />
-      <div className="ql-orbits" aria-hidden="true"><i /><i /><i /></div>
-
       {/* Sign-in modal — opens on ?signin=required (middleware bounce) and the qr:signin event. */}
       <LandingSignin />
 
@@ -108,18 +110,11 @@ export default async function LandingPage() {
           <span className="ql-blink" aria-hidden="true" /> THE QUANTUM EXECUTION LAYER
         </p>
 
-        <div className="ql-particle-stage">
-          <QuantumParticles label="QROUTER" className="ql-particle-canvas" />
-          <h1 className="ql-sr">QRouter — the intelligent routing layer for quantum compute</h1>
-          <p className="ql-particle-hint" aria-hidden="true">click to collapse the wavefunction</p>
-        </div>
+        <h1 className="ql-hero-title">The economic layer <HeroParticleText>for quantum</HeroParticleText></h1>
 
         <div className="ql-hero-grid">
           <div className="ql-hero-copy">
-            <h2>
-              One API that <em>analyzes</em>, <em>prices</em>, and <em>routes</em> your
-              circuits to the right quantum hardware.
-            </h2>
+            <h2>One API that analyzes, prices, and routes circuits to the right available quantum hardware.</h2>
             <p>
               Hard constraints first. Eligible candidates ranked by projected quality,
               queue, cost, and reliability. Full decision trace on every job.
@@ -229,23 +224,25 @@ export default async function LandingPage() {
             </Link>
           </Reveal>
           <Reveal variant="left">
-            <div className="ql-plot" aria-label="Illustrative routing decision plot; not provider performance data">
+            <div className="ql-plot" aria-label="Current QRouter catalog cost and fidelity landscape for a 1,024-shot sample workload">
               <div className="ql-plot-tabs">
                 <span className="active">Balanced</span>
                 <span>Cost</span>
                 <span>Speed</span>
                 <span>Quality</span>
               </div>
-              <div className="ql-plot-area">
+              <div className="ql-plot-area ql-catalog-plot">
                 <span className="ql-axis-y">PROJECTED QUALITY</span>
-                <span className="ql-axis-x">ESTIMATED COST →</span>
-                <i className="ql-dot alpha"><b>QPU ALPHA</b><small>SELECTED · 0.84</small></i>
-                <i className="ql-dot beta"><b>QPU BETA</b><small>ELIGIBLE · 0.79</small></i>
-                <i className="ql-dot gamma"><b>QPU GAMMA</b><small>REJECTED · COST</small></i>
+                <span className="ql-axis-x">ESTIMATED 1,024-SHOT COST (LOG) →</span>
+                {chartBackends.map((backend) => {
+                  const left = 10 + ((Math.log10(backend.estimatedCost) - minChartCost) / Math.max(.001, maxChartCost - minChartCost)) * 76;
+                  const top = 12 + (1 - backend.fidelity) * 520;
+                  return <i className={`ql-dot ${backend.available ? "selected" : "credential"}`} style={{ left: `${left}%`, top: `${Math.min(78, top)}%` }} key={backend.id}><b>{backend.displayName}</b><small>{backend.available ? "ROUTABLE" : "KEY REQUIRED"} · ${backend.estimatedCost.toFixed(backend.estimatedCost < 1 ? 4 : 2)}</small></i>;
+                })}
               </div>
               <footer>
-                <span>SAMPLE BACKENDS</span>
-                <span>NO PROVIDER PERFORMANCE CLAIMS</span>
+                <span>CATALOG RATES · 1,024 SHOTS</span>
+                <span>{routable} / {BACKENDS.length} CURRENTLY ROUTABLE</span>
               </footer>
             </div>
           </Reveal>
@@ -366,13 +363,13 @@ function ProductVisual({
     return (
       <div className="ql-visual">
         <div className="ql-ui-window">
-          <header><Route /> ROUTE DECISION <span>SAMPLE</span></header>
+          <header><Route /> ROUTE DECISION <span>QCI / V1</span></header>
           <div className="ql-ui-rows">
-            <div className="selected"><b>QPU Alpha</b><span>18m</span><span>99.0%</span><span>$0.74</span><strong>0.84</strong></div>
-            <div><b>QPU Beta</b><span>29m</span><span>98.6%</span><span>$0.62</span><strong>0.79</strong></div>
-            <div className="rejected"><b>QPU Gamma</b><span>7m</span><span>99.4%</span><span>$1.18</span><strong>REJECT</strong></div>
+            <div className="selected"><b>QCI Aer GPU</b><span>2 sec</span><span>100.0%</span><span>$0.0031</span><strong>SELECTED</strong></div>
+            <div><b>Amazon SV1</b><span>8 sec</span><span>100.0%</span><span>$0.0845</span><strong>KEY REQUIRED</strong></div>
+            <div className="rejected"><b>IBM Brisbane</b><span>780 sec</span><span>99.2%</span><span>$65.90</span><strong>KEY REQUIRED</strong></div>
           </div>
-          <footer><Check /> BALANCED POLICY · QPU ONLY · MAX $1.00</footer>
+          <footer><Check /> BALANCED · 2 QUBITS · 1,024 SHOTS · MAX $2.00</footer>
         </div>
       </div>
     );
@@ -380,9 +377,9 @@ function ProductVisual({
     return (
       <div className="ql-visual">
         <div className="ql-code-compare">
-          <pre><span>OPENQASM INPUT</span><code>{`h q[0];\ncx q[0], q[1];\nmeasure q -> c;`}</code></pre>
+          <pre><span>OPENQASM 2 · BELL.QASM</span><code>{`h q[0];\ncx q[0], q[1];\nmeasure q -> c;`}</code><small>DEPTH 4 · 2 GATES</small></pre>
           <i>→</i>
-          <pre><span>TARGET-AWARE OUTPUT</span><code>{`rz(pi/2) q[0];\nsx q[0];\necr q[0], q[1];`}</code></pre>
+          <pre><span>QCI AER GPU · LOCAL</span><code>{`h q[0];\ncx q[0],q[1];\nmeasure q -> c;`}</code><small>OPT LEVEL 2 · ARTIFACT SAVED</small></pre>
         </div>
       </div>
     );
@@ -390,15 +387,15 @@ function ProductVisual({
   return (
     <div className="ql-visual">
       <div className="ql-deploy-window">
-        <header><GitBranch /> github.com/organization/quantum-circuits <span>main</span></header>
-        {["Connect repository", "Discover circuit", "Set routing policy", "Compile", "Route", "Execute", "Receive result"].map((step, index) => (
+        <header><GitBranch /> github.com/org/quantum-circuits <span>main@f1d8dfc</span></header>
+        {["Inspect repository", "Detect examples/bell.qasm", "Load qrouter.json defaults", "Pin source commit", "Route to QCI Aer GPU", "Store compiled artifact", "Return normalized counts"].map((step, index) => (
           <div key={step}>
             <span>{String(index + 1).padStart(2, "0")}</span>
             <b>{step}</b>
             {index < 6 ? <ArrowRight /> : <Check />}
           </div>
         ))}
-        <footer><ShieldCheck /> Signed webhook delivery supported</footer>
+        <footer><ShieldCheck /> Commit-pinned source · normalized artifacts</footer>
       </div>
     </div>
   );

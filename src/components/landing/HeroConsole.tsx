@@ -10,38 +10,33 @@ import { Check, Play } from "lucide-react";
 const STAGES = [
   {
     name: "Analyze",
-    label: "Circuit requirements",
-    prompt:
-      "Inspect a 6-qubit variational circuit for width, depth, gate set, and execution constraints.",
-    result: "CIRCUIT PROFILE READY",
+    label: "Circuit profile",
+    prompt: "bell.qasm validated · OpenQASM 2.0 · 2 qubits · depth 4 · H + CX",
+    result: "CIRCUIT PROFILE READY · 2Q / DEPTH 4",
   },
   {
     name: "Transpile",
     label: "Target-aware compile",
-    prompt:
-      "Compile the circuit against each eligible hardware architecture and preserve artifacts.",
-    result: "3 TARGET PROGRAMS READY",
+    prompt: "Compile for QCI Aer GPU · all-to-all connectivity · optimization level 2.",
+    result: "LOCAL COMPILE READY · ARTIFACT STORED",
   },
   {
     name: "Score",
-    label: "QCI Engine",
-    prompt:
-      "Compare compatibility, projected quality, queue time, cost, and backend reliability.",
-    result: "WORKLOAD SCORES READY",
+    label: "Eligibility and QCI score",
+    prompt: "Apply credentials and hard constraints first · 1 of 8 catalog targets is routable.",
+    result: "QCI AER GPU · ONLY ELIGIBLE TARGET",
   },
   {
     name: "Route",
     label: "Balanced policy",
-    prompt:
-      "Select the best eligible QPU under a $1.00 cost ceiling and 30-minute queue limit.",
-    result: "QPU ALPHA SELECTED",
+    prompt: "Select QCI Aer GPU · 2-second queue · reserve the $0.018246 total quote.",
+    result: "QCI AER GPU SELECTED · QUOTE RESERVED",
   },
   {
     name: "Execute",
-    label: "Normalized lifecycle",
-    prompt:
-      "Submit through one authenticated API and return provider-neutral result artifacts.",
-    result: "EXECUTION CONTRACT READY",
+    label: "Normalized result",
+    prompt: "Execution completed · |00⟩ 51.4% · |11⟩ 48.6% · result and QASM ready.",
+    result: "EXECUTION COMPLETED · NORMALIZED COUNTS READY",
   },
 ] as const;
 
@@ -91,8 +86,8 @@ export default function HeroConsole() {
       <span className="ql-console-scanline" aria-hidden="true" />
       <header className="ql-console-chrome">
         <i /><i /><i />
-        <b>qrouter · sample workload</b>
-        <em>~/circuits/vqe.qasm</em>
+        <b>qrouter · local execution</b>
+        <em>~/examples/bell.qasm</em>
       </header>
 
       <div className="ql-console-tabs" role="tablist" aria-label="Workflow stages">
@@ -131,8 +126,8 @@ export default function HeroConsole() {
         </p>
         <div className="ql-console-meta">
           <span>MODE <b>BALANCED</b></span>
-          <span>TARGET <b>QPU ONLY</b></span>
-          <span>MAX COST <b>$1.00</b></span>
+          <span>TARGET <b>AUTO</b></span>
+          <span>SHOTS <b>1,024</b></span>
           <button type="button" aria-label="Run sample" onClick={() => {
             pinnedUntil.current = Date.now() + 9000;
             setActive((v) => (v + 1) % STAGES.length);
@@ -145,7 +140,7 @@ export default function HeroConsole() {
       <footer className="ql-console-result">
         <Check />
         <span key={stage.result} className="ql-result-text">{stage.result}</span>
-        <small>SAMPLE DATA — NO PROVIDER CLAIMS</small>
+        <small>LOCAL DEMO · CATALOG RATE SNAPSHOT</small>
       </footer>
     </div>
   );
