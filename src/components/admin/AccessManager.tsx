@@ -84,10 +84,8 @@ export default function AccessManager({
   return (
     <div className="flex flex-col gap-3">
       <p className="text-xs text-[var(--muted)]">
-        Console access lives in the database. Approving someone here adds them to{" "}
-        <b className="text-white">allowed_emails</b>, which is what the sign-in gate checks — no
-        redeploy needed. Admins are set in the SQL editor (<b className="text-white">admin_emails</b>
-        , see <span className="font-mono">supabase/access.sql</span>) and always keep access.
+        Approving someone lets them sign in right away; admins themselves are managed in the
+        Supabase SQL editor.
       </p>
 
       {migrationNeeded && (
