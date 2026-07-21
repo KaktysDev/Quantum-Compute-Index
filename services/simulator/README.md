@@ -1,34 +1,66 @@
-# QRouter GPU simulator
+# QRouter Qiskit worker
 
-Build and publish the image, then run it on a Vultr Cloud GPU with the NVIDIA
-container runtime:
+This service is the Vultr-hosted execution and compilation layer for QRouter. It
+does not replace QCI routing, pricing, or provider selection, and it is not
+presented as a physical QPU. QRouter selects a backend and creates the quote;
+this worker executes Qiskit Aer simulator jobs and compiles circuits for the
+selected provider target.
+
+## Local verification
+
+Run the CPU-compatible contract suite from the repository root:
 
 ```bash
-docker build -t registry.example.com/qrouter-simulator:latest .
-docker run --gpus all -p 8080:8080 \
-  -e SIMULATOR_TOKEN="$VULTR_SIMULATOR_TOKEN" \
-  -e JOB_DB_PATH=/var/lib/qrouter/jobs.sqlite3 \
-  -v qrouter-jobs:/var/lib/qrouter \
-  registry.example.com/qrouter-simulator:latest
+python3 -m pip install -r services/simulator/requirements-ci.txt
+PYTHONPATH=services/simulator python3 -m unittest discover -s services/simulator -p 'test_*.py' -v
 ```
 
-Point `VULTR_SIMULATOR_URL` at the TLS-terminated worker URL. The public health
-endpoint reports whether Aer selected GPU or CPU; all job endpoints require the
-shared bearer token. Simulator jobs and idempotency keys are persisted in SQLite,
-and interrupted jobs resume when the worker restarts. Use a persistent volume for
-`JOB_DB_PATH`.
+The production image installs `qiskit-aer-gpu` and uses the NVIDIA runtime. Its
+API is:
 
-The same image exposes `POST /v1/transpile`. QRouter sends a provider target,
-basis gates, connectivity, optimization level, and deterministic seed. For IBM,
-the worker retrieves the live `BackendV2` target using `IBM_QUANTUM_TOKEN`, so
-layout, routing, native-gate translation, and calibration-aware optimization use
-the provider's current target instead of a static approximation.
+- `GET /health`: public load-balancer readiness; returns 503 when
+  `REQUIRE_GPU=true` and Aer cannot access the GPU.
+- `GET /metrics`: token-protected JSON capacity and job counters.
+- `POST /v1/jobs`, `GET /v1/jobs/{id}`, `DELETE /v1/jobs/{id}`: durable,
+  idempotent simulator execution.
+- `POST /v1/transpile`: target-aware Qiskit compilation with QPY output and
+  equivalence checks.
+- `/v1/providers/ibm/jobs/*`: optional IBM Runtime execution bridge.
 
-For IBM, the image also exposes authenticated create/status/cancel endpoints
-under `/v1/providers/ibm/jobs`. The web tier sends the exact transpiled circuit
-as QPY and the worker submits it through Qiskit Runtime `SamplerV2`; IBM tokens
-never pass through the public API response.
+## Vultr pilot deployment
 
-SQLite is appropriate for one worker instance. A multi-instance deployment still
-needs a shared queue/database, or sticky routing to workers with separately
-addressable job stores. Provider jobs remain durable at IBM, IonQ, or Braket.
+1. Provision one Vultr Cloud GPU instance with an NVIDIA driver and Docker's
+   NVIDIA container runtime. Point a DNS A record at the instance.
+2. Build `services/simulator/Dockerfile`, publish it to a private registry, and
+   set that image as `QROUTER_WORKER_IMAGE` in `deploy/vultr/.env`.
+3. Populate `deploy/vultr/.env` from `.env.example`. Generate a distinct random
+   `SIMULATOR_TOKEN`, keep `REQUIRE_GPU=true`, and set the DNS name and ACME
+   email used by Caddy.
+4. From `services/simulator/deploy/vultr`, run
+   `docker compose pull && docker compose up -d`, then verify that
+   `https://$WORKER_DOMAIN/health` reports `device: GPU`.
+5. Set the web tier's `VULTR_SIMULATOR_URL` and `VULTR_SIMULATOR_TOKEN` to the
+   worker URL and shared token. `QROUTER_COMPILER_URL` can point to the same URL.
+
+The Compose deployment exposes only Caddy on ports 80/443, obtains TLS
+certificates automatically, mounts a durable job database, runs the worker as a
+non-root user with a read-only filesystem, and refuses CPU fallback. The worker
+returns HTTP 429 with `Retry-After` when `MAX_QUEUED_JOBS` is reached.
+
+## Pilot operations
+
+Use `/metrics` with the bearer token to monitor active jobs, capacity, terminal
+job counts, uptime, and the actual Aer device. Result metadata includes
+`executionMs`, shots, qubits, depth, and device; QRouter retains the QCI quote
+and rate snapshot separately so estimated price and measured usage remain
+auditable.
+
+SQLite is deliberately a single-worker pilot design. Do not add a second worker
+behind the same hostname until the job store and executor are moved to a shared
+database/queue. A production multi-node version should use Postgres for job
+state and a durable queue, while retaining these API paths and idempotency keys.
+
+For IBM compilation, set `IBM_QUANTUM_TOKEN`, `IBM_QUANTUM_INSTANCE`, and
+`IBM_QUANTUM_BACKEND` on the worker. The worker retrieves the live `BackendV2`
+target and submits the exact transpiled QPY through `SamplerV2`; credentials are
+never returned through QRouter's public API.

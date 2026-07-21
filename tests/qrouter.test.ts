@@ -1,10 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BraketClient } from "@aws-sdk/client-braket";
+import { POST as createChat } from "@/app/api/chat/route";
+import { POST as createChatQuote } from "@/app/api/chat/quote/route";
+import { GET as listBackends } from "@/app/api/v1/backends/route";
 import { POST as createJob } from "@/app/api/v1/jobs/route";
 import { POST as createRouteAdvice } from "@/app/api/v1/ai/route-advice/route";
 import { POST as createProject } from "@/app/api/v1/projects/route";
 import { GET as listRepositoryJobs, POST as createRepositoryJob } from "@/app/api/v1/repository-jobs/route";
 import { sampleProviderSeries, sampleSnapshot } from "@/lib/qci/sample";
+import { createAIChatCompletion } from "@/lib/ai/inference";
 import { analyzeCircuit, CircuitValidationError } from "@/lib/qrouter/analyze";
 import { BACKENDS, withQciSnapshot } from "@/lib/qrouter/catalog";
 import { demoJobs, demoProjects } from "@/lib/qrouter/demo-store";
@@ -33,10 +37,23 @@ describe("QRouter circuit pipeline", () => {
     delete process.env.IONQ_API_KEY;
     delete process.env.QROUTER_COMPILER_URL;
     delete process.env.VULTR_SIMULATOR_URL;
+    delete process.env.VULTR_SIMULATOR_TOKEN;
     delete process.env.VULTR_INFERENCE_API_KEY;
     delete process.env.VULTR_INFERENCE_BASE_URL;
     delete process.env.VULTR_MAIN_MODEL;
     delete process.env.VULTR_FALLBACK_MODEL;
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.OPENROUTER_BASE_URL;
+    delete process.env.OPENROUTER_MAIN_MODEL;
+    delete process.env.OPENROUTER_FALLBACK_MODEL;
+    delete process.env.OPENROUTER_SITE_URL;
+    delete process.env.OPENROUTER_APP_NAME;
+    delete process.env.OPENROUTER_PROVIDER_ORDER;
+    delete process.env.OPENROUTER_ALLOW_FALLBACKS;
+    delete process.env.OPENROUTER_DATA_COLLECTION;
+    delete process.env.AI_PROVIDER_ORDER;
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.GEMINI_MODEL;
     delete process.env.AWS_ACCESS_KEY_ID;
     delete process.env.BRAKET_OUTPUT_BUCKET;
     demoJobs.clear();
@@ -46,6 +63,11 @@ describe("QRouter circuit pipeline", () => {
   it("analyzes a Bell circuit", () => {
     const analysis = analyzeCircuit(bell, "openqasm2");
     expect(analysis).toMatchObject({ qubits: 2, classicalBits: 2, gates: 2, twoQubitGates: 1, complexity: "light" });
+  });
+
+  it("analyzes semicolon-delimited OpenQASM on one line", () => {
+    const analysis = analyzeCircuit('OPENQASM 2.0; include "qelib1.inc"; qreg q[2]; creg c[2]; h q[0]; cx q[0],q[1]; measure q -> c;', "openqasm2");
+    expect(analysis).toMatchObject({ qubits: 2, classicalBits: 2, gates: 2, twoQubitGates: 1, measurements: 2 });
   });
 
   it("normalizes the supported OpenQASM 3 subset", () => {
@@ -181,10 +203,208 @@ describe("QRouter circuit pipeline", () => {
     expect(response.status).toBe(200);
     expect(payload).toMatchObject({
       model: "test/main-model",
+      inference_provider: "vultr",
       decision: { selected: { id: "qci-aer-gpu" } },
       analysis: { qubits: 2, complexity: "light" },
     });
     expect(payload.advice).toContain("QCI Aer GPU");
+  });
+
+  it("uses Gemini to explain but not alter the QCI route", async () => {
+    process.env.GEMINI_API_KEY = "test-gemini-key";
+    process.env.GEMINI_MODEL = "gemini-3.5-flash";
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input instanceof Request ? input.url : input)).toContain("/models/gemini-3.5-flash:streamGenerateContent?alt=sse");
+      expect(new Headers(init?.headers).get("x-goog-api-key")).toBe("test-gemini-key");
+      const body = JSON.parse(String(init?.body));
+      expect(body.systemInstruction.parts[0].text).toContain("QCI Engine has already selected");
+      expect(body.contents[0].parts[0].text).toContain("qci-aer-gpu");
+      return new Response([
+        `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: "QCI selected the simulator because it is compatible.", thought: false }] } }] })}`,
+        `data: ${JSON.stringify({ usageMetadata: { promptTokenCount: 40, candidatesTokenCount: 9, totalTokenCount: 49 } })}`,
+        "",
+      ].join("\n\n"), { headers: { "content-type": "text/event-stream" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await createRouteAdvice(new Request("http://localhost/api/v1/ai/route-advice", {
+      method: "POST",
+      headers: { authorization: "Bearer qci_test_local_development", "content-type": "application/json" },
+      body: JSON.stringify({ circuit: bell, shots: 256, target: "auto", routing_mode: "balanced" }),
+    }));
+    const payload = await response.json();
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      advice_source: "gemini",
+      model: "gemini-3.5-flash",
+      advice: "QCI selected the simulator because it is compatible.",
+      decision: { selected: { id: "qci-aer-gpu" } },
+      qci: { source: "sample" },
+      usage: { totalTokens: 49 },
+    });
+  });
+
+  it("streams the Gemini console assistant with live QCI context", async () => {
+    process.env.GEMINI_API_KEY = "test-gemini-key";
+    const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      expect(body.systemInstruction.parts[0].text).toContain("routing layer for quantum compute");
+      expect(body.systemInstruction.parts[0].text).toContain("qci-aer-gpu");
+      return new Response([
+        `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: "Use auto routing for this Bell circuit.", thought: false }] } }] })}`,
+        `data: ${JSON.stringify({ usageMetadata: { promptTokenCount: 30, candidatesTokenCount: 8, totalTokenCount: 38 } })}`,
+        "",
+      ].join("\n\n"), { headers: { "content-type": "text/event-stream" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await createChat(new Request("http://localhost/api/chat", {
+      method: "POST",
+      headers: { authorization: "Bearer qci_test_local_development", "content-type": "application/json" },
+      body: JSON.stringify({ message: "Which backend should run a Bell circuit?" }),
+    }));
+    const events = await response.text();
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(events).toContain("event: text");
+    expect(events).toContain("Use auto routing for this Bell circuit.");
+    expect(events).toContain("event: usage");
+    expect(events).toContain("event: done");
+  });
+
+  it("sends OpenRouter attribution and provider routing options", async () => {
+    process.env.OPENROUTER_API_KEY = "test-openrouter-key";
+    process.env.OPENROUTER_BASE_URL = "https://openrouter.test/api/v1";
+    process.env.OPENROUTER_MAIN_MODEL = "openai/test-model";
+    process.env.OPENROUTER_SITE_URL = "https://qrouter.test";
+    process.env.OPENROUTER_APP_NAME = "QRouter Tests";
+    process.env.OPENROUTER_PROVIDER_ORDER = "Fireworks,Together";
+    process.env.OPENROUTER_DATA_COLLECTION = "deny";
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input instanceof Request ? input.url : input)).toBe("https://openrouter.test/api/v1/chat/completions");
+      const headers = new Headers(init?.headers);
+      expect(headers.get("authorization")).toBe("Bearer test-openrouter-key");
+      expect(headers.get("http-referer")).toBe("https://qrouter.test");
+      expect(headers.get("x-openrouter-title")).toBe("QRouter Tests");
+      const body = JSON.parse(String(init?.body));
+      expect(body).toMatchObject({
+        model: "openai/test-model",
+        stream: false,
+        usage: { include: true },
+        provider: {
+          order: ["Fireworks", "Together"],
+          allow_fallbacks: true,
+          data_collection: "deny",
+        },
+      });
+      return Response.json({
+        model: "openai/test-model",
+        provider: "Fireworks",
+        choices: [{ message: { content: [{ type: "text", text: "OpenRouter is ready." }] } }],
+        usage: { total_tokens: 12, cost: 0.0001 },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(createAIChatCompletion({
+      messages: [{ role: "user", content: "ping" }],
+    })).resolves.toMatchObject({
+      content: "OpenRouter is ready.",
+      model: "openai/test-model",
+      provider: "openrouter",
+      upstreamProvider: "Fireworks",
+      usage: { total_tokens: 12, cost: 0.0001 },
+    });
+  });
+
+  it("prefers Vultr credits and fails over to OpenRouter", async () => {
+    process.env.VULTR_INFERENCE_API_KEY = "test-vultr-key";
+    process.env.VULTR_INFERENCE_BASE_URL = "https://vultr.test/v1";
+    process.env.VULTR_MAIN_MODEL = "vultr/main";
+    process.env.OPENROUTER_API_KEY = "test-openrouter-key";
+    process.env.OPENROUTER_BASE_URL = "https://openrouter.test/api/v1";
+    process.env.OPENROUTER_MAIN_MODEL = "openrouter/auto";
+    const urls: string[] = [];
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input instanceof Request ? input.url : input);
+      urls.push(url);
+      if (url.startsWith("https://vultr.test")) {
+        return Response.json({ error: { message: "Vultr is temporarily busy", code: 429 } }, { status: 429 });
+      }
+      return Response.json({
+        model: "openai/fallback-model",
+        provider: "Together",
+        choices: [{ message: { content: "Answered by the backup." } }],
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(createAIChatCompletion({
+      messages: [{ role: "user", content: "ping" }],
+    })).resolves.toMatchObject({ provider: "openrouter", upstreamProvider: "Together" });
+    expect(urls).toEqual([
+      "https://vultr.test/v1/chat/completions",
+      "https://openrouter.test/api/v1/chat/completions",
+    ]);
+  });
+
+  it("keeps QCI advice available when optional OpenRouter commentary fails", async () => {
+    process.env.OPENROUTER_API_KEY = "bad-openrouter-key";
+    process.env.OPENROUTER_BASE_URL = "https://openrouter.test/api/v1";
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({
+      error: { message: "OpenRouter key is invalid", code: 401 },
+    }, { status: 401 })));
+
+    const response = await createRouteAdvice(new Request("http://localhost/api/v1/ai/route-advice", {
+      method: "POST",
+      headers: { authorization: "Bearer qci_test_local_development", "content-type": "application/json" },
+      body: JSON.stringify({ circuit: bell, shots: 256, target: "auto", routing_mode: "balanced" }),
+    }));
+    await expect(response.json()).resolves.toMatchObject({
+      advice_source: "qci-engine",
+      model: "qci-engine",
+      decision: { selected: { id: "qci-aer-gpu" } },
+      commentary_warnings: ["OpenRouter key is invalid"],
+    });
+    expect(response.status).toBe(200);
+  });
+
+  it("lists backends with QCI snapshot pricing and provenance", async () => {
+    const expected = sampleSnapshot();
+    const response = await listBackends();
+    const payload = await response.json();
+    const ionq = payload.data.find((backend: { id: string }) => backend.id === "ionq-aria-1");
+    const expectedIonq = expected.components.find((component) => /ionq/i.test(component.provider));
+    expect(response.status).toBe(200);
+    expect(payload.qci).toMatchObject({ source: "sample", index: expected.price, pricePerQcHour: expected.vwap });
+    expect(ionq.pricePerNqh).toBe(expectedIonq?.pricePerNqh);
+  });
+
+  it("uses the same compiled QCI quote for chat confirmation and job execution", async () => {
+    const requestBody = { circuit: bell, shots: 256, target: "auto", routing_mode: "balanced", optimization_level: 3 };
+    const quoteResponse = await createChatQuote(new Request("http://localhost/api/chat/quote", {
+      method: "POST",
+      headers: { authorization: "Bearer qci_test_local_development", "content-type": "application/json" },
+      body: JSON.stringify(requestBody),
+    }));
+    const preview = await quoteResponse.json();
+    const jobResponse = await createJob(new Request("http://localhost/api/v1/jobs", {
+      method: "POST",
+      headers: { authorization: "Bearer qci_test_local_development", "content-type": "application/json" },
+      body: JSON.stringify(requestBody),
+    }));
+    const job = await jobResponse.json();
+    expect(quoteResponse.status).toBe(200);
+    expect(jobResponse.status).toBe(201);
+    expect(preview.transpilation).toMatchObject({ backendId: "qci-aer-gpu", optimizationLevel: 3 });
+    expect(preview.quote).toMatchObject({
+      providerCost: job.quote.providerCost,
+      transpilerFee: job.quote.transpilerFee,
+      platformFee: job.quote.platformFee,
+      total: job.quote.total,
+      rateSnapshot: job.quote.rateSnapshot,
+    });
+    expect(preview.decision.selected.id).toBe(job.selected_backend_id);
   });
 
   it("anchors every sample provider history to its current normalized rate", () => {
@@ -234,6 +454,35 @@ describe("QRouter circuit pipeline", () => {
     const result = await transpileForBackend(backend, analyzeCircuit(bell, "openqasm2"), { optimizationLevel: 3 });
     expect(result).toMatchObject({ backendId: "qci-aer-gpu", compiler: "local", optimizationLevel: 3 });
     expect(result.qasm).toContain("OPENQASM 2.0");
+  });
+
+  it("submits and polls Qiskit jobs through the Vultr worker contract", async () => {
+    process.env.VULTR_SIMULATOR_URL = "https://simulator.example.com/";
+    process.env.VULTR_SIMULATOR_TOKEN = "vultr-worker-token";
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json({ id: "vultr-job-1", status: "submitted", createdAt: 1 }, { status: 202 }))
+      .mockResolvedValueOnce(Response.json({ status: "completed", result: { counts: { "00": 16, "11": 16 }, shots: 32 } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const analysis = analyzeCircuit(bell, "openqasm2");
+    await expect(submitToProvider("qci-aer-gpu", analysis, 32, "qrouter-job-1")).resolves.toMatchObject({
+      providerJobId: "vultr-job-1",
+      status: "submitted",
+    });
+    await expect(getProviderStatus("qci-aer-gpu", "vultr-job-1")).resolves.toMatchObject({
+      status: "completed",
+      result: { shots: 32 },
+    });
+
+    const [submitUrl, submitInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(submitUrl).toBe("https://simulator.example.com/v1/jobs");
+    expect(submitInit.headers).toMatchObject({
+      authorization: "Bearer vultr-worker-token",
+      "idempotency-key": "qrouter-job-1",
+    });
+    expect(JSON.parse(String(submitInit.body))).toMatchObject({ qasm: analysis.normalizedQasm2, shots: 32 });
+    expect(fetchMock.mock.calls[1][0]).toBe("https://simulator.example.com/v1/jobs/vultr-job-1");
+    expect((fetchMock.mock.calls[1][1] as RequestInit).headers).toMatchObject({ authorization: "Bearer vultr-worker-token" });
   });
 
   it("refuses physical execution when the hardware compiler is unavailable", async () => {

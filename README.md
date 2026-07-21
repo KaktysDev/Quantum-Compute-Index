@@ -91,12 +91,21 @@ webhooks use a durable retry outbox instead of one-shot delivery.
 QRouter's routing and pricing logic stays provider-neutral. Vultr can be used as
 an implementation detail where it replaces infrastructure cleanly:
 
-- `VULTR_INFERENCE_*` powers the generic Route Advisor UI without changing
-  backend selection.
+- QRouter's unified API routes quantum workloads, not language-model requests.
+  QCI deterministically selects and prices quantum backends; Gemini and other
+  optional language models explain that result but cannot change it.
+- Gemini powers the console assistant and is the preferred Route Advisor
+  explanation layer. Optional OpenAI-compatible commentary can use
+  `VULTR_INFERENCE_*` first and `OPENROUTER_*` as a fallback;
+  `AI_PROVIDER_ORDER` defaults to `vultr,openrouter`. If every language model is
+  unavailable, QRouter still returns its deterministic route and quote.
 - `VULTR_OBJECT_STORAGE_*` stores encrypted source/transpiled/result artifacts in
   S3-compatible object storage instead of Supabase Storage.
 - `VULTR_SIMULATOR_URL` can point at the Qiskit/Aer simulator/compiler worker
-  when that service is hosted on Vultr GPU compute.
+  when that service is hosted on Vultr GPU compute. A pilot-ready single-node
+  Docker Compose deployment with automatic TLS, GPU readiness enforcement,
+  durable jobs, queue limits, and metrics is in
+  `services/simulator/deploy/vultr`.
 
 The original Quantum Compute Index implementation remains the pricing oracle
 and is documented below.

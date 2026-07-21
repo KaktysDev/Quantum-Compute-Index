@@ -33,6 +33,48 @@ export function toOpenQasm2(source: string, format: InputFormat): string {
   return qasm;
 }
 
+/** quantum-circuit expects statement boundaries to also be line boundaries. */
+function qasmForParser(source: string) {
+  let output = "";
+  let quote = false;
+  let lineComment = false;
+  let blockComment = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    const next = source[index + 1];
+    if (lineComment) {
+      output += character;
+      if (character === "\n") lineComment = false;
+      continue;
+    }
+    if (blockComment) {
+      output += character;
+      if (character === "*" && next === "/") {
+        output += next;
+        index += 1;
+        blockComment = false;
+      }
+      continue;
+    }
+    if (!quote && character === "/" && next === "/") {
+      output += character + next;
+      index += 1;
+      lineComment = true;
+      continue;
+    }
+    if (!quote && character === "/" && next === "*") {
+      output += character + next;
+      index += 1;
+      blockComment = true;
+      continue;
+    }
+    if (character === '"' && source[index - 1] !== "\\") quote = !quote;
+    output += character;
+    if (!quote && character === ";") output += "\n";
+  }
+  return output;
+}
+
 export function analyzeCircuit(source: string, format: InputFormat): CircuitAnalysis {
   if (!source.trim()) throw new CircuitValidationError("Circuit source is required.");
   if (Buffer.byteLength(source, "utf8") > MAX_SOURCE_BYTES) {
@@ -42,7 +84,7 @@ export function analyzeCircuit(source: string, format: InputFormat): CircuitAnal
   const normalizedQasm2 = toOpenQasm2(source, format);
   const circuit = new QuantumCircuit() as QuantumCircuit & { numQubits: number };
   let parserErrors: unknown[] = [];
-  circuit.importQASM(normalizedQasm2, (errors: unknown) => {
+  circuit.importQASM(qasmForParser(normalizedQasm2), (errors: unknown) => {
     if (Array.isArray(errors)) parserErrors = errors;
     else if (errors) parserErrors = [errors];
   }, false);
@@ -81,4 +123,3 @@ export function assertLocalSimulationLimit(analysis: CircuitAnalysis) {
     throw new CircuitValidationError(`Local simulation supports at most ${MAX_LOCAL_QUBITS} qubits.`);
   }
 }
-

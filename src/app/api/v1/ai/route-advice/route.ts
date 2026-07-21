@@ -1,19 +1,15 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import type { QpuComponent } from "@/lib/qci/types";
-import { getLatestSnapshot } from "@/lib/qci/store";
+import { generateGeminiText, isGeminiConfigured } from "@/lib/ai/gemini";
+import { createAIChatCompletion, isAIInferenceConfigured } from "@/lib/ai/inference";
 import { analyzeCircuit } from "@/lib/qrouter/analyze";
 import { resolvePrincipal } from "@/lib/qrouter/auth";
-import { withQciSnapshot } from "@/lib/qrouter/catalog";
 import { apiError } from "@/lib/qrouter/http";
-import { buildQuote, routeCircuit } from "@/lib/qrouter/route";
-import { applyProviderHealth, loadPersistedBackendHealth } from "@/lib/qrouter/providerHealth";
+import { prepareExecution } from "@/lib/qrouter/pipeline";
+import { routeCircuit } from "@/lib/qrouter/route";
+import { loadRoutingContext } from "@/lib/qrouter/routingContext";
+import { publicTranspilation } from "@/lib/qrouter/transpiler";
 import { createJobSchema } from "@/lib/qrouter/validation";
-import { createAdminClient } from "@/lib/supabase/admin";
-import {
-  createVultrChatCompletionWithFallback,
-  isVultrInferenceConfigured,
-} from "@/lib/vultr/inference";
 
 export const dynamic = "force-dynamic";
 
@@ -40,22 +36,63 @@ function publicCandidates(decision: ReturnType<typeof routeCircuit>) {
   }));
 }
 
-async function snapshotForPrincipal(demo: boolean) {
-  if (demo) {
-    const latest = await getLatestSnapshot();
-    return { id: null, ts: latest.ts, components: latest.components };
+function deterministicAdvice(
+  decision: Awaited<ReturnType<typeof prepareExecution>>["decision"],
+  quote: Awaited<ReturnType<typeof prepareExecution>>["quote"],
+) {
+  return [
+    `- Recommended ${decision.selected.displayName} using the ${decision.mode} policy.`,
+    `- Estimated total: $${quote.total.toFixed(6)}; provider execution: $${quote.providerCost.toFixed(6)}.`,
+    `- ${decision.explanation.join(" ")}`,
+  ].join("\n");
+}
+
+async function explainRoute(prompt: unknown, fallback: string, signal: AbortSignal) {
+  const system = [
+    "You are the QRouter route advisor.",
+    "The QCI Engine has already selected the quantum backend and computed the quote.",
+    "Use only the supplied JSON, never change the selected backend or invent prices.",
+    "Keep the response under 180 words with short bullets and label sample QCI data clearly.",
+  ].join(" ");
+  const warnings: string[] = [];
+
+  if (isGeminiConfigured()) {
+    try {
+      const result = await generateGeminiText({
+        system,
+        turns: [{ role: "user", text: JSON.stringify(prompt) }],
+        maxOutputTokens: 1_200,
+        signal,
+      });
+      return { advice: result.content, model: result.model, provider: "gemini", usage: result.usage, warnings };
+    } catch (error) {
+      warnings.push(error instanceof Error ? error.message : "Gemini commentary failed.");
+    }
   }
-  const { data } = await createAdminClient()
-    .from("qci_snapshots")
-    .select("id,ts,components")
-    .order("ts", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return {
-    id: data?.id ?? null,
-    ts: data?.ts ?? new Date().toISOString(),
-    components: (data?.components ?? []) as QpuComponent[],
-  };
+
+  if (isAIInferenceConfigured()) {
+    try {
+      const result = await createAIChatCompletion({
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: JSON.stringify(prompt) },
+        ],
+        signal,
+      });
+      return {
+        advice: result.content,
+        model: result.model,
+        provider: result.provider,
+        upstreamProvider: result.upstreamProvider,
+        usage: result.usage,
+        warnings,
+      };
+    } catch (error) {
+      warnings.push(error instanceof Error ? error.message : "Optional AI commentary failed.");
+    }
+  }
+
+  return { advice: fallback, model: "qci-engine", provider: "qci-engine", usage: undefined, warnings };
 }
 
 export async function POST(request: Request) {
@@ -65,16 +102,11 @@ export async function POST(request: Request) {
     if (!parsed.success) {
       return NextResponse.json({ error: { type: "invalid_request", message: "The request body is invalid.", details: parsed.error.flatten() } }, { status: 400 });
     }
-    if (!isVultrInferenceConfigured()) {
-      return NextResponse.json({ error: { type: "configuration_error", message: "AI route advisor is not configured." } }, { status: 503 });
-    }
-
     const input = parsed.data;
     const analysis = analyzeCircuit(input.circuit, input.format);
-    const snapshot = await snapshotForPrincipal(principal.demo);
-    const backendHealth = principal.demo ? [] : await loadPersistedBackendHealth();
-    const decision = routeCircuit({
-      backends: applyProviderHealth(withQciSnapshot(snapshot.components), backendHealth),
+    const { snapshot, backends } = await loadRoutingContext(principal.demo);
+    const prepared = await prepareExecution({
+      backends,
       analysis,
       shots: input.shots,
       target: input.target,
@@ -82,8 +114,9 @@ export async function POST(request: Request) {
       constraints: input.constraints,
       qciSnapshotId: snapshot.id,
       qciTimestamp: snapshot.ts,
+      optimizationLevel: input.optimization_level,
     });
-    const quote = buildQuote(decision, analysis, input.shots);
+    const { decision, quote } = prepared;
     const candidates = publicCandidates(decision);
 
     const prompt = {
@@ -103,29 +136,28 @@ export async function POST(request: Request) {
         candidates,
       },
       quote,
+      qci: {
+        snapshotId: snapshot.id,
+        timestamp: snapshot.ts,
+        source: snapshot.source,
+        pricePerQcHour: snapshot.vwap,
+      },
+      transpilation: publicTranspilation(prepared.transpilation),
       question: input.question ?? "Explain the selected route, the main tradeoff, and one practical optimization to try next.",
     };
 
-    const completion = await createVultrChatCompletionWithFallback({
-      messages: [
-        {
-          role: "system",
-          content: [
-            "You are the QRouter route advisor.",
-            "Use only the supplied routing JSON.",
-            "Do not override QRouter's selected backend.",
-            "Keep the response under 180 words with short bullets.",
-            "Call out uncertainty when provider credentials or live queue data are missing.",
-          ].join(" "),
-        },
-        { role: "user", content: JSON.stringify(prompt) },
-      ],
-    });
+    const commentary = await explainRoute(prompt, deterministicAdvice(decision, quote), request.signal);
 
     return NextResponse.json({
-      advice: completion.content,
-      model: completion.model,
-      usage: completion.usage,
+      advice: commentary.advice,
+      advice_source: commentary.provider,
+      model: commentary.model,
+      inference_provider: commentary.provider,
+      upstream_provider: commentary.upstreamProvider,
+      usage: commentary.usage,
+      commentary_warnings: commentary.warnings.length ? commentary.warnings : undefined,
+      qci: prompt.qci,
+      transpilation: prompt.transpilation,
       analysis: prompt.analysis,
       decision: {
         selected: {

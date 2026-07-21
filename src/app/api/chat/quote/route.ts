@@ -4,16 +4,13 @@
 // the model's. Mirrors /api/v1/ai/route-advice minus the LLM commentary.
 
 import { NextResponse } from "next/server";
-import type { QpuComponent } from "@/lib/qci/types";
-import { getLatestSnapshot } from "@/lib/qci/store";
 import { analyzeCircuit } from "@/lib/qrouter/analyze";
 import { resolvePrincipal } from "@/lib/qrouter/auth";
-import { withQciSnapshot } from "@/lib/qrouter/catalog";
 import { apiError } from "@/lib/qrouter/http";
-import { applyProviderHealth, loadPersistedBackendHealth } from "@/lib/qrouter/providerHealth";
-import { buildQuote, routeCircuit } from "@/lib/qrouter/route";
+import { prepareExecution } from "@/lib/qrouter/pipeline";
+import { loadRoutingContext } from "@/lib/qrouter/routingContext";
+import { publicTranspilation } from "@/lib/qrouter/transpiler";
 import { createJobSchema } from "@/lib/qrouter/validation";
-import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -30,27 +27,9 @@ export async function POST(request: Request) {
     const input = parsed.data;
     const analysis = analyzeCircuit(input.circuit, input.format);
 
-    let snapshot: { id: number | null; ts: string; components: QpuComponent[] };
-    if (principal.demo) {
-      const latest = await getLatestSnapshot();
-      snapshot = { id: null, ts: latest.ts, components: latest.components };
-    } else {
-      const { data } = await createAdminClient()
-        .from("qci_snapshots")
-        .select("id,ts,components")
-        .order("ts", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      snapshot = {
-        id: data?.id ?? null,
-        ts: data?.ts ?? new Date().toISOString(),
-        components: (data?.components ?? []) as QpuComponent[],
-      };
-    }
-
-    const backendHealth = principal.demo ? [] : await loadPersistedBackendHealth();
-    const decision = routeCircuit({
-      backends: applyProviderHealth(withQciSnapshot(snapshot.components), backendHealth),
+    const { snapshot, backends } = await loadRoutingContext(principal.demo);
+    const prepared = await prepareExecution({
+      backends,
       analysis,
       shots: input.shots,
       target: input.target,
@@ -58,8 +37,9 @@ export async function POST(request: Request) {
       constraints: input.constraints,
       qciSnapshotId: snapshot.id,
       qciTimestamp: snapshot.ts,
+      optimizationLevel: input.optimization_level,
     });
-    const quote = buildQuote(decision, analysis, input.shots);
+    const { decision, quote } = prepared;
 
     return NextResponse.json({
       analysis: {
@@ -69,6 +49,8 @@ export async function POST(request: Request) {
         twoQubitGates: analysis.twoQubitGates,
         complexity: analysis.complexity,
       },
+      compiledAnalysis: prepared.executionAnalysis,
+      transpilation: publicTranspilation(prepared.transpilation),
       decision: {
         selected: {
           id: decision.selected.id,

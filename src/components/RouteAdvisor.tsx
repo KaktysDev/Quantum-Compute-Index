@@ -19,7 +19,13 @@ interface AdvisorTarget {
 
 interface AdvisorResult {
   advice: string;
+  advice_source: "gemini" | "vultr" | "openrouter" | "qci-engine";
   model: string;
+  qci: {
+    source: "live" | "sample";
+    timestamp: string;
+    pricePerQcHour: number;
+  };
   analysis: {
     qubits: number;
     depth: number;
@@ -105,6 +111,8 @@ export default function RouteAdvisor({ targets }: { targets: AdvisorTarget[] }) 
             <dl>
               <div><dt>Circuit</dt><dd>{result.analysis.qubits}q · depth {result.analysis.depth} · {result.analysis.complexity}</dd></div>
               <div><dt>Provider</dt><dd>{result.decision.selected.provider} / {result.decision.selected.kind}</dd></div>
+              <div><dt>QCI data</dt><dd>{result.qci.source} / {new Date(result.qci.timestamp).toLocaleDateString()}</dd></div>
+              <div><dt>Commentary</dt><dd>{result.advice_source}</dd></div>
             </dl>
             <div className="advisor-text">{result.advice.split("\n").filter(Boolean).map((line) => <p key={line}>{line}</p>)}</div>
             <div className="advisor-candidates">

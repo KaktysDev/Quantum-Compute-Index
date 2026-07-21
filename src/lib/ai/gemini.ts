@@ -26,8 +26,19 @@ export interface GeminiUsage {
   totalTokens?: number;
 }
 
+export interface GeminiTextResult {
+  content: string;
+  model: string;
+  usage: GeminiUsage;
+}
+
+function geminiApiKey(): string {
+  const key = process.env.GEMINI_API_KEY?.trim() ?? "";
+  return key.startsWith("your-") ? "" : key;
+}
+
 export function isGeminiConfigured(): boolean {
-  return Boolean(process.env.GEMINI_API_KEY);
+  return geminiApiKey().length > 0;
 }
 
 export function geminiModel(): string {
@@ -45,7 +56,7 @@ export async function* streamGemini(options: {
   signal?: AbortSignal;
   onUsage?: (usage: GeminiUsage) => void;
 }): AsyncGenerator<GeminiStreamChunk> {
-  const key = process.env.GEMINI_API_KEY;
+  const key = geminiApiKey();
   if (!key) throw new Error("GEMINI_API_KEY is not configured.");
 
   const body = {
@@ -126,4 +137,26 @@ export async function* streamGemini(options: {
   }
 
   options.onUsage?.(usage);
+}
+
+/** Collect a streamed Gemini response for non-streaming server routes. */
+export async function generateGeminiText(options: {
+  system: string;
+  turns: GeminiTurn[];
+  maxOutputTokens?: number;
+  signal?: AbortSignal;
+}): Promise<GeminiTextResult> {
+  let content = "";
+  let usage: GeminiUsage = {};
+  for await (const chunk of streamGemini({
+    ...options,
+    onUsage: (value) => {
+      usage = value;
+    },
+  })) {
+    if (chunk.type === "text") content += chunk.text;
+  }
+  content = content.trim();
+  if (!content) throw new Error("Gemini returned an empty response.");
+  return { content, model: geminiModel(), usage };
 }

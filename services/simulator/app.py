@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 from typing import Literal, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from qiskit import qasm2, qasm3, qpy, transpile
 from qiskit_aer import AerSimulator
@@ -24,9 +25,13 @@ from qiskit.transpiler import CouplingMap, Target, generate_preset_pass_manager
 TOKEN = os.environ.get("SIMULATOR_TOKEN", "")
 MAX_QUBITS = int(os.environ.get("MAX_QUBITS", "30"))
 MAX_SHOTS = int(os.environ.get("MAX_SHOTS", "1000000"))
-EXECUTOR = ThreadPoolExecutor(max_workers=int(os.environ.get("WORKERS", "2")))
+WORKERS = int(os.environ.get("WORKERS", "2"))
+MAX_QUEUED_JOBS = int(os.environ.get("MAX_QUEUED_JOBS", "100"))
+REQUIRE_GPU = os.environ.get("REQUIRE_GPU", "false").lower() in {"1", "true", "yes"}
+EXECUTOR = ThreadPoolExecutor(max_workers=WORKERS)
 LOCK = threading.Lock()
 JOB_DB_PATH = os.environ.get("JOB_DB_PATH", "/tmp/qrouter-simulator/jobs.sqlite3")
+STARTED_AT = time.time()
 
 
 def database():
@@ -93,6 +98,20 @@ def update_stored_job(job_id: str, *, status: str, result=None, error=None, unle
         )
 
 
+def job_status_counts():
+    with database() as connection:
+        rows = connection.execute("select status,count(*) as count from jobs group by status").fetchall()
+    return {row["status"]: int(row["count"]) for row in rows}
+
+
+def active_job_count():
+    with database() as connection:
+        row = connection.execute(
+            "select count(*) as count from jobs where status in ('submitted','processing')"
+        ).fetchone()
+    return int(row["count"])
+
+
 initialize_database()
 
 
@@ -132,6 +151,8 @@ def authorize(authorization: Optional[str] = Header(default=None)):
 def backend():
     if "GPU" in AerSimulator().available_devices():
         return AerSimulator(method="statevector", device="GPU"), "GPU"
+    if REQUIRE_GPU:
+        raise RuntimeError("GPU execution is required, but Qiskit Aer cannot access a GPU")
     return AerSimulator(method="statevector"), "CPU"
 
 
@@ -319,8 +340,44 @@ app = FastAPI(title="QRouter GPU Simulator", version="1.0.0", lifespan=lifespan)
 
 @app.get("/health")
 def health():
-    simulator, device = backend()
-    return {"status": "ok", "device": device, "backend": simulator.name, "maxQubits": MAX_QUBITS}
+    try:
+        simulator, device = backend()
+        return {
+            "status": "ok", "device": device, "backend": simulator.name,
+            "gpuRequired": REQUIRE_GPU, "maxQubits": MAX_QUBITS,
+            "maxShots": MAX_SHOTS, "workers": WORKERS, "activeJobs": active_job_count(),
+        }
+    except Exception as error:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready", "device": "unavailable", "gpuRequired": REQUIRE_GPU,
+                "detail": str(error), "maxQubits": MAX_QUBITS, "maxShots": MAX_SHOTS,
+                "workers": WORKERS, "activeJobs": active_job_count(),
+            },
+        )
+
+
+@app.get("/metrics", dependencies=[Depends(authorize)])
+def metrics():
+    counts = job_status_counts()
+    try:
+        _, device = backend()
+        ready = True
+    except Exception:
+        device = "unavailable"
+        ready = False
+    active = counts.get("submitted", 0) + counts.get("processing", 0)
+    return {
+        "ready": ready,
+        "device": device,
+        "uptimeSeconds": round(time.time() - STARTED_AT, 2),
+        "workers": WORKERS,
+        "activeJobs": active,
+        "maxQueuedJobs": MAX_QUEUED_JOBS,
+        "availableJobSlots": max(0, MAX_QUEUED_JOBS - active),
+        "jobs": counts,
+    }
 
 
 @app.post("/v1/transpile", dependencies=[Depends(authorize)])
@@ -377,6 +434,12 @@ def create_job(payload: JobInput, idempotency_key: Optional[str] = Header(defaul
             existing = get_idempotent_job(idempotency_key)
             if existing:
                 return existing
+        if active_job_count() >= MAX_QUEUED_JOBS:
+            raise HTTPException(
+                status_code=429,
+                detail="Simulator queue is at capacity",
+                headers={"Retry-After": "5"},
+            )
         job_id = str(uuid.uuid4())
         job = insert_stored_job(job_id, payload, idempotency_key)
     EXECUTOR.submit(execute, job_id, payload)

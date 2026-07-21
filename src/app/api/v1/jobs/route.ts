@@ -1,16 +1,13 @@
 import { createHash, randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import type { QpuComponent } from "@/lib/qci/types";
-import { getLatestSnapshot } from "@/lib/qci/store";
 import { analyzeCircuit } from "@/lib/qrouter/analyze";
 import { storeArtifact } from "@/lib/qrouter/artifacts";
 import { resolvePrincipal } from "@/lib/qrouter/auth";
-import { withQciSnapshot } from "@/lib/qrouter/catalog";
 import { demoJobs, type StoredJob } from "@/lib/qrouter/demo-store";
 import { submitToProvider } from "@/lib/qrouter/execution";
 import { apiError } from "@/lib/qrouter/http";
 import { prepareExecution } from "@/lib/qrouter/pipeline";
-import { applyProviderHealth, loadPersistedBackendHealth } from "@/lib/qrouter/providerHealth";
+import { loadRoutingContext } from "@/lib/qrouter/routingContext";
 import { publicTranspilation } from "@/lib/qrouter/transpiler";
 import { createJobSchema } from "@/lib/qrouter/validation";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -42,26 +39,9 @@ export async function POST(request: Request) {
     }
     const input = parsed.data;
     const originalAnalysis = analyzeCircuit(input.circuit, input.format);
-    let snapshot: { id: number | null; ts: string; components: QpuComponent[] };
-    if (principal.demo) {
-      const latest = await getLatestSnapshot();
-      snapshot = { id: null, ts: latest.ts, components: latest.components };
-    } else {
-      const { data } = await createAdminClient()
-        .from("qci_snapshots")
-        .select("id,ts,components")
-        .order("ts", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      snapshot = {
-        id: data?.id ?? null,
-        ts: data?.ts ?? new Date().toISOString(),
-        components: (data?.components ?? []) as QpuComponent[],
-      };
-    }
-    const backendHealth = principal.demo ? [] : await loadPersistedBackendHealth();
+    const { snapshot, backends } = await loadRoutingContext(principal.demo);
     const prepared = await prepareExecution({
-      backends: applyProviderHealth(withQciSnapshot(snapshot.components), backendHealth),
+      backends,
       analysis: originalAnalysis,
       shots: input.shots,
       target: input.target,

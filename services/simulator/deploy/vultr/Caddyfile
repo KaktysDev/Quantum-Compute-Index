@@ -1,0 +1,17 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$WORKER_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy worker:8080
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+	log {
+		output stdout
+		format json
+	}
+}
