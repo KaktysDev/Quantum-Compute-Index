@@ -9,6 +9,7 @@ import { POST as createProject } from "@/app/api/v1/projects/route";
 import { GET as listRepositoryJobs, POST as createRepositoryJob } from "@/app/api/v1/repository-jobs/route";
 import { sampleProviderSeries, sampleSnapshot } from "@/lib/qci/sample";
 import { createAIChatCompletion } from "@/lib/ai/inference";
+import { canAccessConsole, CONSOLE_EMAIL } from "@/lib/access";
 import { analyzeCircuit, CircuitValidationError } from "@/lib/qrouter/analyze";
 import { BACKENDS, withQciSnapshot } from "@/lib/qrouter/catalog";
 import { demoJobs, demoProjects } from "@/lib/qrouter/demo-store";
@@ -21,6 +22,7 @@ import { buildQuote, routeCircuit } from "@/lib/qrouter/route";
 import { simulateCircuit } from "@/lib/qrouter/simulator";
 import { getProviderStatus, submitToProvider } from "@/lib/qrouter/execution";
 import { transpileForBackend, TranspilerUnavailableError } from "@/lib/qrouter/transpiler";
+import { validateWaitlistSubmission } from "@/lib/waitlist";
 
 const bell = `OPENQASM 2.0;
 include "qelib1.inc";
@@ -58,6 +60,37 @@ describe("QRouter circuit pipeline", () => {
     delete process.env.BRAKET_OUTPUT_BUCKET;
     demoJobs.clear();
     demoProjects.clear();
+  });
+
+  it("limits pilot console access to the approved email", () => {
+    expect(canAccessConsole(CONSOLE_EMAIL)).toBe(true);
+    expect(canAccessConsole(`  ${CONSOLE_EMAIL.toUpperCase()}  `)).toBe(true);
+    expect(canAccessConsole("developer@example.com")).toBe(false);
+    expect(canAccessConsole(null)).toBe(false);
+  });
+
+  it("validates and normalizes complete waitlist profiles", () => {
+    const valid = validateWaitlistSubmission({
+      name: "  Ada Lovelace ",
+      email: "ADA@EXAMPLE.COM",
+      linkedin: "https://www.linkedin.com/in/ada-lovelace",
+      jobTitle: "Quantum developer",
+      quantumExperience: "developer",
+      referralSource: "university",
+    });
+    expect(valid).toMatchObject({
+      ok: true,
+      submission: { name: "Ada Lovelace", email: "ada@example.com", quantumExperience: "developer" },
+    });
+
+    expect(validateWaitlistSubmission({
+      name: "Ada",
+      email: "ada@example.com",
+      linkedin: "http://example.com/ada",
+      jobTitle: "Developer",
+      quantumExperience: "expert",
+      referralSource: "unknown",
+    })).toMatchObject({ ok: false });
   });
 
   it("analyzes a Bell circuit", () => {

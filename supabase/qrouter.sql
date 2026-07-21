@@ -10,7 +10,7 @@ alter table public.profiles add column if not exists preferences jsonb not null 
 
 -- Infrastructure credentials are service-role only.
 drop policy if exists "provider_keys: authenticated all" on public.provider_keys;
-drop trigger if exists on_auth_user_created_allowlist on auth.users;
+-- Keep the private-pilot auth allowlist installed by schema.sql.
 
 create table if not exists public.organizations (
   id uuid primary key default gen_random_uuid(), name text not null, slug text not null unique,

@@ -1,24 +1,21 @@
 import Link from "next/link";
-import GlassCard from "@/components/GlassCard";
-import Logo from "@/components/Logo";
+import { ArrowLeft, LockKeyhole } from "lucide-react";
+import LogoMark from "@/components/LogoMark";
 
 export default function AccessDeniedPage() {
   return (
-    <main className="qci-subpage mx-auto flex min-h-screen max-w-3xl flex-col items-center justify-center px-5">
-      <GlassCard strong className="w-full max-w-md p-10 text-center">
-        <div className="mb-6 flex justify-center">
-          <Logo />
+    <main className="access-page">
+      <section className="access-panel">
+        <header><LogoMark size={30} /><span>QROUTER</span></header>
+        <LockKeyhole size={24} />
+        <p className="ql-kicker">CONSOLE ACCESS</p>
+        <h1>This account is not authorized.</h1>
+        <p>QRouter is in a closed pilot. Join the waitlist and we will contact you as console seats open.</p>
+        <div>
+          <Link href="/signin" className="ql-btn primary">Join the waitlist</Link>
+          <Link href="/" className="ql-btn ghost"><ArrowLeft /> Back home</Link>
         </div>
-        <h1 className="mb-3 text-2xl font-semibold text-white">Access is invite-only</h1>
-        <p className="mb-6 text-sm leading-relaxed text-[var(--muted)]">
-          Your account isn&apos;t on the QRouter access list yet. Access is currently
-          limited to approved partners. If you believe this is a mistake, reach out to the team to
-          be added.
-        </p>
-        <Link href="/" className="btn btn-solid">
-          Back to home
-        </Link>
-      </GlassCard>
+      </section>
     </main>
   );
 }

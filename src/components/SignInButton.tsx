@@ -23,10 +23,6 @@ export default function SignInButton({
 
   async function handleSignIn() {
     if (!configured) {
-      if (process.env.NODE_ENV !== "production") {
-        window.location.href = next;
-        return;
-      }
       setError("Sign-in is temporarily unavailable.");
       return;
     }

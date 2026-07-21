@@ -963,6 +963,97 @@
   .ql-eyebrow { letter-spacing: 0.2em; font-size: 0.6rem; }
 }
 
+/* ── Pilot proof, interactive routing, and unified API ────────────────── */
+.ql-affiliations { overflow: hidden; padding: 4.5rem 0 1.25rem; border-block: 1px solid #173226; background: #09150f; color: #edf5f0; }
+.ql-affiliation-head { display: flex; align-items: end; justify-content: space-between; gap: 2rem; padding-bottom: 2.4rem; }
+.ql-affiliation-head .ql-kicker { margin: 0; color: #42e59e; }
+.ql-affiliation-head h2 { max-width: 580px; margin: 0; font-size: 2.4rem; font-weight: 480; line-height: 1.05; letter-spacing: 0; text-align: right; }
+.ql-affiliation-reel { overflow: hidden; border-block: 1px solid rgba(255,255,255,.12); }
+.ql-affiliation-track { display: flex; width: max-content; animation: ql-affiliation-scroll 36s linear infinite; }
+.ql-affiliation-reel:hover .ql-affiliation-track { animation-play-state: paused; }
+.ql-affiliation-group { display: flex; flex: none; }
+.ql-affiliation-logo { display: flex; width: 230px; height: 116px; flex: none; align-items: center; justify-content: center; gap: .7rem; border-right: 1px solid rgba(255,255,255,.12); }
+.ql-affiliation-logo img { max-width: 170px; max-height: 46px; object-fit: contain; filter: grayscale(1) brightness(0) invert(1); opacity: .82; }
+.ql-affiliation-logo strong { color: #fff; font: 650 .72rem var(--ql-mono); letter-spacing: .03em; }
+.ql-affiliation-logo:hover img, .ql-affiliation-logo:hover strong { opacity: 1; }
+.ql-affiliation-note { margin-top: 1rem; color: #769084; font-size: .58rem; line-height: 1.5; }
+@keyframes ql-affiliation-scroll { to { transform: translateX(-50%); } }
+
+.ql-routing-summary { display: grid; min-height: 92px; align-content: center; padding: 1rem; border-bottom: 1px solid #dfe3df; background: #f7faf8; }
+.ql-routing-summary span { display: flex; align-items: center; gap: .35rem; color: #08764f; font: 650 .54rem var(--ql-mono); }
+.ql-routing-summary span svg { width: 12px; }
+.ql-routing-summary strong { margin-top: .35rem; color: #1c2720; font-size: 1.12rem; font-weight: 600; }
+.ql-routing-summary small { margin-top: .25rem; color: #8a928b; font: .5rem var(--ql-mono); }
+.ql-plot-tabs button { display: flex; min-width: 106px; min-height: 44px; align-items: center; justify-content: center; gap: .4rem; padding: 0 .75rem; border: 0; border-right: 1px solid #dfe3df; background: #fff; color: #89918a; font-size: .65rem; cursor: pointer; }
+.ql-plot-tabs button svg { width: 13px; }
+.ql-plot-tabs button:hover { color: #08764f; background: #f4f8f5; }
+.ql-plot-tabs button.active { background: #0b8b5a; color: #fff; }
+
+.ql-developer-demo { display: grid; grid-template-columns: minmax(300px, .72fr) minmax(520px, 1.28fr); gap: 0; padding-block: 0; border-top: 1px solid var(--ql-line); background: #fff; }
+.ql-developer-copy { display: flex; min-height: 690px; flex-direction: column; justify-content: center; padding: clamp(3rem, 6vw, 6rem); border-right: 1px solid var(--ql-line); }
+.ql-developer-copy h2 { max-width: 580px; margin: 0; font-size: 3.8rem; font-weight: 480; line-height: 1; letter-spacing: 0; }
+.ql-developer-copy > p:not(.ql-kicker) { max-width: 520px; margin: 1.2rem 0 0; color: var(--ql-muted); font-size: .8rem; line-height: 1.7; }
+.ql-api-key { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: .75rem; margin-top: 2rem; padding: .7rem .8rem; border: 1px solid #ccd3cd; background: #f7f9f7; }
+.ql-api-key span { display: flex; align-items: center; gap: .35rem; color: #7d877f; font: 600 .5rem var(--ql-mono); }
+.ql-api-key span svg { width: 12px; }
+.ql-api-key code { overflow: hidden; color: #263129; font: .67rem var(--ql-mono); text-overflow: ellipsis; white-space: nowrap; }
+.ql-api-key button, .ql-copy-code { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid #d2d7d3; background: #fff; color: #59635b; cursor: pointer; }
+.ql-api-key button:hover, .ql-copy-code:hover { border-color: #0b8b5a; color: #08764f; }
+.ql-api-key button svg, .ql-copy-code svg { width: 13px; }
+.ql-code-demo { align-self: center; min-width: 0; margin: clamp(2rem, 5vw, 5rem); border: 1px solid #c8d0ca; background: #07110c; box-shadow: 0 30px 75px rgba(17,42,27,.12); color: #dcebe3; }
+.ql-code-tabs { display: flex; min-height: 48px; align-items: stretch; border-bottom: 1px solid rgba(255,255,255,.12); background: #0d1b14; }
+.ql-code-tabs > button:not(.ql-copy-code) { min-width: 104px; border: 0; border-right: 1px solid rgba(255,255,255,.1); background: transparent; color: #779083; font-size: .62rem; cursor: pointer; }
+.ql-code-tabs > button:not(.ql-copy-code):hover { color: #dcebe3; }
+.ql-code-tabs > button.active { background: rgba(66,229,158,.08); color: #42e59e; }
+.ql-copy-code { align-self: center; margin: 0 .6rem 0 auto; border-color: rgba(255,255,255,.16); background: transparent; color: #8ea397; }
+.ql-code-demo pre { min-height: 360px; margin: 0; overflow: auto; padding: 1.4rem; background: transparent; white-space: pre; }
+.ql-code-demo pre code { color: #9fb8aa; font: .69rem/1.7 var(--ql-mono); }
+.ql-code-demo pre code span { color: #c8dacf; }
+.ql-code-action { display: flex; min-height: 54px; align-items: center; gap: 1rem; padding: 0 .8rem 0 1rem; border-top: 1px solid rgba(255,255,255,.12); }
+.ql-code-action > span { display: flex; align-items: center; gap: .45rem; color: #759084; font: .52rem var(--ql-mono); }
+.ql-code-action > span svg { width: 13px; }
+.ql-code-action button { display: flex; min-height: 34px; align-items: center; gap: .4rem; margin-left: auto; padding: 0 .75rem; border: 0; background: #42e59e; color: #07110c; font-size: .62rem; font-weight: 650; cursor: pointer; }
+.ql-code-action button:disabled { opacity: .7; cursor: wait; }
+.ql-code-action button svg { width: 13px; }
+.ql-code-action .spin { animation: ql-code-spin 1s linear infinite; }
+@keyframes ql-code-spin { to { transform: rotate(360deg); } }
+.ql-code-response { display: none; min-height: 64px; align-items: center; gap: .75rem; padding: .7rem 1rem; border-top: 1px solid rgba(66,229,158,.25); background: rgba(66,229,158,.06); }
+.ql-code-response.visible { display: flex; }
+.ql-code-response span { flex: none; color: #42e59e; font: 650 .52rem var(--ql-mono); }
+.ql-code-response code { overflow: hidden; color: #a9c0b3; font: .56rem var(--ql-mono); text-overflow: ellipsis; white-space: nowrap; }
+
+.access-page { display: grid; min-height: 100vh; place-items: center; padding: 1.25rem; color-scheme: light; background: #f8f8f5; color: #18241d; }
+.access-panel { width: min(100%, 560px); padding: 3rem; border: 1px solid #ccd3cd; background: #fff; }
+.access-panel > header { display: flex; align-items: center; gap: .6rem; margin-bottom: 4rem; font-size: .82rem; font-weight: 700; }
+.access-panel > svg { color: #08764f; }
+.access-panel h1 { margin: .6rem 0 0; font-size: 2.7rem; font-weight: 480; line-height: 1; letter-spacing: 0; }
+.access-panel > p:not(.ql-kicker) { margin: 1rem 0 2rem; color: #647068; font-size: .8rem; line-height: 1.6; }
+.access-panel > div { display: flex; gap: .7rem; }
+
+@media (max-width: 980px) {
+  .ql-developer-demo { grid-template-columns: 1fr; }
+  .ql-developer-copy { min-height: 520px; border-right: 0; border-bottom: 1px solid var(--ql-line); }
+  .ql-code-demo { width: auto; }
+}
+@media (max-width: 680px) {
+  .ql-affiliation-head { align-items: start; flex-direction: column; }
+  .ql-affiliation-head h2 { font-size: 1.8rem; text-align: left; }
+  .ql-affiliation-logo { width: 190px; height: 96px; }
+  .ql-plot-tabs { overflow-x: auto; }
+  .ql-plot-tabs button { min-width: 92px; }
+  .ql-developer-copy { min-height: 0; padding: 4rem 1.25rem; }
+  .ql-developer-copy h2 { font-size: 2.65rem; }
+  .ql-code-demo { margin: 1rem 0 4rem; }
+  .ql-code-tabs { overflow-x: auto; }
+  .ql-code-tabs > button:not(.ql-copy-code) { min-width: 96px; }
+  .ql-copy-code { position: sticky; right: 0; flex: none; background: #0d1b14; }
+  .ql-code-demo pre { min-height: 400px; padding: 1rem; }
+  .ql-code-demo pre code { font-size: .6rem; }
+  .ql-code-response { align-items: flex-start; flex-direction: column; }
+  .access-panel { padding: 2rem 1.25rem; }
+  .access-panel > div { align-items: stretch; flex-direction: column; }
+}
+
 /* ── Reduced motion ───────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {

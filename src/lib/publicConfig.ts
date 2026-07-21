@@ -6,7 +6,7 @@ export const PUBLIC_CONFIG = {
   jobsPath: "/api/v1/jobs",
   docsUrl: "/docs",
   consoleUrl: "/dashboard",
-  accessUrl: "/contact",
+  accessUrl: "/signin",
   companyLocation: "Chicago",
   copyright: "© 2026 QRouter",
 } as const;

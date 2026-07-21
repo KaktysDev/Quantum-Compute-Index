@@ -688,9 +688,8 @@ on conflict (id) do update set
   price_per_shot = excluded.price_per_shot, price_per_task = excluded.price_per_task,
   metadata = excluded.metadata, updated_at = now();
 
--- QRouter is a public developer product; authentication is no longer limited to
--- the old private-index email allowlist.
-drop trigger if exists on_auth_user_created_allowlist on auth.users;
+-- The pilot console remains private. Public visitors use the waitlist instead
+-- of creating a console account directly.
 
 -- ════════════════════════════════════════════════════════════════════════════
 -- 10. ADD ALLOWED USERS HERE  (edit the email, then re-run just this statement)
@@ -698,3 +697,29 @@ drop trigger if exists on_auth_user_created_allowlist on auth.users;
 -- insert into public.allowed_emails (email, added_by)
 -- values ('you@example.com', 'founder')
 -- on conflict (email) do nothing;
+
+-- ── 11. Private pilot waitlist ─────────────────────────────────────────────
+create table if not exists public.waitlist_submissions (
+  id                 bigint generated always as identity primary key,
+  name               text not null,
+  email              text not null unique,
+  linkedin_url       text not null,
+  job_title          text not null,
+  quantum_experience text not null,
+  referral_source    text not null,
+  status             text not null default 'pending' check (status in ('pending', 'contacted', 'approved', 'declined')),
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
+);
+create index if not exists waitlist_submissions_status_created_idx
+  on public.waitlist_submissions (status, created_at desc);
+alter table public.waitlist_submissions enable row level security;
+
+insert into public.allowed_emails (email, added_by)
+values ('gouthamkrishnaronanki@gmail.com', 'console-pilot')
+on conflict (email) do nothing;
+
+drop trigger if exists on_auth_user_created_allowlist on auth.users;
+create trigger on_auth_user_created_allowlist
+  before insert on auth.users
+  for each row execute function public.enforce_email_allowlist();

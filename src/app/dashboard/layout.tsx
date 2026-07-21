@@ -3,6 +3,7 @@ import RouterTopbar from "@/components/RouterTopbar";
 import { checkIsAdmin } from "@/lib/admin";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { canAccessConsole, consoleDevBypassEnabled } from "@/lib/access";
 import "./console.css";
 import "./chat.css";
 
@@ -20,8 +21,9 @@ export default async function DashboardLayout({
   if (isSupabaseConfigured()) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) redirect("/");
+    if (!user) redirect("/signin");
     email = user.email ?? null;
+    if (!canAccessConsole(email)) redirect("/access-denied");
     isAdmin = await checkIsAdmin(supabase);
     const { data: profile } = await supabase.from("profiles").select("onboarding_complete").eq("id", user.id).maybeSingle();
     if (profile && !profile.onboarding_complete) redirect("/onboarding");
@@ -32,7 +34,7 @@ export default async function DashboardLayout({
       const { data: credits } = await supabase.from("credit_accounts").select("available").eq("organization_id", member.organization_id).maybeSingle();
       balance = Number(credits?.available ?? 0);
     }
-  }
+  } else if (!consoleDevBypassEnabled()) redirect("/signin");
 
   return (
     <div className="console-shell min-h-screen">

@@ -12,10 +12,12 @@ import HeroConsole from "@/components/landing/HeroConsole";
 import HeroParticleText from "@/components/landing/HeroParticleText";
 import LandingNav from "@/components/landing/LandingNav";
 import Reveal from "@/components/landing/Reveal";
+import AffiliationRail from "@/components/landing/AffiliationRail";
+import DeveloperApiDemo from "@/components/landing/DeveloperApiDemo";
+import RoutingSandbox from "@/components/landing/RoutingSandbox";
 import LandingPriceIndex, { type IndexPoint } from "@/components/LandingPriceIndex";
-import LandingSignin from "@/components/LandingSignin";
 import LogoMark from "@/components/LogoMark";
-import { PUBLIC_CONFIG, PUBLIC_FEATURE_STATUS } from "@/lib/publicConfig";
+import { PUBLIC_CONFIG } from "@/lib/publicConfig";
 import { BACKENDS } from "@/lib/qrouter/catalog";
 import { getLatestSnapshot, getSeries } from "@/lib/qci/store";
 
@@ -82,13 +84,13 @@ export default async function LandingPage() {
   const [latest, series] = await Promise.all([getLatestSnapshot(), getSeries(365)]);
   const routable = BACKENDS.filter((backend) => backend.available).length;
   const qpuCount = BACKENDS.filter((backend) => backend.kind === "qpu").length;
-  const chartBackends = BACKENDS.slice(0, 6).map((backend) => {
-    const estimatedCost = Math.max(.001, backend.pricePerTask + backend.pricePerShot * 1024);
-    return { ...backend, estimatedCost };
-  });
-  const chartCosts = chartBackends.map((backend) => Math.log10(backend.estimatedCost));
-  const minChartCost = Math.min(...chartCosts);
-  const maxChartCost = Math.max(...chartCosts);
+  const routingCandidates = BACKENDS.filter((backend) => ["ibm-brisbane", "ionq-aria-1", "iqm-garnet"].includes(backend.id)).map((backend) => ({
+    id: backend.id,
+    name: backend.displayName,
+    queue: backend.queueSeconds,
+    fidelity: backend.fidelity,
+    cost: backend.pricePerTask + backend.pricePerShot * 1024,
+  }));
   const tickerItems = [
     ...BACKENDS.map((b) => ({
       name: b.displayName,
@@ -99,9 +101,6 @@ export default async function LandingPage() {
 
   return (
     <main className="ql-site">
-      {/* Sign-in modal — opens on ?signin=required (middleware bounce) and the qr:signin event. */}
-      <LandingSignin />
-
       <LandingNav />
 
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
@@ -121,7 +120,7 @@ export default async function LandingPage() {
             </p>
             <div className="ql-cta-row">
               <Link href={PUBLIC_CONFIG.accessUrl} className="ql-btn primary">
-                Request access <ArrowRight />
+                Join waitlist <ArrowRight />
               </Link>
               <Link href={PUBLIC_CONFIG.docsUrl} className="ql-btn ghost">
                 Read the API
@@ -166,6 +165,8 @@ export default async function LandingPage() {
           ))}
         </div>
       </div>
+
+      <AffiliationRail />
 
       {/* ── Product qualities ────────────────────────────────────────────── */}
       <section id="product" className="ql-proof ql-shell" aria-label="Product qualities">
@@ -224,27 +225,7 @@ export default async function LandingPage() {
             </Link>
           </Reveal>
           <Reveal variant="left">
-            <div className="ql-plot" aria-label="Current QRouter catalog cost and fidelity landscape for a 1,024-shot sample workload">
-              <div className="ql-plot-tabs">
-                <span className="active">Balanced</span>
-                <span>Cost</span>
-                <span>Speed</span>
-                <span>Quality</span>
-              </div>
-              <div className="ql-plot-area ql-catalog-plot">
-                <span className="ql-axis-y">PROJECTED QUALITY</span>
-                <span className="ql-axis-x">ESTIMATED 1,024-SHOT COST (LOG) →</span>
-                {chartBackends.map((backend) => {
-                  const left = 10 + ((Math.log10(backend.estimatedCost) - minChartCost) / Math.max(.001, maxChartCost - minChartCost)) * 76;
-                  const top = 12 + (1 - backend.fidelity) * 520;
-                  return <i className={`ql-dot ${backend.available ? "selected" : "credential"}`} style={{ left: `${left}%`, top: `${Math.min(78, top)}%` }} key={backend.id}><b>{backend.displayName}</b><small>{backend.available ? "ROUTABLE" : "KEY REQUIRED"} · ${backend.estimatedCost.toFixed(backend.estimatedCost < 1 ? 4 : 2)}</small></i>;
-                })}
-              </div>
-              <footer>
-                <span>CATALOG RATES · 1,024 SHOTS</span>
-                <span>{routable} / {BACKENDS.length} CURRENTLY ROUTABLE</span>
-              </footer>
-            </div>
+            <RoutingSandbox candidates={routingCandidates} />
           </Reveal>
         </div>
       </section>
@@ -278,37 +259,7 @@ export default async function LandingPage() {
       </section>
 
       {/* ── Start ────────────────────────────────────────────────────────── */}
-      <section id="developers" className="ql-start ql-shell">
-        <Reveal className="ql-start-main">
-          <p className="ql-kicker">{"// 03 — START BUILDING"}</p>
-          <h2>Route your first circuit</h2>
-          <span>
-            Request access to QRouter, create an API key, and submit OpenQASM through
-            one versioned endpoint.
-          </span>
-          <div className="ql-cta-row">
-            <Link href={PUBLIC_CONFIG.accessUrl} className="ql-btn primary">
-              Request access <ArrowRight />
-            </Link>
-            <Link href={PUBLIC_CONFIG.docsUrl} className="ql-btn ghost">
-              Read the API
-            </Link>
-          </div>
-          <pre className="ql-endpoint"><code><b>POST</b> api.qrouter.dev/api/v1/jobs</code></pre>
-        </Reveal>
-        <Reveal variant="left" delay={120}>
-          <aside className="ql-status-card">
-            <p>Product status</p>
-            <div><span>QCI Engine</span><b>{PUBLIC_FEATURE_STATUS.routingEngine}</b></div>
-            <div><span>Repository deploy</span><b>{PUBLIC_FEATURE_STATUS.repositoryDeploy}</b></div>
-            <div><span>Provider failover</span><b>{PUBLIC_FEATURE_STATUS.providerFailover}</b></div>
-            <div>
-              <span>Index source</span>
-              <b>{latest.source === "sample" ? "SAMPLE DATA" : "PROVIDER SNAPSHOT"}</b>
-            </div>
-          </aside>
-        </Reveal>
-      </section>
+      <DeveloperApiDemo />
 
       {/* ── Footer ───────────────────────────────────────────────────────── */}
       <footer className="ql-footer">
@@ -330,7 +281,7 @@ export default async function LandingPage() {
             <Link href="/docs">Documentation</Link>
             <a href="/openapi.json">OpenAPI</a>
             <Link href="/docs#repositories">Repositories</Link>
-            <Link href="/contact">Request access</Link>
+            <Link href="/signin">Join the waitlist</Link>
           </nav>
           <nav aria-label="Company">
             <h3>Company</h3>

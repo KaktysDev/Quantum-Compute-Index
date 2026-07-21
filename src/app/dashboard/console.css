@@ -1456,3 +1456,112 @@
   .console-page { animation: none; }
   .provider-listing:hover, .console-primary:hover:not(:disabled) { transform: none; }
 }
+
+/* ── Landing-aligned editorial theme ─────────────────────────────────── */
+.console-shell {
+  --qr-bg: #f8f8f5;
+  --qr-bg-2: #ffffff;
+  --qr-panel: #ffffff;
+  --qr-panel-solid: #ffffff;
+  --qr-panel-raised: #f2f6f3;
+  --qr-line: #d9ddd8;
+  --qr-line-strong: #bfc6c0;
+  --qr-emerald: #009c63;
+  --qr-emerald-dim: rgba(0, 156, 99, .09);
+  --qr-emerald-soft: rgba(0, 156, 99, .055);
+  --qr-violet: #557266;
+  --qr-violet-dim: rgba(50, 85, 69, .07);
+  --qr-text: #111612;
+  --qr-muted: #626963;
+  --qr-dim: #8a918b;
+  --qr-danger: #b83245;
+  --qr-warning: #9a6b00;
+  --qr-glow: none;
+  --qr-radius: 0;
+  --qr-radius-sm: 0;
+  color-scheme: light;
+  background-color: var(--qr-bg);
+  background-image:
+    linear-gradient(rgba(17, 22, 18, .018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(17, 22, 18, .018) 1px, transparent 1px);
+  background-size: 64px 64px;
+}
+.router-topbar { border-color: var(--qr-line); background: rgba(248, 248, 245, .96); }
+.console-shell .router-brand span { color: var(--qr-text); }
+.router-global-search { border-radius: 0; background: #fff; }
+.router-global-search:focus-within { border-color: var(--qr-emerald); background: #fff; }
+.router-product-nav a:hover,
+.router-more-menu > summary.router-more-summary:hover,
+.router-more-menu[open] > summary.router-more-summary { color: var(--qr-text); }
+.router-product-nav a.active::after { border-radius: 0; background: var(--qr-emerald); }
+.router-credit-button, .router-key-button { border-radius: 0; background: #fff; }
+.router-credit-button:hover, .router-key-button:hover { border-color: var(--qr-emerald); background: #eef7f2; color: var(--qr-text); }
+.router-account-menu summary > span { border-radius: 0; border-color: rgba(0, 156, 99, .35); }
+.router-account-menu > div { border-radius: 0; border-color: var(--qr-line-strong); background: #fff; box-shadow: 0 24px 60px rgba(26, 47, 34, .12); }
+.router-account-menu a:hover, .router-account-menu button:hover { color: #08764f; }
+
+.console-primary { border-radius: 0; background: #009c63; color: #fff; box-shadow: none; }
+.console-primary:hover:not(:disabled) { background: #08764f; box-shadow: none; transform: none; }
+.console-secondary, .qr-icon-button { border-radius: 0; background: #fff; }
+.console-secondary:hover:not(:disabled) { border-color: #8b978e; background: #f2f6f3; }
+.qr-icon-button:hover { color: var(--qr-text); }
+.console-danger { border-radius: 0; background: #fff7f8; color: #a72f40; }
+
+.console-panel,
+.console-status-strip,
+.console-shell .glass,
+.console-shell .glass-strong,
+.console-shell .glass-panel {
+  border-radius: 0;
+  border-color: var(--qr-line);
+  background: #fff;
+  box-shadow: 0 20px 55px rgba(28, 58, 39, .05);
+}
+.panel-title { background: #fafbf9; }
+.panel-title > svg { color: #08764f; filter: none; }
+.console-note { border-radius: 0; background: #fff9e9; }
+.console-alert { border-radius: 0; }
+.console-alert.error { border-color: #e7bcc2; background: #fff2f4; color: #922d3b; }
+.console-shell :is(input, select, textarea) { border-radius: 0; border-color: #cbd2cc; background: #fff; color: var(--qr-text); }
+.console-shell :is(input, select, textarea):focus { border-color: var(--qr-emerald); box-shadow: 0 0 0 2px rgba(0,156,99,.08); }
+.console-shell select option { background: #fff; color: var(--qr-text); }
+.modal-backdrop { background: rgba(24, 36, 29, .28); }
+.console-modal { border-radius: 0; border-color: var(--qr-line-strong); background: #fff; box-shadow: 0 35px 90px rgba(25, 50, 34, .18); }
+.created-key { border-radius: 0; background: #f5f8f6; }
+.created-key code, .api-command-bar code, .endpoint-reference code { color: #294537; }
+.env { border-radius: 0; color: #08764f; }
+.env.test { border-color: #94a99d; background: #eef3f0; color: #456355; }
+
+.console-status-strip > div,
+.provider-card,
+.provider-catalog-toolbar,
+.routing-command-flow,
+.market-watchlist { background: #fff; }
+.network-row:hover, .backend-option:hover, .amount-options button:hover,
+.instance-actions button:hover, .terminal-icon-button:hover,
+.repo-project-row a:hover, .repo-project-row button:hover { background: #f2f6f3; color: var(--qr-text); }
+.provider-catalog-toolbar > label, .provider-catalog-toolbar > button,
+.amount-options button, .instance-actions button, .terminal-icon-button,
+.repo-project-row a, .repo-project-row button, .repo-mark { border-radius: 0; background: #fff; }
+.provider-catalog-toolbar select option { background: #fff; }
+.provider-category-tabs button:hover, .provider-detail-tabs a:hover { color: var(--qr-text); }
+.provider-card:hover { box-shadow: 0 20px 48px rgba(28,58,39,.08); }
+.auto-mark { border-radius: 0; border-color: #aebdb5; background: #eef3f0; color: #456355; }
+.editor-wrap, .route-advisor textarea, .advisor-output,
+.repo-search, .terminal-input, .project-switcher select { background: #f7f9f7; }
+.editor-wrap textarea, .route-advisor textarea, .advisor-text p { color: #263129; }
+.advisor-output { border-radius: 0; }
+.advisor-text { border-radius: 0; background: #eef8f3; }
+.routing-command-flow { border: 1px solid var(--qr-line); }
+.api-terminal-panel pre, .terminal-screen { background: #07110c; color: #a9d8c0; }
+.terminal-screen .prompt code { color: #d7e4dd; }
+.task-detail { background: #f7f9f7; }
+.repo-search, .terminal-input, .project-switcher { border-radius: 0; }
+.market-ranges button { border-radius: 0; }
+.market-watchlist { border-left: 1px solid var(--qr-line); }
+
+.router-topbar :is(a, button, summary, input):focus-visible,
+.console-shell :is(a, button, input, select, textarea):focus-visible {
+  outline-color: var(--qr-emerald);
+  border-radius: 0;
+}

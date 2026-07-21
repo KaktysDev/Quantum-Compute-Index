@@ -73,7 +73,7 @@ export default function LandingNav() {
       <div className="ql-announce">
         <i aria-hidden="true" />
         <span>QRouter private beta is live</span>
-        <Link href="/contact">Request access →</Link>
+        <Link href="/signin">Join the waitlist →</Link>
       </div>
 
       <header className="ql-nav ql-shell">
@@ -104,21 +104,21 @@ export default function LandingNav() {
             </Link>
           ))}
           <div className="ql-tabs-mobile-actions">
-            <Link href="/dashboard" onClick={() => setOpen(false)}>
+            <Link href="/signin" onClick={() => setOpen(false)}>
               Log in <ArrowUpRight />
             </Link>
-            <Link href="/contact" className="cta" onClick={() => setOpen(false)}>
-              Request access
+            <Link href="/signin" className="cta" onClick={() => setOpen(false)}>
+              Join waitlist
             </Link>
           </div>
         </nav>
 
         <div className="ql-nav-actions">
-          <Link href="/dashboard" className="ql-login">
+          <Link href="/signin" className="ql-login">
             Log in <ArrowUpRight />
           </Link>
-          <Link href="/contact" className="ql-cta">
-            Request access
+          <Link href="/signin" className="ql-cta">
+            Join waitlist
           </Link>
           <button
             type="button"
