@@ -5,8 +5,10 @@ import { canAccessConsole } from "@/lib/access";
 
 /**
  * OAuth redirect target. Exchanges the auth code for a session.
- * If the email is not on the allowlist, the signup trigger fails upstream and
+ * If the email is not on the signup allowlist, the trigger fails upstream and
  * Supabase returns an error param → we route the user to /access-denied.
+ * Accounts that exist but have not been granted console access are signed back
+ * out here (see public.can_access_console in supabase/access.sql).
  */
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -26,8 +28,7 @@ export async function GET(request: Request) {
     const supabase = await createClient();
     const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
     if (!exchangeError) {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!canAccessConsole(user?.email)) {
+      if (!(await canAccessConsole(supabase))) {
         await supabase.auth.signOut();
         return NextResponse.redirect(`${origin}/signin?status=not-authorized`);
       }

@@ -54,7 +54,7 @@ export async function middleware(request: NextRequest) {
     redirect.headers.set("x-request-id", requestId);
     return redirect;
   }
-  if (isDashboard && !canAccessConsole(user?.email)) {
+  if (isDashboard && !(await canAccessConsole(supabase))) {
     const url = request.nextUrl.clone();
     url.pathname = "/access-denied";
     url.search = "";

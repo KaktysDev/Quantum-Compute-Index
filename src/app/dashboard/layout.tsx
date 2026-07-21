@@ -23,7 +23,7 @@ export default async function DashboardLayout({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) redirect("/signin");
     email = user.email ?? null;
-    if (!canAccessConsole(email)) redirect("/access-denied");
+    if (!(await canAccessConsole(supabase))) redirect("/access-denied");
     isAdmin = await checkIsAdmin(supabase);
     const { data: profile } = await supabase.from("profiles").select("onboarding_complete").eq("id", user.id).maybeSingle();
     if (profile && !profile.onboarding_complete) redirect("/onboarding");

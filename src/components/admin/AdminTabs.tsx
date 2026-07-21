@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, Inbox, KeyRound, LayoutDashboard, Users } from "lucide-react";
+import { Activity, Inbox, KeyRound, LayoutDashboard, ShieldCheck, Users } from "lucide-react";
 
 const TABS = [
   { href: "/dashboard/admin/overview", label: "Overview", icon: LayoutDashboard },
   { href: "/dashboard/admin/users", label: "Users", icon: Users },
+  { href: "/dashboard/admin/access", label: "Access", icon: ShieldCheck },
   { href: "/dashboard/admin/reports", label: "Reports", icon: Inbox },
   { href: "/dashboard/admin/provider-keys", label: "Provider keys", icon: KeyRound },
   { href: "/dashboard/admin/health", label: "Health", icon: Activity },

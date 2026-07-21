@@ -9,7 +9,7 @@ import { POST as createProject } from "@/app/api/v1/projects/route";
 import { GET as listRepositoryJobs, POST as createRepositoryJob } from "@/app/api/v1/repository-jobs/route";
 import { sampleProviderSeries, sampleSnapshot } from "@/lib/qci/sample";
 import { createAIChatCompletion } from "@/lib/ai/inference";
-import { canAccessConsole, CONSOLE_EMAIL } from "@/lib/access";
+import { canAccessConsole } from "@/lib/access";
 import { analyzeCircuit, CircuitValidationError } from "@/lib/qrouter/analyze";
 import { BACKENDS, withQciSnapshot } from "@/lib/qrouter/catalog";
 import { demoJobs, demoProjects } from "@/lib/qrouter/demo-store";
@@ -62,11 +62,20 @@ describe("QRouter circuit pipeline", () => {
     demoProjects.clear();
   });
 
-  it("limits pilot console access to the approved email", () => {
-    expect(canAccessConsole(CONSOLE_EMAIL)).toBe(true);
-    expect(canAccessConsole(`  ${CONSOLE_EMAIL.toUpperCase()}  `)).toBe(true);
-    expect(canAccessConsole("developer@example.com")).toBe(false);
-    expect(canAccessConsole(null)).toBe(false);
+  it("reads console access from the database and fails closed on error", async () => {
+    const rpc = (result: { data: unknown; error: unknown }) => ({ rpc: async () => result });
+
+    expect(await canAccessConsole(rpc({ data: true, error: null }))).toBe(true);
+    expect(await canAccessConsole(rpc({ data: false, error: null }))).toBe(false);
+    // Migration not run / RPC missing → nobody gets in.
+    expect(await canAccessConsole(rpc({ data: null, error: { code: "PGRST202" } }))).toBe(false);
+    expect(
+      await canAccessConsole({
+        rpc: async () => {
+          throw new Error("network unreachable");
+        },
+      }),
+    ).toBe(false);
   });
 
   it("validates and normalizes complete waitlist profiles", () => {
