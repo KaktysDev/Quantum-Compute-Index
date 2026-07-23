@@ -268,6 +268,70 @@ textarea:focus-visible {
   .qci-subpage-title { font-size: clamp(2.4rem, 11vw, 3.4rem); }
 }
 
+/* ── Light editorial skin for public subpages (history / pricing) ─────────
+   Matches the landing's white system. Scoped to .qci-light so the dark
+   dashboard/console tokens stay untouched. Docs carries its own light skin in
+   docs.css; contact intentionally keeps the dark treatment for now. The
+   subpage markup hard-codes dark utilities (text-white, glass, border-white),
+   so alongside remapping the shared tokens we neutralize those here rather
+   than editing every line of JSX. */
+.qci-light {
+  --bg: #f8f8f5;
+  --fg: #111612;
+  --muted: #626963;
+  --muted-dim: #8a918b;
+  --accent: #009c63;
+  color: var(--fg);
+}
+
+/* Full-bleed light backdrop behind the width-constrained <main>. */
+.qci-light::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-color: #f8f8f5;
+  background-image:
+    linear-gradient(rgba(17, 22, 18, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(17, 22, 18, 0.018) 1px, transparent 1px);
+  background-size: 64px 64px;
+}
+
+.qci-light .qci-subpage-hero::before {
+  border-inline-color: #d9ddd8;
+  background-image:
+    radial-gradient(760px 380px at 78% 30%, rgba(0, 156, 99, 0.05), transparent 70%),
+    radial-gradient(520px 300px at 12% 65%, rgba(50, 85, 69, 0.04), transparent 70%);
+}
+
+/* Neutralize hard-coded white text / borders / fills from the dark markup. */
+.qci-light .text-white { color: var(--fg); }
+.qci-light .text-white\/85 { color: #2b332d; }
+.qci-light .text-white\/70 { color: var(--accent); }
+.qci-light .hover\:text-white:hover { color: var(--fg); }
+.qci-light .text-emerald-300\/70 { color: var(--accent); }
+.qci-light .border-white\/10 { border-color: #d9ddd8; }
+.qci-light .border-white\/15 { border-color: #d9ddd8; }
+.qci-light .bg-white\/5 { background-color: #f1f4f2; }
+.qci-light .bg-white\/10 { background-color: #dfe3df; }
+.qci-light .bg-emerald-400\/70 { background-color: var(--accent); }
+
+/* Restyle the dark glass panels into flat white editorial cards. */
+.qci-light .glass,
+.qci-light .glass-panel {
+  background: #fff;
+  border: 1px solid #d9ddd8;
+  border-radius: 0;
+  box-shadow: 0 20px 55px rgba(28, 58, 39, 0.07);
+}
+.qci-light .glass-hover:hover {
+  background: #fff;
+  border-color: #b7c0b9;
+  box-shadow: 0 20px 55px rgba(28, 58, 39, 0.07);
+}
+
+.qci-light .qci-site-footer { border-color: #d9ddd8; }
+
 ::selection {
   background: rgba(66, 229, 158, 0.3);
   color: #fff;

@@ -37,7 +37,7 @@ export default async function PricingPage() {
   return (
     <>
       <LandingNav />
-      <main className="qci-subpage relative mx-auto w-full max-w-7xl px-6 sm:px-10">
+      <main className="qci-subpage qci-light relative mx-auto w-full max-w-7xl px-6 sm:px-10">
       {/* hero */}
       <section className="qci-subpage-hero py-16 sm:py-20">
         <p className="mono-label flex items-center gap-2 text-white/70">
