@@ -10,7 +10,7 @@ export const BACKENDS: Backend[] = [
     basisGates: same(["id", "x", "y", "z", "h", "s", "sdg", "t", "tdg", "rx", "ry", "rz", "cx", "cz", "swap", "measure"]),
     connectivity: "all-to-all",
     queueSeconds: 2, fidelity: 1, reliability: 0.999, pricePerShot: 0.000001,
-    pricePerTask: 0.002, description: "Low-latency state-vector simulation", region: "Chicago",
+    pricePerTask: 0.002, description: "Low-latency state-vector simulation",
     available: true,
   },
   {

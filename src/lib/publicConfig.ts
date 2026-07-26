@@ -7,7 +7,6 @@ export const PUBLIC_CONFIG = {
   docsUrl: "/docs",
   consoleUrl: "/dashboard",
   accessUrl: "/signin",
-  companyLocation: "Chicago",
   copyright: "© 2026 QRouter",
 } as const;
 

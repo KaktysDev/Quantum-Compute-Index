@@ -287,7 +287,6 @@ export default async function LandingPage() {
             <h3>Company</h3>
             <Link href="/history">History</Link>
             <Link href="/contact">Contact</Link>
-            <span>Chicago, Illinois</span>
           </nav>
           <div className="ql-footer-bottom">
             <span>{PUBLIC_CONFIG.copyright}</span>
