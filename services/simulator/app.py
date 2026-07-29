@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from typing import Literal, Optional
 
+import numpy as np
 from fastapi import Depends, FastAPI, Header, HTTPException, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -185,6 +186,20 @@ def serialize_layout(compiled):
 
 
 VERIFY_EQUIVALENCE_MAX_QUBITS = 10
+DIAGONAL_TOLERANCE = 1e-8
+
+
+def measurement_equivalent(source_operator, target_operator):
+    """True when the two unitaries differ only by a diagonal phase.
+
+    Qiskit's RemoveDiagonalGatesBeforeMeasure pass (optimization level >= 2)
+    legitimately drops diagonal gates that sit directly before a measurement.
+    That changes the unitary but not any computational-basis outcome, so a raw
+    unitary comparison would reject a perfectly valid compilation.
+    """
+    residual = source_operator.data @ target_operator.data.conj().T
+    off_diagonal = np.abs(residual - np.diag(np.diag(residual))).max()
+    return bool(off_diagonal <= DIAGONAL_TOLERANCE)
 
 
 def verify_equivalence(original, compiled):
@@ -201,8 +216,17 @@ def verify_equivalence(original, compiled):
         # from_circuit with the default ignore_set_layout=False applies the
         # recorded initial layout and routing permutation, so valid compilations
         # with non-trivial layouts compare equal.
-        equivalent = bool(Operator(source).equiv(Operator.from_circuit(target)))
-        return equivalent, None if equivalent else "Compiled circuit is not unitary-equivalent to the source circuit."
+        source_operator = Operator(source)
+        target_operator = Operator.from_circuit(target)
+        if source_operator.equiv(target_operator):
+            return True, None
+        measured = any(instruction.operation.name == "measure" for instruction in original.data)
+        if measured and measurement_equivalent(source_operator, target_operator):
+            return True, (
+                "Equivalent up to a diagonal phase removed before measurement; "
+                "every computational-basis outcome is identical."
+            )
+        return False, "Compiled circuit is not unitary-equivalent to the source circuit."
     except Exception as error:
         return None, f"Equivalence verification unavailable: {error}"
 

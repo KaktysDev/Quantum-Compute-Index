@@ -106,6 +106,8 @@ export async function POST(request: Request) {
       failover_enabled: input.failover, max_attempts: input.max_attempts, execution_timeout_seconds: input.timeout_seconds, next_attempt_at: now,
     });
     if (jobError) throw jobError;
+    // Artifacts are a convenience copy of the source/compiled circuit. A storage
+    // outage must not fail a job whose row is already committed.
     await Promise.all([
       storeArtifact({ jobId, organizationId: principal.organizationId, kind: "source", content: input.circuit }),
       storeArtifact({
@@ -114,7 +116,9 @@ export async function POST(request: Request) {
         kind: "transpiled",
         content: prepared.transpilation.artifactQasm ?? prepared.transpilation.qasm,
       }),
-    ]);
+    ].map((pending) => pending.catch((artifactError) => {
+      console.error(`Failed to store artifact for job ${jobId}`, artifactError);
+    })));
     // Quote storage, credit reservation, and the queued/awaiting_payment
     // transition happen in one transaction so a crash cannot strand the job in
     // a half-transitioned state or leak a reservation.
