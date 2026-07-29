@@ -184,13 +184,24 @@ def serialize_layout(compiled):
         return {"description": str(layout)}
 
 
+VERIFY_EQUIVALENCE_MAX_QUBITS = 10
+
+
 def verify_equivalence(original, compiled):
     try:
         source = original.remove_final_measurements(inplace=False)
         target = compiled.remove_final_measurements(inplace=False)
+        if source.num_qubits > VERIFY_EQUIVALENCE_MAX_QUBITS:
+            return None, (
+                f"Unitary verification is limited to {VERIFY_EQUIVALENCE_MAX_QUBITS} qubits; "
+                "compilation succeeded without direct equivalence proof."
+            )
         if source.num_qubits != target.num_qubits:
             return None, "Layout introduced physical ancillas; provider target validation succeeded but direct unitary dimensions differ."
-        equivalent = bool(Operator(source).equiv(Operator.from_circuit(target, ignore_set_layout=True)))
+        # from_circuit with the default ignore_set_layout=False applies the
+        # recorded initial layout and routing permutation, so valid compilations
+        # with non-trivial layouts compare equal.
+        equivalent = bool(Operator(source).equiv(Operator.from_circuit(target)))
         return equivalent, None if equivalent else "Compiled circuit is not unitary-equivalent to the source circuit."
     except Exception as error:
         return None, f"Equivalence verification unavailable: {error}"
@@ -266,7 +277,16 @@ def compile_circuit(payload: TranspileInput):
         "qasm": qasm2.dumps(compiled),
         "artifactQasm": qasm3.dumps(compiled),
         "providerProgram": {"format": "qpy", "data": base64.b64encode(qpy_buffer.getvalue()).decode("ascii")},
-        "target": payload.target.model_dump(),
+        # camelCase to match the TypeScript TranspilationResult contract.
+        "target": {
+            "backendId": payload.target.backend_id,
+            "provider": payload.target.provider,
+            "backendName": payload.target.backend_name,
+            "numQubits": payload.target.num_qubits,
+            "basisGates": payload.target.basis_gates,
+            "connectivity": payload.target.connectivity,
+            "couplingMap": payload.target.coupling_map,
+        },
         "optimizationLevel": payload.optimization_level,
         "seedTranspiler": payload.seed_transpiler,
         "before": before,

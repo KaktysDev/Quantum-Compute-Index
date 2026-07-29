@@ -43,7 +43,7 @@ class QRouter:
     def _job_input(circuit: str, shots: int, target: str, routing_mode: str,
                    optimization_level: int, constraints, name, failover=True, max_attempts=3,
                    timeout_seconds=7200):
-        return {
+        payload = {
             "circuit": circuit,
             "format": "openqasm3" if "OPENQASM 3" in circuit else "openqasm2",
             "shots": shots,
@@ -56,6 +56,9 @@ class QRouter:
             "constraints": constraints or {},
             "name": name,
         }
+        # The API's schema treats optional fields as absent-or-string; JSON null
+        # is rejected, so drop unset values entirely.
+        return {key: value for key, value in payload.items() if value is not None}
 
     def transpile(self, circuit: str, *, shots: int = 1024, target: str = "auto",
                   routing_mode: str = "balanced", optimization_level: int = 2,

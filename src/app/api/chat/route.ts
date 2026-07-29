@@ -20,7 +20,7 @@ import { consumeAssistantQuota, quotaLimits, recordAssistantTokens } from "@/lib
 import { getLatestSnapshot } from "@/lib/qci/store";
 import { AuthenticationError, resolvePrincipal, type Principal } from "@/lib/qrouter/auth";
 import { withQciSnapshot } from "@/lib/qrouter/catalog";
-import { getGithubAccessToken } from "@/lib/qrouter/github";
+import { getGithubAccess } from "@/lib/qrouter/github";
 import { apiError } from "@/lib/qrouter/http";
 import { applyProviderHealth, loadPersistedBackendHealth } from "@/lib/qrouter/providerHealth";
 import { inspectRepository, readCircuitFromRepository } from "@/lib/qrouter/repositories";
@@ -90,8 +90,8 @@ async function loadRepoContext(message: string, principal: Principal) {
   const match = message.match(GITHUB_URL);
   if (!match) return null;
   try {
-    const token = await getGithubAccessToken(principal);
-    const inspection = await inspectRepository(match[0], undefined, token);
+    const access = await getGithubAccess(principal);
+    const inspection = await inspectRepository(match[0], undefined, { token: access.token, allowPrivate: access.allowPrivate });
     const config = inspection.config as { circuit?: string } | null;
     const preferred =
       (config?.circuit && inspection.files.find((f) => f.path === config.circuit)) ||
@@ -103,7 +103,7 @@ async function loadRepoContext(message: string, principal: Principal) {
           match[0],
           inspection.repository.defaultBranch,
           preferred.path,
-          token,
+          { token: access.token, allowPrivate: access.allowPrivate },
         );
         circuitPreview = { path: preferred.path, text: source.text.slice(0, 6_000) };
       } catch {

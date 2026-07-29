@@ -3,6 +3,7 @@ import type { Backend } from "./types";
 
 const BRAKET_TARGETS: Record<string, { arn: string; region: string }> = {
   "iqm-garnet": { arn: "arn:aws:braket:eu-north-1::device/qpu/iqm/Garnet", region: "eu-north-1" },
+  "rigetti-ankaa-3": { arn: "arn:aws:braket:us-west-1::device/qpu/rigetti/Ankaa-3", region: "us-west-1" },
 };
 
 interface BraketCapabilities {
@@ -27,7 +28,8 @@ function couplingMap(graph: Record<string, string[]> = {}) {
 }
 
 export async function resolveProviderTarget(backend: Backend): Promise<Backend> {
-  if (backend.connectivity !== "target" || backend.provider === "IBM") return backend;
+  // IBM targets resolve inside the Qiskit compiler worker via QiskitRuntimeService.
+  if (backend.connectivity !== "target" || backend.provider.toLowerCase() === "ibm") return backend;
 
   const braket = BRAKET_TARGETS[backend.id];
   if (braket) {

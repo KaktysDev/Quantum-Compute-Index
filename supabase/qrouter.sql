@@ -225,6 +225,80 @@ create or replace function public.settle_job_credits(p_job_id uuid,p_reserved nu
 create or replace function public.release_job_credits(p_job_id uuid,p_amount numeric) returns void language plpgsql security definer set search_path=public as $$declare o uuid;b numeric;begin select organization_id into o from public.jobs where id=p_job_id;update public.credit_accounts set available=available+p_amount,reserved=greatest(reserved-p_amount,0),updated_at=now() where organization_id=o returning available into b;insert into public.ledger_entries(organization_id,job_id,type,amount,balance_after)values(o,p_job_id,'release',p_amount,b);end$$;
 create or replace function public.add_credits(p_organization_id uuid,p_amount numeric,p_external_id text,p_metadata jsonb default '{}') returns void language plpgsql security definer set search_path=public as $$declare b numeric;begin if exists(select 1 from public.ledger_entries where external_id=p_external_id)then return;end if;update public.credit_accounts set available=available+p_amount,updated_at=now() where organization_id=p_organization_id returning available into b;insert into public.ledger_entries(organization_id,type,amount,balance_after,external_id,metadata)values(p_organization_id,'purchase',p_amount,b,p_external_id,p_metadata);end$$;
 
+-- Credit-mutating security-definer functions must never be callable through
+-- PostgREST by end users; only the service role may execute them.
+revoke all on function public.reserve_job_credits(uuid,numeric) from public;
+grant execute on function public.reserve_job_credits(uuid,numeric) to service_role;
+revoke all on function public.settle_job_credits(uuid,numeric,numeric) from public;
+grant execute on function public.settle_job_credits(uuid,numeric,numeric) to service_role;
+revoke all on function public.release_job_credits(uuid,numeric) from public;
+grant execute on function public.release_job_credits(uuid,numeric) to service_role;
+revoke all on function public.add_credits(uuid,numeric,text,jsonb) from public;
+grant execute on function public.add_credits(uuid,numeric,text,jsonb) to service_role;
+
+-- Atomically stores a quote, reserves credits, and queues the job. On
+-- insufficient balance the job parks as awaiting_payment (quote kept) in the
+-- same transaction, so a crash can never strand a half-transitioned job.
+create or replace function public.queue_job_with_quote(
+  p_job_id uuid,p_provider_cost numeric,p_transpiler_fee numeric,p_platform_fee numeric,
+  p_total numeric,p_rate_snapshot jsonb,p_expires_at timestamptz
+) returns text language plpgsql security definer set search_path=public as $$
+declare current_job public.jobs%rowtype;new_quote_id uuid;balance numeric;
+begin
+  select * into current_job from public.jobs where id=p_job_id for update;
+  if not found then raise exception 'job not found';end if;
+  if current_job.status not in('quoted','awaiting_payment') then return current_job.status;end if;
+  insert into public.quotes(job_id,organization_id,provider_cost,transpiler_fee,platform_fee,total,rate_snapshot,expires_at)
+  values(p_job_id,current_job.organization_id,p_provider_cost,p_transpiler_fee,p_platform_fee,p_total,p_rate_snapshot,p_expires_at)
+  returning id into new_quote_id;
+  update public.jobs set quote_id=new_quote_id,updated_at=now() where id=p_job_id;
+  select available into balance from public.credit_accounts where organization_id=current_job.organization_id for update;
+  if balance is null or balance<p_total then
+    update public.jobs set status='awaiting_payment',error=jsonb_build_object('message','Add credits before running this task.'),updated_at=now() where id=p_job_id;
+    insert into public.job_events(job_id,type,from_status,to_status,payload)values(p_job_id,'job.awaiting_payment',current_job.status,'awaiting_payment',jsonb_build_object('total',p_total));
+    return 'awaiting_payment';
+  end if;
+  update public.credit_accounts set available=available-p_total,reserved=reserved+p_total,updated_at=now() where organization_id=current_job.organization_id;
+  insert into public.ledger_entries(organization_id,job_id,type,amount,balance_after)values(current_job.organization_id,p_job_id,'reserve',-p_total,balance-p_total);
+  insert into public.job_events(job_id,type,from_status,to_status,payload)values(p_job_id,'credits.reserved',current_job.status,'funds_reserved',jsonb_build_object('amount',p_total));
+  update public.jobs set status='queued',error=null,next_attempt_at=now(),updated_at=now() where id=p_job_id;
+  insert into public.job_events(job_id,type,from_status,to_status,payload)values(p_job_id,'job.queued','funds_reserved','queued','{}');
+  return 'queued';
+end$$;
+revoke all on function public.queue_job_with_quote(uuid,numeric,numeric,numeric,numeric,jsonb,timestamptz) from public;
+grant execute on function public.queue_job_with_quote(uuid,numeric,numeric,numeric,numeric,jsonb,timestamptz) to service_role;
+
+-- Unparks awaiting_payment jobs (oldest first) after credits arrive. Jobs whose
+-- quote expired are reported so the caller can reprice and requeue them.
+create or replace function public.requeue_awaiting_payment_jobs(p_organization_id uuid,p_limit integer default 20)
+returns table(job_id uuid,outcome text) language plpgsql security definer set search_path=public as $$
+declare parked record;job_quote public.quotes%rowtype;balance numeric;
+begin
+  for parked in
+    select * from public.jobs
+    where organization_id=p_organization_id and status='awaiting_payment'
+    order by created_at limit greatest(1,least(p_limit,100))
+    for update skip locked
+  loop
+    select * into job_quote from public.quotes where id=parked.quote_id;
+    if job_quote.id is null or job_quote.expires_at<=now() then
+      job_id=parked.id;outcome='quote_expired';return next;continue;
+    end if;
+    select available into balance from public.credit_accounts where organization_id=p_organization_id for update;
+    if balance is null or balance<job_quote.total then
+      job_id=parked.id;outcome='insufficient';return next;exit;
+    end if;
+    update public.credit_accounts set available=available-job_quote.total,reserved=reserved+job_quote.total,updated_at=now() where organization_id=p_organization_id;
+    insert into public.ledger_entries(organization_id,job_id,type,amount,balance_after)values(p_organization_id,parked.id,'reserve',-job_quote.total,balance-job_quote.total);
+    update public.jobs set status='queued',error=null,next_attempt_at=now(),updated_at=now() where id=parked.id;
+    insert into public.job_events(job_id,type,from_status,to_status,payload)values(parked.id,'credits.reserved','awaiting_payment','queued',jsonb_build_object('amount',job_quote.total));
+    insert into public.job_events(job_id,type,from_status,to_status,payload)values(parked.id,'job.queued','awaiting_payment','queued','{}');
+    job_id=parked.id;outcome='queued';return next;
+  end loop;
+end$$;
+revoke all on function public.requeue_awaiting_payment_jobs(uuid,integer) from public;
+grant execute on function public.requeue_awaiting_payment_jobs(uuid,integer) to service_role;
+
 create table if not exists public.webhook_endpoints (
   id uuid primary key default gen_random_uuid(), organization_id uuid not null references public.organizations(id) on delete cascade,
   url text not null, signing_secret_encrypted text not null, enabled boolean not null default true,
@@ -283,6 +357,8 @@ returns boolean language plpgsql security definer set search_path=public as $$de
   delete from public.api_rate_windows where window_start<now()-interval '10 minutes';
   return c<=p_limit;
 end$$;
+revoke all on function public.consume_api_rate_limit(uuid,integer) from public;
+grant execute on function public.consume_api_rate_limit(uuid,integer) to service_role;
 
 create or replace function public.handle_new_user() returns trigger language plpgsql security definer set search_path=public as $$declare o uuid;begin insert into public.profiles(id,email,full_name)values(new.id,new.email,coalesce(new.raw_user_meta_data->>'full_name',split_part(coalesce(new.email,''),'@',1)))on conflict(id)do nothing;insert into public.organizations(name,slug,created_by)values(coalesce(new.raw_user_meta_data->>'full_name','Personal')||'''s workspace','ws-'||replace(new.id::text,'-',''),new.id)returning id into o;insert into public.organization_members values(o,new.id,'owner',now());insert into public.credit_accounts(organization_id,available)values(o,10);return new;end$$;
 

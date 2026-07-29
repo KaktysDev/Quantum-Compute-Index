@@ -100,12 +100,71 @@ export async function getGithubConnection(principal: Principal): Promise<GithubC
   return data as GithubConnection | null;
 }
 
-export async function getGithubAccessToken(principal: Principal) {
+function isProduction() {
+  return process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+}
+
+export interface GithubAccess {
+  token?: string;
+  /** True when the token is the server-wide fallback, not an org-scoped installation token. */
+  shared: boolean;
+  /** False when repository reads must reject private repositories outright. */
+  allowPrivate: boolean;
+}
+
+/**
+ * Resolves GitHub credentials for a principal. Org installation tokens are
+ * scoped to that org's granted repositories. The process-wide GITHUB_TOKEN is a
+ * local-development convenience only: it must never let one production tenant
+ * read the server account's private repositories, so in production tenants
+ * without an App connection get unauthenticated (public-repo-only) access.
+ */
+export async function getGithubAccess(principal: Principal): Promise<GithubAccess> {
   const fallback = process.env.GITHUB_TOKEN ?? process.env.GITHUB_APP_TOKEN;
-  if (principal.demo) return fallback;
+  if (principal.demo) return { token: fallback, shared: true, allowPrivate: true };
   const connection = await getGithubConnection(principal);
-  if (connection && githubAppConfigured()) return createInstallationToken(connection.installation_id);
-  return fallback;
+  if (connection && githubAppConfigured()) {
+    return { token: await createInstallationToken(connection.installation_id), shared: false, allowPrivate: true };
+  }
+  if (isProduction()) return { shared: true, allowPrivate: false };
+  return { token: fallback, shared: true, allowPrivate: true };
+}
+
+export async function getGithubAccessToken(principal: Principal) {
+  return (await getGithubAccess(principal)).token;
+}
+
+/**
+ * Verifies that the user completing the installation callback actually has
+ * access to that installation, via the GitHub App's user-authorization OAuth
+ * flow. Requires GITHUB_APP_CLIENT_ID / GITHUB_APP_CLIENT_SECRET and the App's
+ * "Request user authorization (OAuth) during installation" setting.
+ */
+export async function verifyInstallationOwnership(code: string, installationId: number) {
+  const clientId = process.env.GITHUB_APP_CLIENT_ID;
+  const clientSecret = process.env.GITHUB_APP_CLIENT_SECRET;
+  if (!clientId || !clientSecret) throw new Error("GitHub App OAuth credentials are not configured.");
+  const tokenResponse = await fetch("https://github.com/login/oauth/access_token", {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json", "user-agent": "QRouter/1.0" },
+    body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code }),
+    cache: "no-store",
+  });
+  if (!tokenResponse.ok) throw new Error(`GitHub OAuth exchange failed (${tokenResponse.status}).`);
+  const tokenData = await tokenResponse.json() as { access_token?: string };
+  if (!tokenData.access_token) throw new Error("GitHub OAuth exchange did not return a token.");
+  const installationsResponse = await fetch("https://api.github.com/user/installations?per_page=100", {
+    headers: {
+      accept: "application/vnd.github+json",
+      authorization: `Bearer ${tokenData.access_token}`,
+      "user-agent": "QRouter/1.0",
+      "x-github-api-version": "2022-11-28",
+    },
+    cache: "no-store",
+  });
+  if (!installationsResponse.ok) throw new Error(`GitHub installation listing failed (${installationsResponse.status}).`);
+  const installations = await installationsResponse.json() as { installations?: Array<{ id: number }> };
+  return (installations.installations ?? []).some((installation) => installation.id === installationId);
 }
 
 // ── Repository listing (Vercel-style import picker) ────────────────────────────
@@ -155,6 +214,9 @@ export async function resolveGithubAuth(principal: Principal): Promise<GithubAut
       return { token: await createInstallationToken(connection.installation_id), mode: "installation" };
     }
   }
+  // The shared fallback token exposes the server account's repositories, so it
+  // never serves real tenants in production.
+  if (!principal.demo && isProduction()) return null;
   const fallback = process.env.GITHUB_TOKEN ?? process.env.GITHUB_APP_TOKEN;
   return fallback ? { token: fallback, mode: "user" } : null;
 }

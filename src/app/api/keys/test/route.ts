@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdminApi } from "@/lib/admin";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { decryptSecret } from "@/lib/crypto";
 import { getProvider, isProviderId } from "@/lib/providers";
@@ -8,16 +9,14 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
-/** Auth'd: verify a saved provider key actually connects (e.g. AWS Braket). */
+/** Admin-gated: verify a saved provider key actually connects (e.g. AWS Braket).
+ * provider_keys has RLS with no user policies, so reads go through the service role. */
 export async function POST(req: Request) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json({ error: "Supabase not configured" }, { status: 503 });
   }
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requireAdminApi();
+  if (!ctx) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   let body: { provider?: string };
   try {
@@ -35,7 +34,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "This provider has no connection test." }, { status: 400 });
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await createAdminClient()
     .from("provider_keys")
     .select("encrypted_key")
     .eq("provider", provider)

@@ -15,7 +15,7 @@ function providerCost(backend: Backend, analysis: CircuitAnalysis, shots: number
 function compatibility(backend: Backend, analysis: CircuitAnalysis, constraints: RoutingConstraints, shots: number) {
   const reasons: string[] = [];
   const cost = providerCost(backend, analysis, shots);
-  if (!backend.available) reasons.push("provider connection is not configured");
+  if (!backend.available) reasons.push(backend.capabilityNote ?? "provider connection is not configured");
   if (backend.status === "offline") reasons.push("backend is offline");
   if (analysis.qubits > backend.qubits) reasons.push(`requires ${analysis.qubits} qubits; backend has ${backend.qubits}`);
   if (constraints.kind && backend.kind !== constraints.kind) reasons.push(`requires a ${constraints.kind}`);

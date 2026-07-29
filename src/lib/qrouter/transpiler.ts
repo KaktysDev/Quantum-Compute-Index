@@ -24,10 +24,63 @@ function percent(before: number, after: number) {
   return Math.round(((before - after) / Math.max(before, 1)) * 10_000) / 100;
 }
 
+/**
+ * Gates the quantum-computer-js optimizer understands. It silently DELETES any
+ * other operation from the circuit, so optimization only runs when every gate
+ * in the analyzed program is on this list.
+ */
+const LOCAL_OPTIMIZER_GATES = new Set([
+  "x", "y", "z", "h", "s", "t", "rx", "ry", "rz", "cx", "swap", "ccx", "measure", "id", "barrier",
+]);
+
+function canOptimizeLocally(analysis: CircuitAnalysis) {
+  if (/\bgate\s+[A-Za-z_]/.test(analysis.normalizedQasm2)) return false;
+  return Object.keys(analysis.gateCounts).every((gate) => LOCAL_OPTIMIZER_GATES.has(gate));
+}
+
+/**
+ * The local optimizer drops measure statements and renames registers to q/c.
+ * Re-derive the original measurements against the flattened register layout so
+ * partially-measured circuits keep their exact measurement map.
+ */
+function remapMeasurements(originalQasm: string) {
+  const qubitOffsets = new Map<string, { offset: number; size: number }>();
+  const clbitOffsets = new Map<string, { offset: number; size: number }>();
+  let qubitTotal = 0;
+  let clbitTotal = 0;
+  for (const match of originalQasm.matchAll(/\b(qreg|creg)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\[(\d+)]/g)) {
+    const size = Number(match[3]);
+    if (match[1] === "qreg") { qubitOffsets.set(match[2], { offset: qubitTotal, size }); qubitTotal += size; }
+    else { clbitOffsets.set(match[2], { offset: clbitTotal, size }); clbitTotal += size; }
+  }
+  const statements: string[] = [];
+  for (const match of originalQasm.matchAll(/\bmeasure\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\[(\d+)])?\s*->\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:\[(\d+)])?\s*;/g)) {
+    const source = qubitOffsets.get(match[1]);
+    const destination = clbitOffsets.get(match[3]);
+    if (!source || !destination) return null;
+    if (match[2] !== undefined && match[4] !== undefined) {
+      statements.push(`measure q[${source.offset + Number(match[2])}] -> c[${destination.offset + Number(match[4])}];`);
+    } else if (match[2] === undefined && match[4] === undefined) {
+      for (let index = 0; index < Math.min(source.size, destination.size); index += 1) {
+        statements.push(`measure q[${source.offset + index}] -> c[${destination.offset + index}];`);
+      }
+    } else {
+      return null;
+    }
+  }
+  return statements;
+}
+
 function localTranspile(backend: Backend, analysis: CircuitAnalysis, optimizationLevel: number): TranspilationResult {
-  const optimized = optimizeCircuit(parseQASM(analysis.normalizedQasm2));
-  let qasm = circuitToQASM(optimized);
-  if (analysis.measurements > 0) qasm += "\nmeasure q -> c;\n";
+  let qasm = analysis.normalizedQasm2;
+  let note = "Local pass-through: the circuit uses gates outside the local optimizer set, so it is preserved verbatim. Hardware-aware optimization requires QROUTER_COMPILER_URL.";
+  const measurements = analysis.measurements > 0 ? remapMeasurements(analysis.normalizedQasm2) : [];
+  if (optimizationLevel > 0 && canOptimizeLocally(analysis) && measurements !== null) {
+    const optimized = optimizeCircuit(parseQASM(analysis.normalizedQasm2));
+    qasm = circuitToQASM(optimized);
+    if (measurements.length) qasm += `\n${measurements.join("\n")}\n`;
+    note = "Local all-to-all simulator optimization; full Qiskit verification requires QROUTER_COMPILER_URL.";
+  }
   const compiled = analyzeCircuit(qasm, "openqasm2");
   return {
     qasm,
@@ -39,7 +92,7 @@ function localTranspile(backend: Backend, analysis: CircuitAnalysis, optimizatio
     after: metrics(compiled),
     layout: null,
     equivalent: null,
-    verificationNote: "Local all-to-all simulator optimization; full Qiskit verification requires QROUTER_COMPILER_URL.",
+    verificationNote: note,
     improvement: {
       depthPercent: percent(analysis.depth, compiled.depth),
       gatePercent: percent(analysis.gates, compiled.gates),

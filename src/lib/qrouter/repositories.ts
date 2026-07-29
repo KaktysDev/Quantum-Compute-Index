@@ -118,9 +118,38 @@ async function readRepositoryText(repository: string, ref: string, path: string,
   return { text, sha: file.sha, htmlUrl: file.html_url };
 }
 
-export async function inspectRepository(value: string, requestedRef?: string, token?: string): Promise<RepositoryInspection> {
+/**
+ * Finds the OpenQASM version header, tolerating leading line/block comments and
+ * blank lines (license headers are common in real repositories).
+ */
+export function detectOpenQasmVersion(source: string): 2 | 3 | null {
+  const stripped = source.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, "");
+  const match = /^\s*OPENQASM\s+(2(?:\.0)?|3(?:\.0)?)\s*;/i.exec(stripped);
+  if (!match) return null;
+  return match[1].startsWith("3") ? 3 : 2;
+}
+
+export interface RepositoryAccessOptions {
+  token?: string;
+  /** False when the token is a server-shared fallback that must not expose private repositories. */
+  allowPrivate?: boolean;
+}
+
+function assertRepositoryVisibility(isPrivate: boolean, options: RepositoryAccessOptions) {
+  if (isPrivate && options.allowPrivate === false) {
+    throw new RepositorySourceError(
+      "Private repositories require a GitHub App connection for your organization.",
+      403,
+      "github_private_repo",
+    );
+  }
+}
+
+export async function inspectRepository(value: string, requestedRef?: string, options: RepositoryAccessOptions = {}): Promise<RepositoryInspection> {
+  const token = options.token;
   const repository = normalizeRepository(value);
   const metadata = await githubJson<{ full_name: string; html_url: string; default_branch: string; private: boolean; updated_at: string }>(`/repos/${repository}`, token);
+  assertRepositoryVisibility(metadata.private, options);
   const ref = normalizeRef(requestedRef || metadata.default_branch);
   const tree = await githubJson<{ tree?: Array<{ path: string; type: string; sha: string; size?: number }>; truncated?: boolean }>(`/repos/${repository}/git/trees/${encodeURIComponent(ref)}?recursive=1`, token);
   const files = (tree.tree ?? [])
@@ -150,13 +179,18 @@ export async function inspectRepository(value: string, requestedRef?: string, to
   };
 }
 
-export async function readCircuitFromRepository(value: string, requestedRef: string, requestedPath: string, token?: string) {
+export async function readCircuitFromRepository(value: string, requestedRef: string, requestedPath: string, options: RepositoryAccessOptions = {}) {
   const repository = normalizeRepository(value);
   const ref = normalizeRef(requestedRef);
   const path = normalizeCircuitPath(requestedPath);
-  const source = await readRepositoryText(repository, ref, path, 256_000, token);
-  if (!/^\s*OPENQASM\s+(2\.0|3(?:\.0)?)\s*;/i.test(source.text)) {
+  if (options.allowPrivate === false) {
+    const metadata = await githubJson<{ private: boolean }>(`/repos/${repository}`, options.token);
+    assertRepositoryVisibility(metadata.private, options);
+  }
+  const source = await readRepositoryText(repository, ref, path, 256_000, options.token);
+  const version = detectOpenQasmVersion(source.text);
+  if (!version) {
     throw new RepositorySourceError("The selected repository file is not valid OpenQASM 2 or 3 source.", 422, "invalid_circuit");
   }
-  return { repository, ref, path, ...source };
+  return { repository, ref, path, version, ...source };
 }

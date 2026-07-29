@@ -37,11 +37,23 @@ export const BACKENDS: Backend[] = [
     id: "ionq-aria-1", provider: "ionq", displayName: "IonQ Aria 1", kind: "qpu",
     backendName: "aria-1",
     status: "online", qubits: 25, nativeGates: same(["gpi", "gpi2", "ms", "measure"]),
-    basisGates: same(["x", "y", "z", "h", "s", "si", "t", "ti", "v", "vi", "rx", "ry", "rz", "cnot", "measure"]),
+    // Qiskit-standard names so the compiler worker can build a Target; the IonQ
+    // program builder maps them to QIS names (sdg -> si, cx -> cnot, ...).
+    basisGates: same(["x", "y", "z", "h", "s", "sdg", "t", "tdg", "sx", "sxdg", "rx", "ry", "rz", "cx", "swap", "measure"]),
     connectivity: "all-to-all",
     queueSeconds: 1200, fidelity: 0.996, reliability: 0.96, pricePerShot: 0.00022,
     pricePerTask: 0.3, description: "High-fidelity trapped-ion QPU", region: "us-east-1",
     available: Boolean(process.env.IONQ_API_KEY || (process.env.AWS_ACCESS_KEY_ID && process.env.BRAKET_OUTPUT_BUCKET)),
+  },
+  {
+    id: "rigetti-ankaa-3", provider: "aws-braket", displayName: "Rigetti Ankaa-3", kind: "qpu",
+    backendName: "ankaa-3",
+    status: "online", qubits: 84, nativeGates: same(["rx", "rz", "iswap", "cz", "measure"]),
+    basisGates: same(["rx", "rz", "cz", "measure"]),
+    connectivity: "target",
+    queueSeconds: 540, fidelity: 0.99, reliability: 0.955, pricePerShot: 0.0009,
+    pricePerTask: 0.3, description: "84-qubit superconducting QPU", region: "us-west-1",
+    available: Boolean(process.env.AWS_ACCESS_KEY_ID && process.env.BRAKET_OUTPUT_BUCKET),
   },
   {
     id: "iqm-garnet", provider: "aws-braket", displayName: "IQM Garnet", kind: "qpu",
@@ -60,6 +72,7 @@ export const BACKENDS: Backend[] = [
     connectivity: "custom",
     queueSeconds: 1800, fidelity: 0.94, reliability: 0.91, pricePerShot: 0.002,
     pricePerTask: 1, description: "Photonic quantum processor", available: false,
+    capabilityNote: "photonic backend requires a native-input bridge; gate-model circuits cannot be translated automatically",
   },
   {
     id: "quandela-mosaiq", provider: "quandela", displayName: "Quandela MosaiQ", kind: "qpu",
@@ -68,6 +81,7 @@ export const BACKENDS: Backend[] = [
     connectivity: "custom",
     queueSeconds: 960, fidelity: 0.96, reliability: 0.93, pricePerShot: 0.0015,
     pricePerTask: 0.5, description: "Photonic cloud QPU", available: false,
+    capabilityNote: "photonic backend requires a native-input bridge; gate-model circuits cannot be translated automatically",
   },
   {
     id: "qi-starmon-5", provider: "quantum-inspire", displayName: "Starmon-5", kind: "qpu",
@@ -88,6 +102,7 @@ const COMPONENT_MATCHERS: Record<string, (component: QpuComponent) => boolean> =
   "ibm-brisbane": (component) => /ibm/i.test(component.provider) || /brisbane/i.test(component.qpu),
   "ionq-aria-1": (component) => /ionq/i.test(component.provider) || /aria/i.test(component.qpu),
   "iqm-garnet": (component) => /iqm/i.test(component.provider) || /garnet/i.test(component.qpu),
+  "rigetti-ankaa-3": (component) => /rigetti/i.test(component.provider) || /ankaa/i.test(component.qpu),
   "xanadu-borealis": (component) => /xanadu/i.test(component.provider) || /borealis/i.test(component.qpu),
   "quandela-mosaiq": (component) => /quandela/i.test(component.provider) || /mosaiq/i.test(component.qpu),
   "qi-starmon-5": (component) => /quantum inspire|starmon/i.test(`${component.provider} ${component.qpu}`),

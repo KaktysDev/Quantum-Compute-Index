@@ -25,9 +25,13 @@ curl https://api.qrouter.dev/api/v1/jobs \
   }'
 ```
 
-Run `supabase/schema.sql` and then `supabase/qrouter.sql`. Copy
-`.env.local.example` to `.env.local`, configure Google OAuth, Stripe, and the
-provider credentials needed in production. The local development server works
+Run the Supabase files in this order: `supabase/schema.sql`, then
+`supabase/qrouter.sql`, then `supabase/admin.sql`, then `supabase/access.sql`,
+then `supabase/chat.sql`, then `supabase/contact.sql`. `admin.sql` must precede
+`access.sql`, and skipping `access.sql` locks everyone out of `/dashboard`
+because console access fails closed. Copy `.env.local.example` to `.env.local`,
+configure Google OAuth, Stripe, and the provider credentials needed in
+production. The local development server works
 without cloud credentials and exposes the test key
 `qci_test_local_development` outside production.
 
@@ -64,7 +68,7 @@ contract is published at `/openapi.json`.
 
 ### Production checklist
 
-1. Apply `supabase/schema.sql` and `supabase/qrouter.sql`.
+1. Apply the Supabase files in order: `schema.sql`, `qrouter.sql`, `admin.sql`, `access.sql`, `chat.sql`, `contact.sql`.
 2. Deploy `services/simulator` behind TLS and configure matching compiler/worker tokens.
 3. Configure Supabase, Stripe, artifact encryption, cron, and provider credentials from `.env.local.example`.
 4. Configure an external one-minute scheduler for `GET /api/internal/jobs`, an every-two-minute scheduler for `GET /api/internal/providers/health`, and the Stripe webhook.

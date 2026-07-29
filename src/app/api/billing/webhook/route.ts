@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
+import { requeueAwaitingPaymentJobs } from "@/lib/qrouter/credits";
 import { getStripe } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -22,7 +23,13 @@ export async function POST(request: Request) {
       const intent = event.data.object;
       const orgId = intent.metadata?.organization_id;
       const creditAmount = Number(intent.metadata?.credit_amount);
-      if (orgId && creditAmount > 0) await admin.rpc("add_credits", { p_organization_id: orgId, p_amount: creditAmount, p_external_id: intent.id, p_metadata: { stripe_event: event.id } });
+      if (orgId && creditAmount > 0) {
+        await admin.rpc("add_credits", { p_organization_id: orgId, p_amount: creditAmount, p_external_id: intent.id, p_metadata: { stripe_event: event.id } });
+        // Fresh credits unlock any jobs waiting behind the paywall.
+        await requeueAwaitingPaymentJobs(admin, orgId).catch((requeueError) => {
+          console.error(`Failed to requeue parked jobs for ${orgId}`, requeueError);
+        });
+      }
     }
     return NextResponse.json({ received: true });
   } catch (error) {

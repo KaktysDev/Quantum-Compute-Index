@@ -5,169 +5,827 @@
     "version": "1.0.0",
     "description": "One authenticated API for hardware-aware compilation, routing, pricing, and execution across quantum providers."
   },
-  "servers": [{ "url": "https://api.qrouter.dev" }],
+  "servers": [
+    {
+      "url": "https://api.qrouter.dev"
+    }
+  ],
   "components": {
     "securitySchemes": {
-      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "qci_live_*" }
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "qci_live_*"
+      }
     },
     "parameters": {
-      "JobId": { "in": "path", "name": "id", "required": true, "schema": { "type": "string", "format": "uuid" } },
-      "ProjectId": { "in": "path", "name": "id", "required": true, "schema": { "type": "string", "format": "uuid" } }
+      "JobId": {
+        "in": "path",
+        "name": "id",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "ProjectId": {
+        "in": "path",
+        "name": "id",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
     },
     "schemas": {
       "Constraints": {
         "type": "object",
         "properties": {
-          "maxCost": { "type": "number", "exclusiveMinimum": 0 },
-          "maxQueueSeconds": { "type": "integer", "minimum": 0 },
-          "minFidelity": { "type": "number", "minimum": 0, "maximum": 1 },
-          "kind": { "enum": ["qpu", "simulator"] },
-          "providers": { "type": "array", "items": { "type": "string" } },
-          "excludeProviders": { "type": "array", "items": { "type": "string" } }
+          "maxCost": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "maxQueueSeconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "minFidelity": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "kind": {
+            "enum": [
+              "qpu",
+              "simulator"
+            ]
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "excludeProviders": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       },
       "CreateJob": {
         "type": "object",
-        "required": ["circuit"],
+        "required": [
+          "circuit"
+        ],
         "properties": {
-          "name": { "type": "string", "maxLength": 120 },
-          "circuit": { "type": "string", "maxLength": 256000 },
-          "format": { "enum": ["openqasm2", "openqasm3"], "default": "openqasm2" },
-          "shots": { "type": "integer", "minimum": 1, "maximum": 1000000, "default": 1024 },
-          "target": { "type": "string", "default": "auto" },
-          "routing_mode": { "enum": ["balanced", "cost", "speed", "quality"], "default": "balanced" },
-          "optimization_level": { "type": "integer", "minimum": 0, "maximum": 3, "default": 2 },
-          "failover": { "type": "boolean", "default": true, "description": "Try another compatible backend after a provider failure without exceeding the accepted quote." },
-          "max_attempts": { "type": "integer", "minimum": 1, "maximum": 5, "default": 3 },
-          "timeout_seconds": { "type": "integer", "minimum": 60, "maximum": 604800, "default": 7200 },
-          "constraints": { "$ref": "#/components/schemas/Constraints" }
+          "name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "circuit": {
+            "type": "string",
+            "maxLength": 256000
+          },
+          "format": {
+            "enum": [
+              "openqasm2",
+              "openqasm3"
+            ],
+            "default": "openqasm2"
+          },
+          "shots": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000,
+            "default": 1024
+          },
+          "target": {
+            "type": "string",
+            "default": "auto"
+          },
+          "routing_mode": {
+            "enum": [
+              "balanced",
+              "cost",
+              "speed",
+              "quality"
+            ],
+            "default": "balanced"
+          },
+          "optimization_level": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3,
+            "default": 2
+          },
+          "failover": {
+            "type": "boolean",
+            "default": true,
+            "description": "Try another compatible backend after a provider failure without exceeding the accepted quote."
+          },
+          "max_attempts": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "default": 3
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 604800,
+            "default": 7200
+          },
+          "constraints": {
+            "$ref": "#/components/schemas/Constraints"
+          }
         }
       },
       "ProjectSettings": {
         "type": "object",
-        "required": ["shots", "target", "routingMode", "optimizationLevel"],
+        "required": [
+          "shots",
+          "target",
+          "routingMode",
+          "optimizationLevel"
+        ],
         "properties": {
-          "shots": { "type": "integer", "minimum": 1, "maximum": 1000000, "default": 1024 },
-          "target": { "type": "string", "default": "auto" },
-          "routingMode": { "enum": ["balanced", "cost", "speed", "quality"], "default": "balanced" },
-          "optimizationLevel": { "type": "integer", "minimum": 0, "maximum": 3, "default": 2 },
-          "failover": { "type": "boolean", "default": true },
-          "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 5, "default": 3 },
-          "timeoutSeconds": { "type": "integer", "minimum": 60, "maximum": 604800, "default": 7200 }
+          "shots": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000,
+            "default": 1024
+          },
+          "target": {
+            "type": "string",
+            "default": "auto"
+          },
+          "routingMode": {
+            "enum": [
+              "balanced",
+              "cost",
+              "speed",
+              "quality"
+            ],
+            "default": "balanced"
+          },
+          "optimizationLevel": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3,
+            "default": 2
+          },
+          "failover": {
+            "type": "boolean",
+            "default": true
+          },
+          "maxAttempts": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "default": 3
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 604800,
+            "default": 7200
+          }
         }
       },
       "CreateProject": {
         "type": "object",
-        "required": ["repository"],
+        "required": [
+          "repository"
+        ],
         "properties": {
-          "repository": { "type": "string", "examples": ["acme/quantum-workloads"] },
-          "production_branch": { "type": "string", "default": "repository default branch" },
-          "circuit_path": { "type": "string", "examples": ["circuits/bell.qasm"] },
-          "settings": { "$ref": "#/components/schemas/ProjectSettings" }
+          "repository": {
+            "type": "string",
+            "examples": [
+              "acme/quantum-workloads"
+            ]
+          },
+          "production_branch": {
+            "type": "string",
+            "default": "repository default branch"
+          },
+          "circuit_path": {
+            "type": "string",
+            "examples": [
+              "circuits/bell.qasm"
+            ]
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ProjectSettings"
+          }
         }
       },
       "RepositoryDeployment": {
         "type": "object",
-        "required": ["project_id"],
+        "required": [
+          "project_id"
+        ],
         "properties": {
-          "project_id": { "type": "string", "format": "uuid" },
-          "ref": { "type": "string", "description": "Branch, tag, or commit SHA. Defaults to the production branch." },
-          "circuit_path": { "type": "string", "description": "OpenQASM entrypoint. Defaults to the project entrypoint." },
-          "deployment_id": { "type": "string", "maxLength": 120, "description": "Stable idempotency value from CI or a webhook." },
-          "settings": { "$ref": "#/components/schemas/ProjectSettings" }
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ref": {
+            "type": "string",
+            "description": "Branch, tag, or commit SHA. Defaults to the production branch."
+          },
+          "circuit_path": {
+            "type": "string",
+            "description": "OpenQASM entrypoint. Defaults to the project entrypoint."
+          },
+          "deployment_id": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "Stable idempotency value from CI or a webhook."
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ProjectSettings"
+          }
         }
       },
       "Job": {
         "type": "object",
         "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "status": { "enum": ["created", "analyzing", "quoted", "awaiting_payment", "funds_reserved", "queued", "dispatching", "submitted", "processing", "completed", "failed", "cancellation_requested", "cancelled"] },
-          "selected_backend_id": { "type": "string" },
-          "analysis": { "type": "object" },
-          "route_decision": { "type": "object" },
-          "quote_total": { "type": "number" },
-          "result": { "type": ["object", "null"] }
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "enum": [
+              "created",
+              "analyzing",
+              "quoted",
+              "awaiting_payment",
+              "funds_reserved",
+              "queued",
+              "dispatching",
+              "submitted",
+              "processing",
+              "completed",
+              "failed",
+              "cancellation_requested",
+              "cancelled"
+            ]
+          },
+          "selected_backend_id": {
+            "type": "string"
+          },
+          "analysis": {
+            "type": "object"
+          },
+          "route_decision": {
+            "type": "object"
+          },
+          "result": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "quote": {
+            "type": "object",
+            "nullable": true,
+            "description": "Quote issued for this job (present on creation and detail responses).",
+            "properties": {
+              "providerCost": {
+                "type": "number"
+              },
+              "transpilerFee": {
+                "type": "number"
+              },
+              "platformFee": {
+                "type": "number"
+              },
+              "total": {
+                "type": "number"
+              },
+              "currency": {
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "rateSnapshot": {
+                "type": "object"
+              }
+            }
+          }
         }
       },
       "Error": {
         "type": "object",
-        "properties": { "error": { "type": "object", "properties": { "type": { "type": "string" }, "message": { "type": "string" } } } }
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
       }
     }
   },
-  "security": [{ "bearerAuth": [] }],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
   "paths": {
     "/api/v1/repositories/inspect": {
       "get": {
         "summary": "Inspect an authenticated GitHub repository for OpenQASM entrypoints and qrouter.json",
         "parameters": [
-          { "in": "query", "name": "repository", "required": true, "schema": { "type": "string" } },
-          { "in": "query", "name": "ref", "schema": { "type": "string" } }
+          {
+            "in": "query",
+            "name": "repository",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ref",
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
-        "responses": { "200": { "description": "Repository metadata, QASM files, and optional configuration" }, "404": { "description": "Repository or ref not found" } }
+        "responses": {
+          "200": {
+            "description": "Repository metadata, QASM files, and optional configuration"
+          },
+          "404": {
+            "description": "Repository or ref not found"
+          }
+        }
       }
     },
     "/api/v1/projects": {
-      "get": { "summary": "List connected repository projects", "responses": { "200": { "description": "Project list" } } },
+      "get": {
+        "summary": "List connected repository projects",
+        "responses": {
+          "200": {
+            "description": "Project list"
+          }
+        }
+      },
       "post": {
         "summary": "Import or update a repository project",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateProject" } } } },
-        "responses": { "201": { "description": "Project imported" }, "400": { "description": "Invalid project configuration" } }
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProject"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Project imported"
+          },
+          "400": {
+            "description": "Invalid project configuration"
+          }
+        }
       }
     },
     "/api/v1/projects/{id}": {
-      "patch": { "summary": "Update production source and routing defaults", "parameters": [{ "$ref": "#/components/parameters/ProjectId" }], "responses": { "200": { "description": "Project updated" }, "404": { "description": "Project not found" } } },
-      "delete": { "summary": "Remove a repository project", "parameters": [{ "$ref": "#/components/parameters/ProjectId" }], "responses": { "204": { "description": "Project removed" } } }
+      "patch": {
+        "summary": "Update production source and routing defaults",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project updated"
+          },
+          "404": {
+            "description": "Project not found"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove a repository project",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Project removed"
+          }
+        }
+      }
     },
     "/api/v1/repository-jobs": {
       "get": {
         "summary": "List deployments for a repository project",
-        "parameters": [{ "in": "query", "name": "project_id", "required": true, "schema": { "type": "string", "format": "uuid" } }],
-        "responses": { "200": { "description": "Repository deployment list" } }
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Repository deployment list"
+          }
+        }
       },
       "post": {
         "summary": "Fetch a commit-pinned repository circuit, compile it, route it, and execute it",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RepositoryDeployment" } } } },
-        "responses": { "201": { "description": "Deployment created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Job" } } } }, "404": { "description": "Project or source not found" }, "422": { "description": "Circuit or route is invalid" } }
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepositoryDeployment"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Deployment created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project or source not found"
+          },
+          "422": {
+            "description": "Circuit or route is invalid"
+          }
+        }
       }
     },
     "/api/v1/transpile": {
       "post": {
         "summary": "Analyze, route, and hardware-compile a circuit without executing it",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateJob" } } } },
-        "responses": { "200": { "description": "Compilation, routing decision, and quote" }, "422": { "description": "Circuit or target is incompatible" }, "503": { "description": "Required compiler is unavailable" } }
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateJob"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Compilation, routing decision, and quote"
+          },
+          "422": {
+            "description": "Circuit or target is incompatible"
+          },
+          "503": {
+            "description": "Required compiler is unavailable"
+          }
+        }
       }
     },
     "/api/v1/jobs": {
-      "get": { "summary": "List jobs", "responses": { "200": { "description": "Job list" } } },
+      "get": {
+        "summary": "List jobs",
+        "responses": {
+          "200": {
+            "description": "Job list"
+          }
+        }
+      },
       "post": {
         "summary": "Compile, quote, route, and durably queue a circuit",
-        "parameters": [{ "in": "header", "name": "Idempotency-Key", "schema": { "type": "string" } }],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateJob" } } } },
-        "responses": { "201": { "description": "Demo job created" }, "202": { "description": "Job accepted into the durable execution queue", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Job" } } } }, "402": { "description": "Insufficient credits" }, "422": { "description": "Invalid circuit or no compatible backend" }, "503": { "description": "Compiler unavailable" } }
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateJob"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Demo job created"
+          },
+          "202": {
+            "description": "Job accepted into the durable execution queue",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient credits"
+          },
+          "422": {
+            "description": "Invalid circuit or no compatible backend"
+          },
+          "503": {
+            "description": "Compiler unavailable"
+          }
+        }
       }
     },
     "/api/v1/jobs/{id}": {
-      "get": { "summary": "Get a job, decrypted result, and event timeline", "parameters": [{ "$ref": "#/components/parameters/JobId" }], "responses": { "200": { "description": "Job" }, "404": { "description": "Not found" } } }
+      "get": {
+        "summary": "Get a job, decrypted result, and event timeline",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/JobId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
     },
     "/api/v1/jobs/{id}/cancel": {
-      "post": { "summary": "Cancel queued work and release reserved credits", "parameters": [{ "$ref": "#/components/parameters/JobId" }], "responses": { "200": { "description": "Cancelled" }, "409": { "description": "Already processing or terminal" } } }
+      "post": {
+        "summary": "Cancel queued work and release reserved credits",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/JobId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cancelled"
+          },
+          "409": {
+            "description": "Already processing or terminal"
+          }
+        }
+      }
     },
     "/api/v1/jobs/{id}/result": {
-      "get": { "summary": "Download the decrypted JSON result artifact", "parameters": [{ "$ref": "#/components/parameters/JobId" }], "responses": { "200": { "description": "Result JSON" }, "409": { "description": "Result is not available" } } }
+      "get": {
+        "summary": "Download the decrypted JSON result artifact",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/JobId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result JSON"
+          },
+          "409": {
+            "description": "Result is not available"
+          }
+        }
+      }
     },
     "/api/v1/jobs/{id}/transpiled": {
-      "get": { "summary": "Download the hardware-compiled OpenQASM artifact", "parameters": [{ "$ref": "#/components/parameters/JobId" }], "responses": { "200": { "description": "Compiled OpenQASM", "content": { "text/plain": { "schema": { "type": "string" } } } }, "409": { "description": "Artifact is not available" } } }
+      "get": {
+        "summary": "Download the hardware-compiled OpenQASM artifact",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/JobId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Compiled OpenQASM",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Artifact is not available"
+          }
+        }
+      }
     },
     "/api/v1/backends": {
-      "get": { "summary": "List QCI-priced backends and capabilities", "security": [], "responses": { "200": { "description": "Backend catalog" } } }
+      "get": {
+        "summary": "List QCI-priced backends and capabilities",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Backend catalog"
+          }
+        }
+      }
     },
     "/api/v1/webhooks": {
-      "get": { "summary": "List signed webhook endpoints", "responses": { "200": { "description": "Webhook endpoint list" } } },
-      "post": { "summary": "Create a webhook endpoint", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["url"], "properties": { "url": { "type": "string", "format": "uri" } } } } } }, "responses": { "201": { "description": "Endpoint created; signing secret is returned once" } } }
+      "get": {
+        "summary": "List signed webhook endpoints",
+        "responses": {
+          "200": {
+            "description": "Webhook endpoint list"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a webhook endpoint",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "url"
+                ],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Endpoint created; signing secret is returned once"
+          }
+        }
+      }
     },
     "/api/v1/webhooks/deliveries": {
-      "get": { "summary": "List webhook delivery attempts and retry state", "responses": { "200": { "description": "Recent delivery history" } } }
+      "get": {
+        "summary": "List webhook delivery attempts and retry state",
+        "responses": {
+          "200": {
+            "description": "Recent delivery history"
+          }
+        }
+      }
+    },
+    "/api/v1/api-keys": {
+      "get": {
+        "summary": "List API keys",
+        "tags": [
+          "QRouter"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create an API key (plaintext returned once)",
+        "tags": [
+          "QRouter"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/api/v1/api-keys/{id}": {
+      "delete": {
+        "summary": "Revoke an API key",
+        "tags": [
+          "QRouter"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/webhooks/{id}": {
+      "delete": {
+        "summary": "Delete a webhook endpoint",
+        "tags": [
+          "QRouter"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/repositories": {
+      "get": {
+        "summary": "List importable GitHub repositories",
+        "tags": [
+          "QRouter"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/api/v1/integrations/github": {
+      "get": {
+        "summary": "Read GitHub connection status",
+        "tags": [
+          "QRouter"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Disconnect GitHub",
+        "tags": [
+          "QRouter"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/api/v1/ai/route-advice": {
+      "post": {
+        "summary": "Explain a routing decision (optional AI layer)",
+        "tags": [
+          "QRouter"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
     }
   }
 }

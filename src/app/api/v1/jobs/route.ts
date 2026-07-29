@@ -87,7 +87,13 @@ export async function POST(request: Request) {
     const admin = createAdminClient();
     if (idempotencyKey) {
       const { data: existing } = await admin.from("jobs").select("*").eq("organization_id", principal.organizationId).eq("idempotency_key", idempotencyKey).maybeSingle();
-      if (existing) return NextResponse.json(existing);
+      // Terminal failures release their idempotency key so the same deployment
+      // (e.g. a repository commit) can be retried after the cause is fixed.
+      if (existing && !["failed", "cancelled"].includes(existing.status as string)) return NextResponse.json(existing);
+      if (existing) {
+        const { error: unpinError } = await admin.from("jobs").update({ idempotency_key: null, updated_at: new Date().toISOString() }).eq("id", existing.id);
+        if (unpinError) throw unpinError;
+      }
     }
     const sourceHash = createHash("sha256").update(input.circuit).digest("hex");
     const { error: jobError } = await admin.from("jobs").insert({
@@ -109,21 +115,22 @@ export async function POST(request: Request) {
         content: prepared.transpilation.artifactQasm ?? prepared.transpilation.qasm,
       }),
     ]);
-    const { data: quoteRow, error: quoteError } = await admin.from("quotes").insert({
-      job_id: jobId, organization_id: principal.organizationId, provider_cost: quote.providerCost,
-      transpiler_fee: quote.transpilerFee, platform_fee: quote.platformFee, total: quote.total,
-      rate_snapshot: quote.rateSnapshot, expires_at: quote.expiresAt,
-    }).select("id").single();
-    if (quoteError) throw quoteError;
-    await admin.from("jobs").update({ quote_id: quoteRow.id, status: "funds_reserved", updated_at: new Date().toISOString() }).eq("id", jobId);
-    const { error: reserveError } = await admin.rpc("reserve_job_credits", { p_job_id: jobId, p_amount: quote.total });
-    if (reserveError) {
-      await admin.from("jobs").update({ status: "awaiting_payment", error: { message: "Add credits before running this task." } }).eq("id", jobId);
+    // Quote storage, credit reservation, and the queued/awaiting_payment
+    // transition happen in one transaction so a crash cannot strand the job in
+    // a half-transitioned state or leak a reservation.
+    const { data: outcome, error: queueError } = await admin.rpc("queue_job_with_quote", {
+      p_job_id: jobId,
+      p_provider_cost: quote.providerCost,
+      p_transpiler_fee: quote.transpilerFee,
+      p_platform_fee: quote.platformFee,
+      p_total: quote.total,
+      p_rate_snapshot: quote.rateSnapshot,
+      p_expires_at: quote.expiresAt,
+    });
+    if (queueError) throw queueError;
+    if (outcome === "awaiting_payment") {
       return NextResponse.json({ error: { type: "insufficient_credits", message: "Add credits before running this task.", quote, job_id: jobId } }, { status: 402 });
     }
-    await admin.from("job_events").insert({ job_id: jobId, type: "credits.reserved", from_status: "quoted", to_status: "funds_reserved", payload: { amount: quote.total } });
-    await admin.from("jobs").update({ status: "queued", next_attempt_at: now, updated_at: new Date().toISOString() }).eq("id", jobId);
-    await admin.from("job_events").insert({ job_id: jobId, type: "job.queued", from_status: "funds_reserved", to_status: "queued", payload: { failover: input.failover, maxAttempts: input.max_attempts, requestId } });
     const { data: created, error } = await admin.from("jobs").select("*").eq("id", jobId).single();
     if (error) throw error;
     return NextResponse.json({ ...created, quote }, { status: 202 });

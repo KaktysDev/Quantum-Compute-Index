@@ -1,4 +1,5 @@
 import QuantumCircuit from "quantum-circuit";
+import { DialectError, expandDialects } from "./dialects";
 import type { CircuitAnalysis, InputFormat } from "./types";
 
 const MAX_SOURCE_BYTES = 256_000;
@@ -81,7 +82,13 @@ export function analyzeCircuit(source: string, format: InputFormat): CircuitAnal
     throw new CircuitValidationError("Circuit source exceeds the 256 KB limit.");
   }
 
-  const normalizedQasm2 = toOpenQasm2(source, format);
+  let normalizedQasm2: string;
+  try {
+    normalizedQasm2 = expandDialects(toOpenQasm2(source, format));
+  } catch (error) {
+    if (error instanceof DialectError) throw new CircuitValidationError(error.message);
+    throw error;
+  }
   const circuit = new QuantumCircuit() as QuantumCircuit & { numQubits: number };
   let parserErrors: unknown[] = [];
   circuit.importQASM(qasmForParser(normalizedQasm2), (errors: unknown) => {

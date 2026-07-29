@@ -1,7 +1,8 @@
 import { z } from "zod";
 
 export const createJobSchema = z.object({
-  name: z.string().trim().max(120).optional(),
+  // nullish: older SDK builds serialize an unset name as JSON null.
+  name: z.string().trim().max(120).nullish().transform((value) => value ?? undefined),
   circuit: z.string().min(1).max(256_000),
   format: z.enum(["openqasm2", "openqasm3"]).default("openqasm2"),
   shots: z.number().int().min(1).max(1_000_000).default(1024),

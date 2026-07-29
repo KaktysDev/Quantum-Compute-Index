@@ -1,28 +1,24 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdminApi } from "@/lib/admin";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { encryptSecret } from "@/lib/crypto";
 import { isProviderId, PROVIDER_DEFINITIONS } from "@/lib/providers";
 
 export const dynamic = "force-dynamic";
 
-async function requireUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return { supabase, user };
-}
+// provider_keys is an infrastructure-secrets table with RLS and no user
+// policies, so every read/write must use the service role — gated on admin.
 
 /** GET: status of each provider key (set / enabled / label / updated). Never the raw key. */
 export async function GET() {
   if (!isSupabaseConfigured()) {
     return NextResponse.json({ error: "Supabase not configured" }, { status: 503 });
   }
-  const { supabase, user } = await requireUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requireAdminApi();
+  if (!ctx) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { data, error } = await supabase
+  const { data, error } = await createAdminClient()
     .from("provider_keys")
     .select("provider, label, enabled, updated_at");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -46,8 +42,9 @@ export async function POST(req: Request) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json({ error: "Supabase not configured" }, { status: 503 });
   }
-  const { supabase, user } = await requireUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requireAdminApi();
+  if (!ctx) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const admin = createAdminClient();
 
   let body: { provider?: string; apiKey?: string; label?: string; enabled?: boolean };
   try {
@@ -63,9 +60,9 @@ export async function POST(req: Request) {
 
   // Toggle-only update (no new key supplied).
   if (apiKey === undefined && typeof enabled === "boolean") {
-    const { error } = await supabase
+    const { error } = await admin
       .from("provider_keys")
-      .update({ enabled, updated_by: user.id, updated_at: new Date().toISOString() })
+      .update({ enabled, updated_by: ctx.user.id, updated_at: new Date().toISOString() })
       .eq("provider", provider);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true });
@@ -85,13 +82,13 @@ export async function POST(req: Request) {
     );
   }
 
-  const { error } = await supabase.from("provider_keys").upsert(
+  const { error } = await admin.from("provider_keys").upsert(
     {
       provider,
       encrypted_key: encrypted,
       label: label ?? null,
       enabled: enabled ?? true,
-      updated_by: user.id,
+      updated_by: ctx.user.id,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "provider" },
@@ -105,15 +102,15 @@ export async function DELETE(req: Request) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json({ error: "Supabase not configured" }, { status: 503 });
   }
-  const { supabase, user } = await requireUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requireAdminApi();
+  if (!ctx) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { searchParams } = new URL(req.url);
   const provider = searchParams.get("provider");
   if (!provider || !isProviderId(provider)) {
     return NextResponse.json({ error: "Unknown provider" }, { status: 400 });
   }
-  const { error } = await supabase.from("provider_keys").delete().eq("provider", provider);
+  const { error } = await createAdminClient().from("provider_keys").delete().eq("provider", provider);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }

@@ -12,6 +12,15 @@ export interface Principal {
 
 export class AuthenticationError extends Error {}
 
+export class RateLimitError extends Error {
+  constructor(message = "Organization rate limit exceeded. Retry shortly.", public retryAfterSeconds = 60) {
+    super(message);
+    this.name = "RateLimitError";
+  }
+}
+
+const API_RATE_LIMIT_PER_MINUTE = Number(process.env.QROUTER_RATE_LIMIT_PER_MINUTE ?? 120);
+
 export function hashApiKey(key: string) {
   return createHash("sha256").update(key).digest("hex");
 }
@@ -37,6 +46,12 @@ export async function resolvePrincipal(request: Request): Promise<Principal> {
     const { data, error } = await admin.from("api_keys").select("id, organization_id, revoked_at, expires_at").eq("key_hash", hashApiKey(rawKey)).maybeSingle();
     if (error || !data || data.revoked_at || (data.expires_at && new Date(data.expires_at) <= new Date())) {
       throw new AuthenticationError("Invalid or expired API key.");
+    }
+    const { data: allowed, error: rateError } = await admin.rpc("consume_api_rate_limit", { p_api_key_id: data.id, p_limit: API_RATE_LIMIT_PER_MINUTE });
+    if (rateError) throw rateError;
+    if (allowed === false) {
+      const secondsIntoMinute = Math.floor((Date.now() / 1000) % 60);
+      throw new RateLimitError(undefined, Math.max(1, 60 - secondsIntoMinute));
     }
     await admin.from("api_keys").update({ last_used_at: new Date().toISOString() }).eq("id", data.id);
     return { organizationId: data.organization_id, userId: null, apiKeyId: data.id, demo: false };

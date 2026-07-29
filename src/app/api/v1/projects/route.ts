@@ -4,7 +4,7 @@ import { z } from "zod";
 import { resolvePrincipal } from "@/lib/qrouter/auth";
 import { demoProjects } from "@/lib/qrouter/demo-store";
 import { apiError } from "@/lib/qrouter/http";
-import { getGithubAccessToken } from "@/lib/qrouter/github";
+import { getGithubAccess } from "@/lib/qrouter/github";
 import { inspectRepository, normalizeCircuitPath, normalizeRef, RepositorySourceError, type ProjectSettings, type QRouterProject } from "@/lib/qrouter/repositories";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -45,7 +45,8 @@ export async function POST(request: Request) {
     const principal = await resolvePrincipal(request);
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return NextResponse.json({ error: { type: "invalid_request", message: "The project configuration is invalid.", details: parsed.error.flatten() } }, { status: 400 });
-    const inspection = await inspectRepository(parsed.data.repository, parsed.data.production_branch, await getGithubAccessToken(principal));
+    const access = await getGithubAccess(principal);
+    const inspection = await inspectRepository(parsed.data.repository, parsed.data.production_branch, { token: access.token, allowPrivate: access.allowPrivate });
     const configuredPath = typeof inspection.config?.circuit === "string" ? inspection.config.circuit : undefined;
     const circuitPath = normalizeCircuitPath(parsed.data.circuit_path || configuredPath || inspection.files[0]?.path || "");
     if (!inspection.files.some((file) => file.path === circuitPath)) throw new RepositorySourceError("The selected circuit was not found in the repository tree.", 404, "repository_file_not_found");

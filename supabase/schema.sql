@@ -38,6 +38,7 @@ create table if not exists public.profiles (
 );
 alter table public.profiles add column if not exists full_name text;
 alter table public.profiles add column if not exists company text;
+alter table public.profiles add column if not exists preferences jsonb not null default '{}';
 alter table public.profiles add column if not exists stripe_customer_id text;
 alter table public.profiles add column if not exists billing_setup_complete boolean not null default false;
 alter table public.profiles add column if not exists onboarding_complete boolean not null default false;
@@ -344,7 +345,8 @@ create table if not exists public.jobs (
   completed_at timestamptz,
   unique(organization_id, idempotency_key)
 );
-alter table public.jobs add column if not exists project_id uuid references public.projects(id) on delete set null;
+-- jobs.project_id is added by qrouter.sql after public.projects exists there;
+-- referencing projects here would abort a fresh-database run of this file.
 alter table public.jobs add column if not exists failover_enabled boolean not null default true;
 alter table public.jobs add column if not exists max_attempts smallint not null default 3 check(max_attempts between 1 and 5);
 alter table public.jobs add column if not exists next_attempt_at timestamptz not null default now();
@@ -602,6 +604,17 @@ begin
     values(p_organization_id, 'purchase', p_amount, v_available, p_external_id, p_metadata);
 end;
 $$;
+
+-- Credit-mutating security-definer functions must never be callable through
+-- PostgREST by end users; only the service role may execute them.
+revoke all on function public.reserve_job_credits(uuid,numeric) from public;
+grant execute on function public.reserve_job_credits(uuid,numeric) to service_role;
+revoke all on function public.settle_job_credits(uuid,numeric,numeric) from public;
+grant execute on function public.settle_job_credits(uuid,numeric,numeric) to service_role;
+revoke all on function public.release_job_credits(uuid,numeric) from public;
+grant execute on function public.release_job_credits(uuid,numeric) to service_role;
+revoke all on function public.add_credits(uuid,numeric,text,jsonb) from public;
+grant execute on function public.add_credits(uuid,numeric,text,jsonb) to service_role;
 
 create table if not exists public.webhook_endpoints (
   id uuid primary key default gen_random_uuid(),

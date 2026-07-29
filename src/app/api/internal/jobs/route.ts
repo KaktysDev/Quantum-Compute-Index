@@ -193,7 +193,7 @@ async function dispatchJob(admin: AdminClient, job: OrchestratedJob) {
 async function pollJob(admin: AdminClient, job: OrchestratedJob) {
   if (!job.provider_job_id) return;
   try {
-    if (job.execution_deadline_at && new Date(job.execution_deadline_at).getTime() <= Date.now() && !job.timeout_failover_pending) {
+    if (job.status !== "cancellation_requested" && job.execution_deadline_at && new Date(job.execution_deadline_at).getTime() <= Date.now() && !job.timeout_failover_pending) {
       await cancelProviderJob(job.selected_backend_id, job.provider_job_id);
       const { data: changed } = await admin.from("jobs").update({ status: "cancellation_requested", timeout_failover_pending: true, lease_expires_at: null, error: { message: "Execution deadline exceeded; provider cancellation requested." }, updated_at: new Date().toISOString() }).eq("id", job.id).eq("status", job.status).select("id").maybeSingle();
       if (changed) await admin.from("job_events").insert({ job_id: job.id, type: "job.timeout", from_status: job.status, to_status: "cancellation_requested", payload: { backendId: job.selected_backend_id, deadline: job.execution_deadline_at } });

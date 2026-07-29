@@ -1,12 +1,18 @@
 import { NextResponse } from "next/server";
 import { AIInferenceError } from "@/lib/ai/inference";
-import { AuthenticationError } from "./auth";
+import { AuthenticationError, RateLimitError } from "./auth";
 import { CircuitValidationError } from "./analyze";
 import { RepositorySourceError } from "./repositories";
 
 export function apiError(error: unknown) {
   if (error instanceof AuthenticationError) {
     return NextResponse.json({ error: { type: "authentication_error", message: error.message } }, { status: 401 });
+  }
+  if (error instanceof RateLimitError) {
+    return NextResponse.json(
+      { error: { type: "rate_limit_error", message: error.message } },
+      { status: 429, headers: { "retry-after": String(error.retryAfterSeconds) } },
+    );
   }
   if (error instanceof CircuitValidationError) {
     return NextResponse.json({ error: { type: "invalid_circuit", message: error.message, details: error.details } }, { status: 422 });

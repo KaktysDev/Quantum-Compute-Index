@@ -51,6 +51,8 @@ export interface Backend {
   description: string;
   region?: string;
   available: boolean;
+  /** Human-readable reason a backend is capability-gated (e.g. photonic bridge required). */
+  capabilityNote?: string;
   health?: { reachable: boolean; consecutiveFailures: number; detail: string; checkedAt: string };
 }
 

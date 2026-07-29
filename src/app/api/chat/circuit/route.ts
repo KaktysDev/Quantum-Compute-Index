@@ -4,7 +4,7 @@
 
 import { NextResponse } from "next/server";
 import { resolvePrincipal } from "@/lib/qrouter/auth";
-import { getGithubAccessToken } from "@/lib/qrouter/github";
+import { getGithubAccess } from "@/lib/qrouter/github";
 import { apiError } from "@/lib/qrouter/http";
 import { readCircuitFromRepository } from "@/lib/qrouter/repositories";
 
@@ -23,9 +23,9 @@ export async function GET(request: Request) {
         { status: 400 },
       );
     }
-    const token = await getGithubAccessToken(principal);
-    const source = await readCircuitFromRepository(repository, ref || "HEAD", path, token);
-    const format = /OPENQASM\s+3/i.test(source.text) ? "openqasm3" : "openqasm2";
+    const access = await getGithubAccess(principal);
+    const source = await readCircuitFromRepository(repository, ref || "HEAD", path, { token: access.token, allowPrivate: access.allowPrivate });
+    const format = source.version === 3 ? "openqasm3" : "openqasm2";
     return NextResponse.json({ circuit: source.text, format, path: source.path });
   } catch (error) {
     return apiError(error);

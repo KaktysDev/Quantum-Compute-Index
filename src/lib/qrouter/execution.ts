@@ -1,5 +1,6 @@
 import { BraketClient, CancelQuantumTaskCommand, CreateQuantumTaskCommand, GetQuantumTaskCommand } from "@aws-sdk/client-braket";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { evaluateParam } from "./dialects";
 import { simulateCircuit } from "./simulator";
 import type { CircuitAnalysis } from "./types";
 
@@ -10,19 +11,28 @@ const BRAKET_DEVICES: Record<string, { arn: string; region: string }> = {
   "aws-sv1": { arn: "arn:aws:braket:::device/quantum-simulator/amazon/sv1", region: "us-east-1" },
   "ionq-aria-1": { arn: "arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1", region: "us-east-1" },
   "iqm-garnet": { arn: "arn:aws:braket:eu-north-1::device/qpu/iqm/Garnet", region: "eu-north-1" },
+  "rigetti-ankaa-3": { arn: "arn:aws:braket:us-west-1::device/qpu/rigetti/Ankaa-3", region: "us-west-1" },
 };
 
 const providerTimeout = () => AbortSignal.timeout(Number(process.env.QROUTER_PROVIDER_TIMEOUT_MS ?? 20_000));
 
-export function qasm2ToQasm3(source: string) {
-  return source
+/**
+ * Converts core-gate OpenQASM 2 to OpenQASM 3. Braket's dialect names the CNOT
+ * gate `cnot`, while the standard-library dialect (stdgates.inc, used by IBM)
+ * keeps `cx` — so the rename is dialect-specific.
+ */
+export function qasm2ToQasm3(source: string, dialect: "braket" | "stdgates" = "braket") {
+  let output = source
     .replace(/OPENQASM\s+2\.0\s*;/i, "OPENQASM 3.0;")
     .replace(/include\s+"qelib1\.inc"\s*;/i, 'include "stdgates.inc";')
     .replace(/\bqreg\s+(\w+)\[(\d+)]\s*;/g, "qubit[$2] $1;")
     .replace(/\bcreg\s+(\w+)\[(\d+)]\s*;/g, "bit[$2] $1;")
-    .replace(/\bcx\b/g, "cnot")
     .replace(/measure\s+(\w+)\s*->\s*(\w+)\s*;/g, "$2 = measure $1;")
     .replace(/measure\s+(\w+)\[(\d+)]\s*->\s*(\w+)\[(\d+)]\s*;/g, "$3[$4] = measure $1[$2];");
+  if (dialect === "braket") {
+    output = output.replace(/^\s*include\s+"stdgates\.inc"\s*;\s*$/im, "").replace(/\bcx\b/g, "cnot");
+  }
+  return output;
 }
 
 async function submitVultr(analysis: CircuitAnalysis, shots: number, idempotencyKey: string): Promise<Submission> {
@@ -65,7 +75,7 @@ async function submitIbm(analysis: CircuitAnalysis, shots: number): Promise<Subm
     headers: { accept: "application/json", authorization: `Bearer ${token}`, "content-type": "application/json" },
     body: JSON.stringify({
       program_id: "sampler", backend: process.env.IBM_QUANTUM_BACKEND ?? "ibm_brisbane", hub, group, project,
-      params: { pubs: [[qasm2ToQasm3(analysis.normalizedQasm2)]], options: { default_shots: shots }, version: 2 },
+      params: { pubs: [[qasm2ToQasm3(analysis.normalizedQasm2, "stdgates")]], options: { default_shots: shots }, version: 2 },
     }),
     signal: providerTimeout(),
   });
@@ -81,22 +91,83 @@ function ionqHeaders() {
   return { "content-type": "application/json", authorization: `apiKey ${token}` };
 }
 
-function qasm2ToIonqCircuit(source: string) {
+/**
+ * Converts core-gate OpenQASM 2 (the output of dialect expansion + transpile)
+ * into IonQ's QIS gate JSON. Throws on anything it cannot faithfully express so
+ * a circuit is never silently altered before hardware execution.
+ */
+export function qasm2ToIonqCircuit(source: string) {
+  const text = source.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, "");
+  const offsets = new Map<string, { offset: number; size: number }>();
+  let total = 0;
+  for (const match of text.matchAll(/\bqreg\s+([A-Za-z_][A-Za-z0-9_]*)\s*\[(\d+)]/g)) {
+    offsets.set(match[1], { offset: total, size: Number(match[2]) });
+    total += Number(match[2]);
+  }
+
+  const wire = (argument: string): number[] => {
+    const match = /^([A-Za-z_][A-Za-z0-9_]*)\s*(?:\[(\d+)])?$/.exec(argument.trim());
+    const register = match ? offsets.get(match[1]) : undefined;
+    if (!match || !register) throw new Error(`IonQ conversion failed: unknown qubit "${argument.trim()}".`);
+    if (match[2] === undefined) return Array.from({ length: register.size }, (_, index) => register.offset + index);
+    const index = Number(match[2]);
+    if (index >= register.size) throw new Error(`IonQ conversion failed: qubit index out of range in "${argument.trim()}".`);
+    return [register.offset + index];
+  };
+
   const gates: Array<Record<string, unknown>> = [];
-  for (const rawLine of source.split("\n")) {
-    const line = rawLine.trim().replace(/;$/, "");
-    let match = /^(h|x|y|z|s|t)\s+q\[(\d+)]$/i.exec(line);
-    if (match) {
-      gates.push({ gate: match[1].toLowerCase(), target: Number(match[2]) });
-      continue;
+  const single = (gate: string, target: number, rotation?: number) =>
+    gates.push(rotation === undefined ? { gate, target } : { gate, rotation, target });
+  const cnot = (control: number, target: number) => gates.push({ gate: "cnot", control, target });
+  const u3 = (target: number, theta: number, phi: number, lambda: number) => {
+    single("rz", target, lambda);
+    single("ry", target, theta);
+    single("rz", target, phi);
+  };
+  const toffoli = (a: number, b: number, c: number) => {
+    single("h", c); cnot(b, c); single("ti", c); cnot(a, c); single("t", c); cnot(b, c); single("ti", c);
+    cnot(a, c); single("t", b); single("t", c); single("h", c); cnot(a, b); single("t", a); single("ti", b); cnot(a, b);
+  };
+
+  for (const rawStatement of text.split(";")) {
+    const statement = rawStatement.trim();
+    if (!statement) continue;
+    if (/^(OPENQASM|include|qreg|creg|measure|barrier)\b/i.test(statement)) continue;
+    if (/^if\s*\(/.test(statement)) throw new Error("IonQ conversion failed: classically-controlled gates are not supported.");
+    const match = /^([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(([^)]*)\))?\s+(.+)$/s.exec(statement);
+    if (!match) throw new Error(`IonQ conversion failed: could not parse "${statement.slice(0, 60)}".`);
+    const name = match[1].toLowerCase();
+    const params = (match[2] ?? "").split(",").map((piece) => piece.trim()).filter(Boolean).map(evaluateParam);
+    const argRows = match[3].split(",").map((argument) => wire(argument));
+    const arity = argRows.length;
+    const broadcast = Math.max(...argRows.map((row) => row.length));
+    if (argRows.some((row) => row.length !== 1 && row.length !== broadcast)) {
+      throw new Error(`IonQ conversion failed: mismatched register sizes in "${statement.slice(0, 60)}".`);
     }
-    match = /^(rx|ry|rz)\(([^)]+)\)\s+q\[(\d+)]$/i.exec(line);
-    if (match) {
-      gates.push({ gate: match[1].toLowerCase(), rotation: match[2], target: Number(match[3]) });
-      continue;
+    for (let step = 0; step < broadcast; step += 1) {
+      const wires = argRows.map((row) => (row.length === 1 ? row[0] : row[step]));
+      const [a, b, c] = wires;
+      if (arity === 1) {
+        if (["h", "x", "y", "z", "s", "t"].includes(name)) single(name, a);
+        else if (name === "sdg") single("si", a);
+        else if (name === "tdg") single("ti", a);
+        else if (name === "id") continue;
+        else if (["rx", "ry", "rz"].includes(name)) single(name, a, params[0]);
+        else if (name === "u1" || name === "p") single("rz", a, params[0]);
+        else if (name === "u2") u3(a, Math.PI / 2, params[0], params[1]);
+        else if (name === "u3" || name === "u") u3(a, params[0], params[1], params[2]);
+        else throw new Error(`IonQ conversion failed: gate "${name}" is not supported.`);
+      } else if (arity === 2) {
+        if (name === "cx" || name === "cnot") cnot(a, b);
+        else if (name === "cz") { single("h", b); cnot(a, b); single("h", b); }
+        else if (name === "swap") gates.push({ gate: "swap", targets: [a, b] });
+        else throw new Error(`IonQ conversion failed: gate "${name}" is not supported.`);
+      } else if (arity === 3 && (name === "ccx" || name === "toffoli")) {
+        toffoli(a, b, c);
+      } else {
+        throw new Error(`IonQ conversion failed: gate "${name}" is not supported.`);
+      }
     }
-    match = /^(cx|cnot)\s+q\[(\d+)],\s*q\[(\d+)]$/i.exec(line);
-    if (match) gates.push({ gate: "cnot", control: Number(match[2]), target: Number(match[3]) });
   }
   return gates;
 }
