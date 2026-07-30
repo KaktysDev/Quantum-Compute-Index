@@ -13,6 +13,9 @@ import { createJobSchema } from "@/lib/qrouter/validation";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
+// Job creation compiles the circuit on the remote Qiskit worker before
+// responding, so it needs more than the platform default timeout.
+export const maxDuration = 60;
 
 export async function GET(request: Request) {
   try {
