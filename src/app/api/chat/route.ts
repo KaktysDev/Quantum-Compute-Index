@@ -15,7 +15,8 @@
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { isGeminiConfigured, streamGemini, type GeminiTurn } from "@/lib/ai/gemini";
+import { isAssistantConfigured, streamAssistant } from "@/lib/ai/assistant";
+import { type GeminiTurn } from "@/lib/ai/gemini";
 import { consumeAssistantQuota, quotaLimits, recordAssistantTokens } from "@/lib/ai/limits";
 import { getLatestSnapshot } from "@/lib/qci/store";
 import { AuthenticationError, resolvePrincipal, type Principal } from "@/lib/qrouter/auth";
@@ -253,9 +254,9 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: { message: "Invalid request body." } }, { status: 400 });
   }
-  if (!isGeminiConfigured()) {
+  if (!isAssistantConfigured()) {
     return NextResponse.json(
-      { error: { message: "The assistant is not configured (missing Gemini credentials on the server)." } },
+      { error: { message: "The assistant is not configured (set GEMINI_API_KEY or VULTR_INFERENCE_API_KEY on the server)." } },
       { status: 503 },
     );
   }
@@ -378,7 +379,7 @@ export async function POST(request: Request) {
       let totalTokens = 0;
       try {
         send("meta", { threadId: threadId ?? "local", title, persisted: persist });
-        for await (const chunk of streamGemini({
+        for await (const chunk of streamAssistant({
           system,
           turns,
           maxOutputTokens: 3_072,
@@ -386,6 +387,10 @@ export async function POST(request: Request) {
           onUsage: (usage) => {
             totalTokens = usage.totalTokens ?? 0;
             send("usage", usage);
+          },
+          onFailover: (info) => {
+            console.warn(`Assistant failover ${info.from} -> ${info.to}: ${info.reason}`);
+            send("provider", { provider: info.to, reason: info.reason });
           },
         })) {
           if (chunk.type === "thought") {
