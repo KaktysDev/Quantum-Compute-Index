@@ -5,12 +5,14 @@ const same = (gates: string[]) => gates;
 
 export const BACKENDS: Backend[] = [
   {
-    id: "qci-aer-gpu", provider: "qci", displayName: "QCI Aer GPU", kind: "simulator",
+    // The id is a stable API/storage key and stays as-is; the display name
+    // reflects the hardware actually behind it today.
+    id: "qci-aer-gpu", provider: "qci", displayName: "QCI Aer CPU", kind: "simulator",
     status: "online", qubits: 30, nativeGates: same(["id", "x", "y", "z", "h", "s", "sdg", "t", "tdg", "rx", "ry", "rz", "cx", "cz", "swap", "measure"]),
     basisGates: same(["id", "x", "y", "z", "h", "s", "sdg", "t", "tdg", "rx", "ry", "rz", "cx", "cz", "swap", "measure"]),
     connectivity: "all-to-all",
     queueSeconds: 2, fidelity: 1, reliability: 0.999, pricePerShot: 0.000001,
-    pricePerTask: 0.002, description: "Low-latency state-vector simulation",
+    pricePerTask: 0.002, description: "Qiskit Aer state-vector simulation",
     available: true,
   },
   {
