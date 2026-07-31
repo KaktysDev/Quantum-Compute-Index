@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import QuantumCircuit from "quantum-circuit";
 import { POST as createJob } from "@/app/api/v1/jobs/route";
 import { analyzeCircuit, CircuitValidationError } from "@/lib/qrouter/analyze";
@@ -125,6 +125,35 @@ describe("local transpilation preserves circuits", () => {
     expect(result.after.gates).toBe(analysis.gates);
     expect(result.qasm).toContain("cz");
     expect(result.qasm).toContain("sdg");
+  });
+
+  it("falls back to local compilation when the remote compiler is unreachable", async () => {
+    process.env.QROUTER_COMPILER_URL = "https://compiler.invalid";
+    try {
+      const analysis = analyzeCircuit(`${HEADER}qreg q[2];\ncreg c[2];\nh q[0];\ncx q[0],q[1];\nmeasure q -> c;`, "openqasm2");
+      const fetchMock = vi.fn().mockRejectedValue(new Error("fetch failed"));
+      vi.stubGlobal("fetch", fetchMock);
+      const result = await transpileForBackend(aer, analysis, { optimizationLevel: 2 });
+      expect(result.compiler).toBe("local");
+      expect(result.verificationNote).toContain("Compiler service unreachable");
+      expect(result.qasm).toContain("OPENQASM 2.0");
+    } finally {
+      vi.unstubAllGlobals();
+      delete process.env.QROUTER_COMPILER_URL;
+    }
+  });
+
+  it("still refuses QPU compilation when the remote compiler is unreachable", async () => {
+    process.env.QROUTER_COMPILER_URL = "https://compiler.invalid";
+    try {
+      const qpu = BACKENDS.find((backend) => backend.id === "ionq-aria-1")!;
+      const analysis = analyzeCircuit(`${HEADER}qreg q[2];\ncreg c[2];\nh q[0];\ncx q[0],q[1];\nmeasure q -> c;`, "openqasm2");
+      vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("fetch failed")));
+      await expect(transpileForBackend(qpu, analysis, { optimizationLevel: 2 })).rejects.toThrow(/fetch failed/);
+    } finally {
+      vi.unstubAllGlobals();
+      delete process.env.QROUTER_COMPILER_URL;
+    }
   });
 
   it("preserves a partial measurement map through optimization", async () => {

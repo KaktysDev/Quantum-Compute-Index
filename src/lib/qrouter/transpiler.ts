@@ -119,33 +119,47 @@ export async function transpileForBackend(
     return localTranspile(backend, analysis, optimizationLevel);
   }
 
-  const response = await fetch(`${workerUrl.replace(/\/$/, "")}/v1/transpile`, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token ?? ""}` },
-    body: JSON.stringify({
-      qasm: analysis.normalizedQasm2,
-      optimization_level: optimizationLevel,
-      seed_transpiler: options.seedTranspiler ?? 42,
-      verify_equivalence: options.verifyEquivalence ?? true,
-      target: {
-        backend_id: backend.id,
-        provider: backend.provider,
-        backend_name: backend.backendName,
-        num_qubits: backend.qubits,
-        basis_gates: backend.basisGates,
-        connectivity: backend.connectivity,
-        coupling_map: backend.couplingMap,
-      },
-    }),
-    signal: AbortSignal.timeout(120_000),
-  });
-  const data = await response.json() as Record<string, unknown> & { detail?: string };
-  if (!response.ok) throw new Error(data.detail ?? `Compiler service failed (${response.status}).`);
-  return {
-    ...(data as unknown as Omit<TranspilationResult, "backendId" | "compiler">),
-    backendId: backend.id,
-    compiler: "qiskit",
-  };
+  try {
+    const response = await fetch(`${workerUrl.replace(/\/$/, "")}/v1/transpile`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token ?? ""}` },
+      body: JSON.stringify({
+        qasm: analysis.normalizedQasm2,
+        optimization_level: optimizationLevel,
+        seed_transpiler: options.seedTranspiler ?? 42,
+        verify_equivalence: options.verifyEquivalence ?? true,
+        target: {
+          backend_id: backend.id,
+          provider: backend.provider,
+          backend_name: backend.backendName,
+          num_qubits: backend.qubits,
+          basis_gates: backend.basisGates,
+          connectivity: backend.connectivity,
+          coupling_map: backend.couplingMap,
+        },
+      }),
+      signal: AbortSignal.timeout(120_000),
+    });
+    const data = await response.json() as Record<string, unknown> & { detail?: string };
+    if (!response.ok) throw new Error(data.detail ?? `Compiler service failed (${response.status}).`);
+    return {
+      ...(data as unknown as Omit<TranspilationResult, "backendId" | "compiler">),
+      backendId: backend.id,
+      compiler: "qiskit",
+    };
+  } catch (error) {
+    // A physical QPU must never run without hardware-aware compilation, so the
+    // failure surfaces. A simulator has no coupling constraints to satisfy, so
+    // an unreachable compiler degrades to local optimization instead of losing
+    // the job — the reason is recorded in the verification note.
+    if (backend.kind === "qpu") throw error;
+    const reason = error instanceof Error ? error.message : "unknown error";
+    const local = localTranspile(backend, analysis, optimizationLevel);
+    return {
+      ...local,
+      verificationNote: `Compiler service unreachable (${reason}); compiled locally instead. ${local.verificationNote ?? ""}`.trim(),
+    };
+  }
 }
 
 export function analysisFromTranspilation(result: TranspilationResult): CircuitAnalysis {
