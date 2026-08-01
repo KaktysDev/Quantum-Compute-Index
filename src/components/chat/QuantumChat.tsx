@@ -38,6 +38,10 @@ import {
 } from "lucide-react";
 import QuantumParticles from "@/components/landing/QuantumParticles";
 import LogoMark from "@/components/LogoMark";
+import { getBackend } from "@/lib/qrouter/catalog";
+
+/** Backend ids are stable storage keys; show the human name where one exists. */
+const backendLabel = (id: string) => getBackend(id)?.displayName ?? id;
 
 // ── types ────────────────────────────────────────────────────────────────────
 
@@ -423,7 +427,7 @@ function JobProposalCard({ proposal, balance }: { proposal: Proposal; balance: n
           </dd>
         </div>
         <div><dt>Shots</dt><dd>{shots.toLocaleString()}</dd></div>
-        <div><dt>Routing</dt><dd className="capitalize">{proposal.routing_mode ?? "balanced"} · {proposal.target ?? "auto"}</dd></div>
+        <div><dt>Routing</dt><dd><span className="capitalize">{proposal.routing_mode ?? "balanced"}</span> · {backendLabel(proposal.target ?? "auto")}</dd></div>
         <div>
           <dt>Backend</dt>
           <dd>
