@@ -7,12 +7,18 @@ import { POST as createJob } from "@/app/api/v1/jobs/route";
 import { POST as createRouteAdvice } from "@/app/api/v1/ai/route-advice/route";
 import { POST as createProject } from "@/app/api/v1/projects/route";
 import { GET as listRepositoryJobs, POST as createRepositoryJob } from "@/app/api/v1/repository-jobs/route";
+import { POST as createCircuitV2 } from "@/app/api/v2/circuits/route";
+import { POST as createHostedJobV2 } from "@/app/api/v2/jobs/route";
+import { GET as getHostedJobV2 } from "@/app/api/v2/jobs/[id]/route";
+import { GET as getExecutionResultV2 } from "@/app/api/v2/executions/[id]/result/route";
+import { POST as releaseCircuitV2 } from "@/app/api/v2/circuits/[id]/release/route";
 import { sampleProviderSeries, sampleSnapshot } from "@/lib/qci/sample";
 import { createAIChatCompletion } from "@/lib/ai/inference";
 import { canAccessConsole } from "@/lib/access";
 import { analyzeCircuit, CircuitValidationError } from "@/lib/qrouter/analyze";
 import { BACKENDS, withQciSnapshot } from "@/lib/qrouter/catalog";
 import { demoJobs, demoProjects } from "@/lib/qrouter/demo-store";
+import { demoV2Circuits, demoV2Groups } from "@/lib/qrouter/v2-demo-store";
 import { normalizeCircuitPath, normalizeRef, normalizeRepository } from "@/lib/qrouter/repositories";
 import { nextAttemptCandidate, retryDelaySeconds } from "@/lib/qrouter/orchestration";
 import { applyProviderHealth } from "@/lib/qrouter/providerHealth";
@@ -60,6 +66,8 @@ describe("QRouter circuit pipeline", () => {
     delete process.env.BRAKET_OUTPUT_BUCKET;
     demoJobs.clear();
     demoProjects.clear();
+    demoV2Circuits.clear();
+    demoV2Groups.clear();
   });
 
   it("reads console access from the database and fails closed on error", async () => {
@@ -105,6 +113,72 @@ describe("QRouter circuit pipeline", () => {
   it("analyzes a Bell circuit", () => {
     const analysis = analyzeCircuit(bell, "openqasm2");
     expect(analysis).toMatchObject({ qubits: 2, classicalBits: 2, gates: 2, twoQubitGates: 1, complexity: "light" });
+  });
+
+  it("stores an immutable circuit and runs independent v2 executions", async () => {
+    const authorization = "Bearer qci_test_local_development";
+    const createRequest = () => new Request("http://localhost/api/v2/circuits", {
+      method: "POST",
+      headers: { authorization, "content-type": "application/json", "idempotency-key": "v2-circuit-bell-001" },
+      body: JSON.stringify({ name: "Bell", circuit: bell }),
+    });
+    const created = await createCircuitV2(createRequest());
+    const circuitPayload = await created.json();
+    expect(created.status).toBe(201);
+    expect(circuitPayload.data).toMatchObject({ format: "openqasm2", analysis: { qubits: 2 } });
+
+    const replay = await createCircuitV2(createRequest());
+    expect(replay.status).toBe(200);
+    expect(replay.headers.get("idempotent-replayed")).toBe("true");
+
+    const conflict = await createCircuitV2(new Request("http://localhost/api/v2/circuits", {
+      method: "POST",
+      headers: { authorization, "content-type": "application/json", "idempotency-key": "v2-circuit-bell-001" },
+      body: JSON.stringify({ circuit: bell.replace("h q[0]", "x q[0]") }),
+    }));
+    expect(conflict.status).toBe(409);
+    await expect(conflict.json()).resolves.toMatchObject({ code: "idempotency_conflict" });
+
+    const jobResponse = await createHostedJobV2(new Request("http://localhost/api/v2/jobs", {
+      method: "POST",
+      headers: { authorization, "content-type": "application/json", "idempotency-key": "v2-job-bell-001" },
+      body: JSON.stringify({
+        circuit_id: circuitPayload.data.id,
+        executions: [
+          { key: "recommended", target: "auto", shots: 64 },
+          { key: "aer", target: "qci-aer-gpu", shots: 64, failover: false },
+        ],
+      }),
+    }));
+    const jobPayload = await jobResponse.json();
+    expect(jobResponse.status).toBe(202);
+    expect(jobPayload.data).toMatchObject({ status: "completed" });
+    expect(jobPayload.data.executions).toHaveLength(2);
+    expect(jobPayload.data.executions.every((execution: { status: string }) => execution.status === "completed")).toBe(true);
+
+    const jobRead = await getHostedJobV2(new Request(`http://localhost/api/v2/jobs/${jobPayload.data.id}`, { headers: { authorization } }), {
+      params: Promise.resolve({ id: jobPayload.data.id }),
+    });
+    await expect(jobRead.json()).resolves.toMatchObject({ data: { id: jobPayload.data.id, executions: [{ key: "recommended" }, { key: "aer" }] } });
+
+    const executionId = jobPayload.data.executions[0].id;
+    const result = await getExecutionResultV2(new Request(`http://localhost/api/v2/executions/${executionId}/result`, { headers: { authorization } }), {
+      params: Promise.resolve({ id: executionId }),
+    });
+    expect(result.status).toBe(200);
+    await expect(result.json()).resolves.toMatchObject({ backend: "qci-aer-gpu", shots: 64 });
+
+    const release = await releaseCircuitV2(new Request(`http://localhost/api/v2/circuits/${circuitPayload.data.id}/release`, { method: "POST", headers: { authorization } }), {
+      params: Promise.resolve({ id: circuitPayload.data.id }),
+    });
+    expect(release.status).toBe(200);
+    await expect(release.json()).resolves.toMatchObject({ data: { released_at: expect.any(String) } });
+
+    const releasedResult = await getExecutionResultV2(new Request(`http://localhost/api/v2/executions/${executionId}/result`, { headers: { authorization } }), {
+      params: Promise.resolve({ id: executionId }),
+    });
+    expect(releasedResult.status).toBe(409);
+    await expect(releasedResult.json()).resolves.toMatchObject({ code: "result_not_available" });
   });
 
   it("analyzes semicolon-delimited OpenQASM on one line", () => {

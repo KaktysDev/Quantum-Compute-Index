@@ -92,6 +92,60 @@ create index if not exists jobs_org_created_idx on public.jobs(organization_id,c
 create index if not exists jobs_status_idx on public.jobs(status,updated_at);
 create index if not exists jobs_dispatch_idx on public.jobs(status,next_attempt_at,lease_expires_at);
 
+-- V2 API resources. A circuit is immutable and can be reused by many parent
+-- jobs; the existing jobs table remains the durable execution/attempt record.
+create table if not exists public.circuits (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete set null,
+  api_key_id uuid references public.api_keys(id) on delete set null,
+  name text,
+  input_format text not null check(input_format in('openqasm2','openqasm3')),
+  source text not null,
+  source_hash text not null,
+  analysis jsonb not null,
+  idempotency_key text not null,
+  request_hash text not null,
+  expires_at timestamptz,
+  released_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(organization_id,idempotency_key)
+);
+create index if not exists circuits_org_created_idx on public.circuits(organization_id,created_at desc);
+alter table public.circuits enable row level security;
+drop policy if exists "circuit member read" on public.circuits;
+create policy "circuit member read" on public.circuits for select using(public.is_org_member(organization_id));
+
+create table if not exists public.execution_groups (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  circuit_id uuid not null references public.circuits(id) on delete restrict,
+  user_id uuid references auth.users(id) on delete set null,
+  api_key_id uuid references public.api_keys(id) on delete set null,
+  idempotency_key text not null,
+  request_hash text not null,
+  metadata jsonb not null default '{}',
+  status text not null default 'queued' check(status in('queued','running','awaiting_payment','completed','failed','cancelled')),
+  error jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  completed_at timestamptz,
+  unique(organization_id,idempotency_key)
+);
+create index if not exists execution_groups_org_created_idx on public.execution_groups(organization_id,created_at desc);
+create index if not exists execution_groups_circuit_idx on public.execution_groups(circuit_id,created_at desc);
+alter table public.execution_groups enable row level security;
+drop policy if exists "execution group member read" on public.execution_groups;
+create policy "execution group member read" on public.execution_groups for select using(public.is_org_member(organization_id));
+
+alter table public.jobs add column if not exists group_id uuid references public.execution_groups(id) on delete cascade;
+alter table public.jobs add column if not exists circuit_id uuid references public.circuits(id) on delete set null;
+alter table public.jobs add column if not exists execution_key text;
+alter table public.jobs add column if not exists execution_position integer;
+create index if not exists jobs_group_idx on public.jobs(group_id,execution_position);
+create unique index if not exists jobs_group_execution_key_unique on public.jobs(group_id,execution_key) where group_id is not null;
+
 create table if not exists public.provider_health (
   backend_id text primary key references public.backends(id) on delete cascade,
   configured boolean not null default false,reachable boolean not null default false,
@@ -110,6 +164,7 @@ create table if not exists public.quotes (
   total numeric(14,6) not null, qci_snapshot_id bigint references public.qci_snapshots(id), rate_snapshot jsonb not null,
   expires_at timestamptz not null, accepted_at timestamptz, created_at timestamptz not null default now()
 );
+alter table public.jobs add column if not exists quote_id uuid references public.quotes(id) on delete set null;
 alter table public.quotes enable row level security;
 drop policy if exists "quote member read" on public.quotes; create policy "quote member read" on public.quotes for select using(public.is_org_member(organization_id));
 
@@ -188,6 +243,20 @@ begin
       update public.credit_accounts set available=available+job_quote.total,reserved=greatest(reserved-job_quote.total,0),updated_at=now() where organization_id=current_job.organization_id returning available into balance;
       insert into public.ledger_entries(organization_id,job_id,type,amount,balance_after)values(current_job.organization_id,p_job_id,'release',job_quote.total,balance);
     end if;
+  end if;
+  if current_job.group_id is not null then
+    update public.execution_groups as execution_group
+    set status=case
+          when exists(select 1 from public.jobs where group_id=current_job.group_id and status in('created','analyzing','quoted','funds_reserved','queued','dispatching','submitted','processing','cancellation_requested')) then 'running'
+          when exists(select 1 from public.jobs where group_id=current_job.group_id and status='awaiting_payment') then 'awaiting_payment'
+          when exists(select 1 from public.jobs where group_id=current_job.group_id and status='completed') then 'completed'
+          when exists(select 1 from public.jobs where group_id=current_job.group_id and status='failed') then 'failed'
+          else 'cancelled'
+        end,
+        error=case when exists(select 1 from public.jobs where group_id=current_job.group_id and status='failed') and not exists(select 1 from public.jobs where group_id=current_job.group_id and status='completed') then jsonb_build_object('message','All execution targets failed.') else null end,
+        completed_at=case when not exists(select 1 from public.jobs where group_id=current_job.group_id and status in('created','analyzing','quoted','awaiting_payment','funds_reserved','queued','dispatching','submitted','processing','cancellation_requested')) then now() else null end,
+        updated_at=now()
+    where execution_group.id=current_job.group_id;
   end if;
   return true;
 end$$;
@@ -268,6 +337,67 @@ end$$;
 revoke all on function public.queue_job_with_quote(uuid,numeric,numeric,numeric,numeric,jsonb,timestamptz) from public;
 grant execute on function public.queue_job_with_quote(uuid,numeric,numeric,numeric,numeric,jsonb,timestamptz) to service_role;
 
+-- V2 submits a parent job with several independent executions. Quote and
+-- reserve their aggregate maximum in one transaction so a comparison can
+-- never start only some executions because a balance changed mid-request.
+create or replace function public.queue_execution_group_with_quotes(
+  p_group_id uuid,p_quotes jsonb
+) returns text language plpgsql security definer set search_path=public as $$
+declare current_group public.execution_groups%rowtype;required_total numeric;balance numeric;execution_count integer;quote_count integer;
+begin
+  select * into current_group from public.execution_groups where id=p_group_id for update;
+  if not found then raise exception 'execution group not found';end if;
+  if current_group.status in('completed','failed','cancelled') then return current_group.status;end if;
+  select count(*) into execution_count from public.jobs where group_id=p_group_id and status in('quoted','awaiting_payment');
+  select count(*) into quote_count from jsonb_to_recordset(p_quotes) as input(job_id uuid,provider_cost numeric,transpiler_fee numeric,platform_fee numeric,total numeric,rate_snapshot jsonb,expires_at timestamptz);
+  if execution_count=0 or quote_count<>execution_count then raise exception 'every pending execution requires one quote';end if;
+  if exists(
+    select 1 from jsonb_to_recordset(p_quotes) as input(job_id uuid,provider_cost numeric,transpiler_fee numeric,platform_fee numeric,total numeric,rate_snapshot jsonb,expires_at timestamptz)
+    where not exists(select 1 from public.jobs where id=input.job_id and group_id=p_group_id and status in('quoted','awaiting_payment'))
+  ) then raise exception 'quote execution does not belong to group';end if;
+  select coalesce(sum(total),0) into required_total from jsonb_to_recordset(p_quotes) as input(job_id uuid,provider_cost numeric,transpiler_fee numeric,platform_fee numeric,total numeric,rate_snapshot jsonb,expires_at timestamptz);
+  insert into public.quotes(job_id,organization_id,provider_cost,transpiler_fee,platform_fee,total,rate_snapshot,expires_at)
+    select input.job_id,current_group.organization_id,input.provider_cost,input.transpiler_fee,input.platform_fee,input.total,input.rate_snapshot,input.expires_at
+    from jsonb_to_recordset(p_quotes) as input(job_id uuid,provider_cost numeric,transpiler_fee numeric,platform_fee numeric,total numeric,rate_snapshot jsonb,expires_at timestamptz)
+    on conflict(job_id) do update set provider_cost=excluded.provider_cost,transpiler_fee=excluded.transpiler_fee,platform_fee=excluded.platform_fee,total=excluded.total,rate_snapshot=excluded.rate_snapshot,expires_at=excluded.expires_at;
+  update public.jobs job set quote_id=quote.id,updated_at=now() from public.quotes quote where quote.job_id=job.id and job.group_id=p_group_id and job.status in('quoted','awaiting_payment');
+  select available into balance from public.credit_accounts where organization_id=current_group.organization_id for update;
+  if balance is null or balance<required_total then
+    update public.jobs set status='awaiting_payment',error=jsonb_build_object('message','Add credits before running this task.'),updated_at=now() where group_id=p_group_id and status in('quoted','awaiting_payment');
+    update public.execution_groups set status='awaiting_payment',error=jsonb_build_object('message','Add credits before running this task.'),updated_at=now() where id=p_group_id;
+    return 'awaiting_payment';
+  end if;
+  update public.credit_accounts set available=available-required_total,reserved=reserved+required_total,updated_at=now() where organization_id=current_group.organization_id;
+  insert into public.ledger_entries(organization_id,type,amount,balance_after,metadata) values(current_group.organization_id,'reserve',-required_total,balance-required_total,jsonb_build_object('group_id',p_group_id));
+  update public.jobs set status='queued',error=null,next_attempt_at=now(),updated_at=now() where group_id=p_group_id and status in('quoted','awaiting_payment');
+  update public.execution_groups set status='running',error=null,updated_at=now() where id=p_group_id;
+  return 'queued';
+end$$;
+revoke all on function public.queue_execution_group_with_quotes(uuid,jsonb) from public;
+grant execute on function public.queue_execution_group_with_quotes(uuid,jsonb) to service_role;
+
+create or replace function public.requeue_awaiting_payment_execution_groups(p_organization_id uuid,p_limit integer default 20)
+returns table(group_id uuid,outcome text) language plpgsql security definer set search_path=public as $$
+declare parked public.execution_groups%rowtype;group_quotes jsonb;
+begin
+  for parked in
+    select * from public.execution_groups where organization_id=p_organization_id and status='awaiting_payment'
+    order by created_at limit greatest(1,least(p_limit,100)) for update skip locked
+  loop
+    select jsonb_agg(jsonb_build_object('job_id',quote.job_id,'provider_cost',quote.provider_cost,'transpiler_fee',quote.transpiler_fee,'platform_fee',quote.platform_fee,'total',quote.total,'rate_snapshot',quote.rate_snapshot,'expires_at',quote.expires_at))
+    into group_quotes from public.quotes quote join public.jobs job on job.id=quote.job_id
+    where job.group_id=parked.id;
+    if group_quotes is null or exists(select 1 from public.quotes quote join public.jobs job on job.id=quote.job_id where job.group_id=parked.id and quote.expires_at<=now()) then
+      group_id=parked.id;outcome='quote_expired';return next;continue;
+    end if;
+    outcome=public.queue_execution_group_with_quotes(parked.id,group_quotes);
+    group_id=parked.id;return next;
+    if outcome='awaiting_payment' then exit;end if;
+  end loop;
+end$$;
+revoke all on function public.requeue_awaiting_payment_execution_groups(uuid,integer) from public;
+grant execute on function public.requeue_awaiting_payment_execution_groups(uuid,integer) to service_role;
+
 -- Unparks awaiting_payment jobs (oldest first) after credits arrive. Jobs whose
 -- quote expired are reported so the caller can reprice and requeue them.
 create or replace function public.requeue_awaiting_payment_jobs(p_organization_id uuid,p_limit integer default 20)
@@ -276,7 +406,7 @@ declare parked record;job_quote public.quotes%rowtype;balance numeric;
 begin
   for parked in
     select * from public.jobs
-    where organization_id=p_organization_id and status='awaiting_payment'
+    where organization_id=p_organization_id and status='awaiting_payment' and group_id is null
     order by created_at limit greatest(1,least(p_limit,100))
     for update skip locked
   loop

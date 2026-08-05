@@ -1,5 +1,6 @@
 import time
 import uuid
+from typing import Optional
 
 import httpx
 
@@ -112,3 +113,93 @@ class QRouter:
                 return job
             time.sleep(poll_seconds)
         raise TimeoutError(f"Job {job_id} did not finish within {timeout} seconds")
+
+
+class QRouterV2(QRouter):
+    """Hosted circuit/job/execution API modeled for durable multi-backend runs."""
+
+    def create_circuit(self, circuit: str, *, format: Optional[str] = None, name: Optional[str] = None,
+                       idempotency_key: Optional[str] = None):
+        payload = {
+            "circuit": circuit,
+            "format": format or ("openqasm3" if "OPENQASM 3" in circuit else "openqasm2"),
+        }
+        if name is not None:
+            payload["name"] = name
+        response = self._request(
+            "POST", "/api/v2/circuits",
+            headers={"Idempotency-Key": idempotency_key or str(uuid.uuid4())}, json=payload,
+        )
+        return response["data"]
+
+    def get_circuit(self, circuit_id: str):
+        return self._request("GET", f"/api/v2/circuits/{circuit_id}")["data"]
+
+    def release_circuit(self, circuit_id: str):
+        return self._request("POST", f"/api/v2/circuits/{circuit_id}/release")["data"]
+
+    def delete_circuit(self, circuit_id: str):
+        self._request("DELETE", f"/api/v2/circuits/{circuit_id}")
+
+    def create_hosted_job(self, circuit_id: str, executions: list[dict], *, metadata=None,
+                          idempotency_key: Optional[str] = None):
+        payload = {"circuit_id": circuit_id, "executions": executions, "metadata": metadata or {}}
+        return self._request(
+            "POST", "/api/v2/jobs",
+            headers={"Idempotency-Key": idempotency_key or str(uuid.uuid4())}, json=payload,
+        )["data"]
+
+    def get_hosted_job(self, job_id: str):
+        return self._request("GET", f"/api/v2/jobs/{job_id}")["data"]
+
+    def wait_hosted_job(self, job_id: str, poll_seconds: float = 2, timeout: float = 3600):
+        started = time.monotonic()
+        while time.monotonic() - started < timeout:
+            job = self.get_hosted_job(job_id)
+            if job["status"] in {"completed", "failed", "cancelled"}:
+                return job
+            time.sleep(poll_seconds)
+        raise TimeoutError(f"Hosted job {job_id} did not finish within {timeout} seconds")
+
+    def wait_for_execution(self, job_id: str, execution_id: str, poll_seconds: float = 2, timeout: float = 3600):
+        started = time.monotonic()
+        while time.monotonic() - started < timeout:
+            job = self.get_hosted_job(job_id)
+            execution = next((item for item in job["executions"] if item["id"] == execution_id), None)
+            if execution is None:
+                raise QRouterError(f"Execution {execution_id} is not part of job {job_id}", 404)
+            if execution["status"] in {"completed", "failed", "cancelled"}:
+                return execution
+            time.sleep(poll_seconds)
+        raise TimeoutError(f"Execution {execution_id} did not finish within {timeout} seconds")
+
+    def get_execution_result(self, execution_id: str):
+        return self._request("GET", f"/api/v2/executions/{execution_id}/result")
+
+    def get_execution_transpiled_qasm(self, execution_id: str):
+        response = self.client.get(f"/api/v2/executions/{execution_id}/transpiled")
+        if not response.is_success:
+            try:
+                body = response.json()
+            except ValueError:
+                body = response.text
+            message = body.get("detail") if isinstance(body, dict) else response.text
+            raise QRouterError(message, response.status_code, body)
+        return response.text
+
+    def cancel_execution(self, execution_id: str):
+        return self._request("POST", f"/api/v2/executions/{execution_id}/cancel")["data"]
+
+    def list_backends(self):
+        return self._request("GET", "/api/v2/backends")["data"]
+
+    def run(self, circuit: str, *, idempotency_key: Optional[str] = None, **options):
+        key = idempotency_key or str(uuid.uuid4())
+        circuit_resource = self.create_circuit(circuit, format=options.pop("format", None), name=options.pop("name", None), idempotency_key=f"{key}:circuit")
+        execution = {"key": "recommended", **options}
+        job = self.create_hosted_job(circuit_resource["id"], [execution], idempotency_key=key)
+        completed = self.wait_hosted_job(job["id"])
+        target = next((item for item in completed["executions"] if item["key"] == "recommended"), None)
+        if target is None or target["status"] != "completed":
+            raise QRouterError("Quantum execution failed", 502, completed)
+        return self.get_execution_result(target["id"])

@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -98,6 +98,18 @@ async function downloadEncryptedArtifact(storagePath: string) {
   return data.text();
 }
 
+async function deleteEncryptedArtifact(storagePath: string) {
+  const objectPath = parseObjectStoragePath(storagePath);
+  if (objectPath) {
+    const objectStorage = objectStorageClient();
+    if (!objectStorage) throw new Error("Object storage credentials are required to delete this artifact.");
+    await objectStorage.client.send(new DeleteObjectCommand({ Bucket: objectPath.bucket, Key: objectPath.key }));
+    return;
+  }
+  const { error } = await createAdminClient().storage.from(SUPABASE_BUCKET).remove([storagePath]);
+  if (error) throw new Error(`Artifact deletion failed: ${error.message}`);
+}
+
 export async function storeArtifact(input: {
   jobId: string;
   organizationId: string;
@@ -134,4 +146,17 @@ export async function loadArtifact(jobId: string, kind: ArtifactKind) {
   if (rowError) throw new Error(`Artifact lookup failed: ${rowError.message}`);
   if (!artifact) return null;
   return decryptSecret(await downloadEncryptedArtifact(artifact.storage_path));
+}
+
+/** Removes encrypted object copies and their metadata after a circuit release. */
+export async function deleteJobArtifacts(jobIds: string[]) {
+  if (!jobIds.length) return;
+  const admin = createAdminClient();
+  const { data, error } = await admin.from("artifacts").select("id,storage_path").in("job_id", jobIds);
+  if (error) throw new Error(`Artifact lookup failed: ${error.message}`);
+  const artifacts = data ?? [];
+  await Promise.all(artifacts.map((artifact) => deleteEncryptedArtifact(artifact.storage_path)));
+  if (!artifacts.length) return;
+  const { error: deleteError } = await admin.from("artifacts").delete().in("id", artifacts.map((artifact) => artifact.id));
+  if (deleteError) throw new Error(`Artifact metadata deletion failed: ${deleteError.message}`);
 }

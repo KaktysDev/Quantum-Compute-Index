@@ -12,6 +12,10 @@ interface ParkedJob {
   route_decision: RouteDecision;
 }
 
+interface ParkedExecutionGroupJob extends ParkedJob {
+  group_id: string;
+}
+
 /**
  * Unlocks jobs parked as awaiting_payment once credits arrive. Jobs whose quote
  * is still valid are reserved and queued atomically in SQL; expired quotes are
@@ -19,6 +23,34 @@ interface ParkedJob {
  * validity window) and queued through the same atomic RPC.
  */
 export async function requeueAwaitingPaymentJobs(admin: AdminClient, organizationId: string) {
+  const { data: groupData, error: groupError } = await admin.rpc("requeue_awaiting_payment_execution_groups", { p_organization_id: organizationId });
+  if (groupError) throw groupError;
+  const groupOutcomes = (groupData ?? []) as Array<{ group_id: string; outcome: "queued" | "insufficient" | "quote_expired" }>;
+  for (const entry of groupOutcomes) {
+    if (entry.outcome !== "quote_expired") continue;
+    const { data: jobs, error: jobsError } = await admin.from("jobs")
+      .select("id,group_id,shots,analysis,route_decision")
+      .eq("group_id", entry.group_id).eq("organization_id", organizationId).eq("status", "awaiting_payment");
+    if (jobsError || !jobs?.length) continue;
+    try {
+      const quotes = (jobs as unknown as ParkedExecutionGroupJob[]).map((job) => {
+        const executionAnalysis = job.analysis.transpilation
+          ? analysisFromTranspilation(job.analysis.transpilation as TranspilationResult)
+          : job.analysis;
+        const quote = buildQuote(job.route_decision, executionAnalysis, job.shots);
+        return {
+          job_id: job.id, provider_cost: quote.providerCost, transpiler_fee: quote.transpilerFee,
+          platform_fee: quote.platformFee, total: quote.total, rate_snapshot: quote.rateSnapshot, expires_at: quote.expiresAt,
+        };
+      });
+      const { data: outcome, error: queueError } = await admin.rpc("queue_execution_group_with_quotes", { p_group_id: entry.group_id, p_quotes: quotes });
+      if (queueError) throw queueError;
+      if (outcome === "awaiting_payment") break;
+    } catch (requeueError) {
+      console.error(`Failed to reprice awaiting_payment execution group ${entry.group_id}`, requeueError);
+    }
+  }
+
   const { data, error } = await admin.rpc("requeue_awaiting_payment_jobs", { p_organization_id: organizationId });
   if (error) throw error;
   const outcomes = (data ?? []) as Array<{ job_id: string; outcome: "queued" | "insufficient" | "quote_expired" }>;
@@ -50,5 +82,5 @@ export async function requeueAwaitingPaymentJobs(admin: AdminClient, organizatio
       console.error(`Failed to reprice awaiting_payment job ${parked.id}`, repriceError);
     }
   }
-  return outcomes;
+  return { groups: groupOutcomes, jobs: outcomes };
 }

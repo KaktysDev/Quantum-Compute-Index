@@ -143,6 +143,84 @@
           }
         }
       },
+      "Circuit": {
+        "type": "object",
+        "required": ["id", "format", "source_hash", "analysis", "created_at"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": ["string", "null"] },
+          "format": { "enum": ["openqasm2", "openqasm3"] },
+          "source_hash": { "type": "string" },
+          "analysis": { "type": "object" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "released_at": { "type": ["string", "null"], "format": "date-time" }
+        }
+      },
+      "CreateCircuit": {
+        "type": "object",
+        "required": ["circuit"],
+        "properties": {
+          "name": { "type": "string", "maxLength": 120 },
+          "circuit": { "type": "string", "maxLength": 256000 },
+          "format": { "enum": ["openqasm2", "openqasm3"], "default": "openqasm2" }
+        }
+      },
+      "ExecutionTarget": {
+        "type": "object",
+        "required": ["key"],
+        "properties": {
+          "key": { "type": "string", "maxLength": 64 },
+          "target": { "type": "string", "default": "auto" },
+          "shots": { "type": "integer", "minimum": 1, "maximum": 1000000, "default": 1024 },
+          "routing_mode": { "enum": ["balanced", "cost", "speed", "quality"], "default": "balanced" },
+          "optimization_level": { "type": "integer", "minimum": 0, "maximum": 3, "default": 2 },
+          "failover": { "type": "boolean", "default": true },
+          "max_attempts": { "type": "integer", "minimum": 1, "maximum": 5, "default": 3 },
+          "timeout_seconds": { "type": "integer", "minimum": 60, "maximum": 604800, "default": 7200 },
+          "constraints": { "$ref": "#/components/schemas/Constraints" }
+        }
+      },
+      "CreateHostedJob": {
+        "type": "object",
+        "required": ["circuit_id", "executions"],
+        "properties": {
+          "circuit_id": { "type": "string", "format": "uuid" },
+          "executions": { "type": "array", "minItems": 1, "maxItems": 25, "items": { "$ref": "#/components/schemas/ExecutionTarget" } },
+          "metadata": { "type": "object", "additionalProperties": { "type": "string" } }
+        }
+      },
+      "HostedExecution": {
+        "type": "object",
+        "required": ["id", "key", "status"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "key": { "type": "string" },
+          "status": { "enum": ["queued", "awaiting_payment", "dispatching", "submitted", "processing", "completed", "failed", "cancelled"] },
+          "selected_backend_id": { "type": ["string", "null"] },
+          "result_available": { "type": "boolean" },
+          "quote": { "type": "object" },
+          "error": { "type": ["object", "null"] }
+        }
+      },
+      "HostedJob": {
+        "type": "object",
+        "required": ["id", "circuit_id", "status", "executions"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "circuit_id": { "type": "string", "format": "uuid" },
+          "status": { "enum": ["queued", "running", "awaiting_payment", "completed", "failed", "cancelled"] },
+          "executions": { "type": "array", "items": { "$ref": "#/components/schemas/HostedExecution" } },
+          "metadata": { "type": "object", "additionalProperties": { "type": "string" } }
+        }
+      },
+      "Problem": {
+        "type": "object",
+        "required": ["type", "title", "status", "detail", "code", "request_id"],
+        "properties": {
+          "type": { "type": "string" }, "title": { "type": "string" }, "status": { "type": "integer" },
+          "detail": { "type": "string" }, "code": { "type": "string" }, "request_id": { "type": "string" }
+        }
+      },
       "ProjectSettings": {
         "type": "object",
         "required": [
@@ -486,6 +564,84 @@
             "description": "Circuit or route is invalid"
           }
         }
+      }
+    },
+    "/api/v2/circuits": {
+      "post": {
+        "summary": "Store an immutable OpenQASM circuit",
+        "parameters": [{ "in": "header", "name": "Idempotency-Key", "required": true, "schema": { "type": "string", "minLength": 8, "maxLength": 255 } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateCircuit" } } } },
+        "responses": {
+          "201": { "description": "Circuit stored", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Circuit" } } } },
+          "200": { "description": "Idempotent replay" },
+          "400": { "description": "Invalid request", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+          "409": { "description": "Idempotency conflict" }, "422": { "description": "Invalid circuit" }
+        }
+      }
+    },
+    "/api/v2/circuits/{id}": {
+      "get": {
+        "summary": "Read circuit metadata",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "responses": { "200": { "description": "Circuit", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Circuit" } } } }, "404": { "description": "Not found" } }
+      },
+      "delete": {
+        "summary": "Delete a released or terminal circuit and its job history",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "responses": { "204": { "description": "Circuit deleted" }, "409": { "description": "Circuit has active jobs" } }
+      }
+    },
+    "/api/v2/circuits/{id}/release": {
+      "post": {
+        "summary": "Release a circuit after all of its jobs are terminal",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "responses": { "200": { "description": "Circuit released" }, "409": { "description": "Circuit has active jobs" } }
+      }
+    },
+    "/api/v2/jobs": {
+      "post": {
+        "summary": "Create a durable parent job with independent quantum executions",
+        "parameters": [{ "in": "header", "name": "Idempotency-Key", "required": true, "schema": { "type": "string", "minLength": 8, "maxLength": 255 } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateHostedJob" } } } },
+        "responses": {
+          "202": { "description": "Job accepted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostedJob" } } } },
+          "200": { "description": "Idempotent replay" }, "402": { "description": "Insufficient credits" },
+          "409": { "description": "Idempotency conflict" }
+        }
+      }
+    },
+    "/api/v2/jobs/{id}": {
+      "get": {
+        "summary": "Read a parent job and all execution statuses",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "responses": { "200": { "description": "Job", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostedJob" } } } }, "404": { "description": "Not found" } }
+      }
+    },
+    "/api/v2/executions/{id}/result": {
+      "get": {
+        "summary": "Retrieve one normalized execution result",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "responses": { "200": { "description": "Normalized result JSON" }, "409": { "description": "Result not available" } }
+      }
+    },
+    "/api/v2/executions/{id}/transpiled": {
+      "get": {
+        "summary": "Retrieve one compiled OpenQASM artifact",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "responses": { "200": { "description": "Compiled OpenQASM" }, "409": { "description": "Artifact not available" } }
+      }
+    },
+    "/api/v2/executions/{id}/cancel": {
+      "post": {
+        "summary": "Cancel one execution without cancelling sibling executions",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "responses": { "202": { "description": "Cancellation requested" }, "409": { "description": "Execution is terminal or changed" } }
+      }
+    },
+    "/api/v2/backends": {
+      "get": {
+        "summary": "Discover authenticated backend capabilities and QCI pricing",
+        "responses": { "200": { "description": "Backend catalog" } }
       }
     },
     "/api/v1/transpile": {
