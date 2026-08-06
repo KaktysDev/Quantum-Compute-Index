@@ -600,16 +600,22 @@ create index if not exists rate_limit_windows_sweep_idx on public.rate_limit_win
 
 create or replace function public.consume_rate_limit(p_bucket text,p_limit integer default 120,p_window_seconds integer default 60)
 returns boolean language plpgsql security definer set search_path=public,pg_temp as $$
-declare window_seconds integer;window_start timestamptz;counted integer;
+-- Locals are v_-prefixed on purpose: naming one `window_start` shadows the
+-- rate_limit_windows column of the same name, and the ON CONFLICT target below
+-- then resolves to neither -- Postgres raises 42702 "column reference is
+-- ambiguous". Because consumeRateLimit() fails closed on any error that is not
+-- a missing function, that aborts resolvePrincipal and turns every
+-- authenticated request into an opaque 500.
+declare v_window_seconds integer;v_window_start timestamptz;v_counted integer;
 begin
   if p_bucket is null or p_bucket='' then return false;end if;
-  window_seconds=greatest(1,least(coalesce(p_window_seconds,60),86400));
-  window_start=to_timestamp(floor(extract(epoch from now())/window_seconds)*window_seconds);
+  v_window_seconds=greatest(1,least(coalesce(p_window_seconds,60),86400));
+  v_window_start=to_timestamp(floor(extract(epoch from now())/v_window_seconds)*v_window_seconds);
   insert into public.rate_limit_windows(bucket,window_start,request_count)
-  values(left(p_bucket,200),window_start,1)
+  values(left(p_bucket,200),v_window_start,1)
   on conflict(bucket,window_start) do update set request_count=public.rate_limit_windows.request_count+1
-  returning request_count into counted;
-  return counted<=greatest(1,p_limit);
+  returning request_count into v_counted;
+  return v_counted<=greatest(1,p_limit);
 end$$;
 revoke all on function public.consume_rate_limit(text,integer,integer) from public;
 grant execute on function public.consume_rate_limit(text,integer,integer) to service_role;

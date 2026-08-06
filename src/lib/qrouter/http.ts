@@ -86,8 +86,15 @@ export function apiError(error: unknown, requestIdValue?: string) {
     return NextResponse.json({ error: { type: "routing_error", message: error.message } }, { status: 422, headers });
   }
   logRedactedError(`v1 unhandled error (request ${id})`, error);
+  // Postgres/PostgREST codes and the error class name are schema-level: unlike
+  // `details`/`hint` they never quote a customer row (see redactError), and
+  // they are the whole difference between a debuggable 500 and an opaque one.
+  // Without them the only way to identify the fault is server-log access.
+  const source = (error ?? {}) as { code?: unknown; name?: unknown };
+  const code = typeof source.code === "string" && source.code ? source.code : undefined;
+  const kind = typeof source.name === "string" && source.name && source.name !== "Error" ? source.name : undefined;
   return NextResponse.json(
-    { error: { type: "server_error", message: "Internal server error.", request_id: id } },
+    { error: { type: "server_error", message: "Internal server error.", request_id: id, ...(code ? { code } : {}), ...(kind ? { kind } : {}) } },
     { status: 500, headers },
   );
 }

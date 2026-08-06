@@ -178,3 +178,57 @@ describe("assistant failures name the responsible subsystem", () => {
     expect(describeAssistantFailure(new Error("boom"))).toBe("boom");
   });
 });
+
+describe("opaque 500s carry a machine-identifiable cause", () => {
+  // Three separate faults in this codebase have surfaced as an identical bare
+  // "Internal server error.", each costing a round-trip to server logs. The
+  // class name and Postgres code are schema-level and safe to return.
+  it("returns the Postgres code and error class on an unhandled fault", async () => {
+    const pgError = Object.assign(new Error("relation \"public.widgets\" does not exist"), {
+      code: "42P01",
+      name: "PostgrestError",
+      details: "secret customer row contents",
+      hint: "also sensitive",
+    });
+    const body = await apiError(pgError).json() as {
+      error: { code?: string; kind?: string; request_id?: string; details?: string; hint?: string };
+    };
+    expect(body.error.code).toBe("42P01");
+    expect(body.error.kind).toBe("PostgrestError");
+    expect(body.error.request_id).toBeTruthy();
+    // Row-quoting fields must never be echoed to the caller.
+    expect(JSON.stringify(body)).not.toContain("secret customer row");
+    expect(JSON.stringify(body)).not.toContain("also sensitive");
+  });
+
+  it("omits the fields entirely for a plain Error", async () => {
+    const body = await apiError(new Error("boom")).json() as { error: Record<string, unknown> };
+    expect(body.error.code).toBeUndefined();
+    expect(body.error.kind).toBeUndefined();
+    expect(body.error.message).toBe("Internal server error.");
+  });
+});
+
+describe("SQL functions do not shadow the columns they write", () => {
+  // consume_rate_limit declared locals named `window_start`/`window_seconds`,
+  // colliding with the rate_limit_windows columns. Postgres then raised 42702
+  // on the ON CONFLICT target, and because the caller fails closed, every
+  // authenticated request became an opaque 500.
+  it("keeps PL/pgSQL locals distinct from conflict-target column names", async () => {
+    const { readFileSync } = await import("fs");
+    const sql = readFileSync(new URL("../supabase/qrouter.sql", import.meta.url), "utf8");
+
+    const offenders: string[] = [];
+    for (const fn of sql.split(/create or replace function /i).slice(1)) {
+      const name = fn.slice(0, fn.indexOf("(")).trim();
+      const declared = [...fn.matchAll(/declare\s+([^]*?)\bbegin\b/gi)]
+        .flatMap((m) => [...m[1].matchAll(/([a-z_][a-z0-9_]*)\s+[a-z]/gi)].map((d) => d[1].toLowerCase()));
+      for (const target of fn.matchAll(/on conflict\s*\(([^)]*)\)/gi)) {
+        for (const column of target[1].split(",").map((c) => c.trim().toLowerCase())) {
+          if (declared.includes(column)) offenders.push(`${name}: "${column}"`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});

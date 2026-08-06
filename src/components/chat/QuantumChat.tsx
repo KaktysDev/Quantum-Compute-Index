@@ -660,7 +660,9 @@ export default function QuantumChat({
         // same) and points straight at the matching server log line.
         const requestId = data.error?.request_id ?? res.headers.get("x-request-id");
         const base = data.error?.message ?? `The assistant is unavailable (${res.status}).`;
-        throw new Error(requestId ? `${base} (request ${requestId})` : base);
+        const cause = [data.error?.kind, data.error?.code].filter(Boolean).join(" ");
+        const trailer = [cause, requestId && `request ${requestId}`].filter(Boolean).join(", ");
+        throw new Error(trailer ? `${base} (${trailer})` : base);
       }
 
       const reader = res.body.getReader();
