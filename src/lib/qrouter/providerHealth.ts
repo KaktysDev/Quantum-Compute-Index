@@ -31,8 +31,16 @@ export async function checkProviderConnections() {
   const compilerUrl = process.env.QROUTER_COMPILER_URL ?? process.env.VULTR_SIMULATOR_URL;
   const compilerToken = process.env.QROUTER_COMPILER_TOKEN ?? process.env.VULTR_SIMULATOR_TOKEN;
   return Promise.all([
-    probe("Qiskit compiler", ["qci-aer-gpu"], Boolean(compilerUrl && compilerToken), async () => {
-      const response = await fetch(`${compilerUrl!.replace(/\/$/, "")}/health`, { signal: AbortSignal.timeout(10_000) });
+    // qci-aer-gpu stays runnable with no remote compiler: submitVultr and
+    // transpileForBackend both fall back to in-process simulation. Reporting it
+    // unreachable here would open the health circuit breaker and strand the one
+    // backend that always works, so an absent worker is healthy-but-degraded
+    // rather than a failure.
+    probe("Qiskit compiler", ["qci-aer-gpu"], true, async () => {
+      if (!compilerUrl || !compilerToken) {
+        return "No remote worker configured; running the in-process state-vector simulator (30 qubits max).";
+      }
+      const response = await fetch(`${compilerUrl.replace(/\/$/, "")}/health`, { signal: AbortSignal.timeout(10_000) });
       if (!response.ok) throw new Error(`Compiler health returned ${response.status}.`);
       const data = await response.json() as { device?: string; backend?: string };
       return `${data.backend ?? "Qiskit"} on ${data.device ?? "unknown device"}`;

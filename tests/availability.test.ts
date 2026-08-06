@@ -115,3 +115,35 @@ describe("catalog and database seed stay in sync", () => {
     expect(missing.map((backend) => backend.id)).toEqual([]);
   });
 });
+
+describe("health reporting for the always-local simulator", () => {
+  const saved = { ...process.env };
+  afterEach(() => { process.env = { ...saved }; });
+
+  // qci-aer-gpu runs in-process when no worker is configured. If the health
+  // probe called that unreachable, two cron runs would open the circuit breaker
+  // and mark the only working backend offline.
+  it("reports qci-aer-gpu reachable when no remote worker is configured", async () => {
+    delete process.env.QROUTER_COMPILER_URL;
+    delete process.env.VULTR_SIMULATOR_URL;
+    delete process.env.QROUTER_COMPILER_TOKEN;
+    delete process.env.VULTR_SIMULATOR_TOKEN;
+    const { checkProviderConnections } = await import("@/lib/qrouter/providerHealth");
+    const compiler = (await checkProviderConnections()).find((p) => p.backendIds.includes("qci-aer-gpu"));
+    expect(compiler?.reachable).toBe(true);
+    expect(compiler?.configured).toBe(true);
+    expect(compiler?.detail).toContain("in-process");
+  });
+
+  it("keeps qci-aer-gpu routable under an open circuit breaker elsewhere", async () => {
+    const { applyProviderHealth } = await import("@/lib/qrouter/providerHealth");
+    const { BACKENDS } = await import("@/lib/qrouter/catalog");
+    const applied = applyProviderHealth(BACKENDS, [{
+      backend_id: "qci-aer-gpu", configured: true, reachable: true,
+      consecutive_failures: 0, detail: "in-process", checked_at: new Date().toISOString(),
+    }]);
+    const simulator = applied.find((b) => b.id === "qci-aer-gpu");
+    expect(simulator?.status).not.toBe("offline");
+    expect(simulator?.available).toBe(true);
+  });
+});
