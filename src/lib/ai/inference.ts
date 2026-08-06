@@ -72,6 +72,13 @@ export class AIInferenceError extends Error {
     public readonly provider?: AIProvider,
     public readonly status?: number,
     public readonly code?: string,
+    /**
+     * The model the failed request targeted. Providers retire model IDs without
+     * notice, so a stale VULTR_MAIN_MODEL surfaces as a bare upstream 500 that
+     * says nothing about which model is at fault; carrying it makes a retired
+     * or misspelled ID diagnosable from the error alone.
+     */
+    public readonly model?: string,
   ) {
     super(message);
     this.name = "AIInferenceError";
@@ -290,9 +297,11 @@ export async function createAIChatCompletion(input: AIChatCompletionInput) {
       try {
         return await createProviderChatCompletion(provider, { ...input, model });
       } catch (error) {
+        // Stamp the attempted model onto the failure. Without it, a retired
+        // model ID and a genuine provider outage are the same opaque message.
         lastError = error instanceof AIInferenceError
-          ? error
-          : new AIInferenceError(error instanceof Error ? error.message : "AI provider request failed.", provider);
+          ? new AIInferenceError(error.message, error.provider ?? provider, error.status, error.code, error.model ?? model)
+          : new AIInferenceError(error instanceof Error ? error.message : "AI provider request failed.", provider, undefined, undefined, model);
       }
     }
   }
@@ -303,4 +312,35 @@ export async function listAIModels(provider: AIProvider) {
   const config = inferenceDefaults(provider);
   const response = await providerJson<{ data?: Array<{ id: string }>; models?: Array<{ id: string }> }>(config, "/models", { method: "GET" });
   return response.data ?? response.models ?? [];
+}
+
+/**
+ * Renders an assistant failure with the subsystem that actually produced it.
+ *
+ * `errorDetail` forwards the upstream provider's own message verbatim, and a
+ * provider returning a bare "Internal server error." is then indistinguishable
+ * from a QRouter 500 — which sends operators debugging the wrong system. The
+ * provider, status, and code are appended so the failing hop is unambiguous.
+ */
+export function describeAssistantFailure(error: unknown): string {
+  if (!(error instanceof AIInferenceError)) {
+    return error instanceof Error ? error.message : "The assistant stream failed.";
+  }
+  const provider = error.provider ?? "AI provider";
+  if (error.code === "not_configured") {
+    return `${provider} is not configured on this deployment. Set its API key, or remove it from AI_PROVIDER_ORDER.`;
+  }
+  const qualifiers = [
+    error.model ? `model ${error.model}` : null,
+    error.status ? `HTTP ${error.status}` : null,
+    error.code,
+  ].filter(Boolean).join(", ");
+  const suffix = qualifiers ? ` (${qualifiers})` : "";
+  const hint = error.model && (error.status === 404 || error.status === 400 || error.status === 500)
+    ? ` Confirm "${error.model}" is still listed by the provider — model IDs are retired without notice.`
+    : "";
+  // Upstream messages may or may not be punctuated; normalise so the sentence
+  // does not end up with ".." or run into the hint.
+  const detail = error.message.trim().replace(/[.\s]+$/, "");
+  return `The assistant's model provider ${provider} failed${suffix}: ${detail}.${hint} QRouter itself is unaffected; jobs and routing still work.`;
 }

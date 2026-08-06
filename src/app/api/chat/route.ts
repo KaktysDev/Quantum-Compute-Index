@@ -17,6 +17,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { isAssistantConfigured, streamAssistant } from "@/lib/ai/assistant";
 import { type GeminiTurn } from "@/lib/ai/gemini";
+import { describeAssistantFailure } from "@/lib/ai/inference";
 import { consumeAssistantQuota, quotaLimits, recordAssistantTokens } from "@/lib/ai/limits";
 import { getLatestSnapshot } from "@/lib/qci/store";
 import { AuthenticationError, resolvePrincipal, type Principal } from "@/lib/qrouter/auth";
@@ -416,9 +417,10 @@ export async function POST(request: Request) {
         await recordAssistantTokens(principal, totalTokens);
         send("done", { ok: true });
       } catch (error) {
-        send("error", {
-          message: error instanceof Error ? error.message : "The assistant stream failed.",
-        });
+        // Upstream AI errors arrive as the provider's own message text, which
+        // can be as bare as "Internal server error." — indistinguishable from a
+        // QRouter fault. Attribute it so the failing subsystem is obvious.
+        send("error", { message: describeAssistantFailure(error) });
       } finally {
         controller.close();
       }

@@ -147,3 +147,34 @@ describe("health reporting for the always-local simulator", () => {
     expect(simulator?.available).toBe(true);
   });
 });
+
+describe("assistant failures name the responsible subsystem", () => {
+  it("attributes an upstream provider 500 instead of echoing it bare", async () => {
+    const { AIInferenceError, describeAssistantFailure } = await import("@/lib/ai/inference");
+    const message = describeAssistantFailure(
+      new AIInferenceError("Internal server error.", "vultr", 500, undefined, "nvidia/Retired-Model"),
+    );
+    expect(message).toContain("vultr");
+    expect(message).toContain("HTTP 500");
+    // A retired model ID is the likeliest cause of a bare upstream 500.
+    expect(message).toContain("nvidia/Retired-Model");
+    expect(message).toContain("retired without notice");
+    expect(message).toContain("QRouter itself is unaffected");
+    // The bare upstream string must never stand alone — that is what made this
+    // look identical to a QRouter fault.
+    expect(message).not.toBe("Internal server error.");
+  });
+
+  it("gives a configuration instruction when a provider has no key", async () => {
+    const { AIInferenceError, describeAssistantFailure } = await import("@/lib/ai/inference");
+    const message = describeAssistantFailure(
+      new AIInferenceError("vultr inference is not configured.", "vultr", undefined, "not_configured"),
+    );
+    expect(message).toContain("AI_PROVIDER_ORDER");
+  });
+
+  it("passes non-inference errors through unchanged", async () => {
+    const { describeAssistantFailure } = await import("@/lib/ai/inference");
+    expect(describeAssistantFailure(new Error("boom"))).toBe("boom");
+  });
+});

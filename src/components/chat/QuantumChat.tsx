@@ -655,7 +655,12 @@ export default function QuantumChat({
       });
       if (!res.ok || !res.body) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error?.message ?? `The assistant is unavailable (${res.status}).`);
+        // A server-side fault carries a request id; surfacing it distinguishes a
+        // QRouter 500 from an upstream model-provider failure (which reads the
+        // same) and points straight at the matching server log line.
+        const requestId = data.error?.request_id ?? res.headers.get("x-request-id");
+        const base = data.error?.message ?? `The assistant is unavailable (${res.status}).`;
+        throw new Error(requestId ? `${base} (request ${requestId})` : base);
       }
 
       const reader = res.body.getReader();
