@@ -702,6 +702,7 @@ insert into public.backends(id, provider, display_name, kind, qubits, native_gat
   ('ibm-brisbane', 'ibm', 'IBM Brisbane', 'qpu', 127, array['id','rz','sx','x','ecr','measure'], 780, 0.992, 0.975, 0.00035, 0.30, '{"execution":"runtime"}'),
   ('aws-sv1', 'aws-braket', 'Amazon SV1', 'simulator', 34, array['x','y','z','h','s','t','rx','ry','rz','cnot','cz','swap'], 8, 1, 0.995, 0.000075, 0, '{"region":"us-east-1"}'),
   ('ionq-aria-1', 'ionq', 'IonQ Aria 1', 'qpu', 25, array['gpi','gpi2','ms'], 1200, 0.996, 0.96, 0.00022, 0.30, '{"architecture":"trapped-ion"}'),
+  ('rigetti-ankaa-3', 'aws-braket', 'Rigetti Ankaa-3', 'qpu', 84, array['rx','rz','iswap','cz','measure'], 540, 0.99, 0.955, 0.0009, 0.30, '{"architecture":"superconducting","region":"us-west-1"}'),
   ('iqm-garnet', 'aws-braket', 'IQM Garnet', 'qpu', 20, array['prx','cz','measure'], 480, 0.994, 0.965, 0.00145, 0.30, '{"architecture":"superconducting"}'),
   ('xanadu-borealis', 'xanadu', 'Xanadu Borealis', 'qpu', 216, array['squeezing','displacement','beamsplitter','measure'], 1800, 0.94, 0.91, 0.002, 1.00, '{"architecture":"photonic","availability":"partner"}'),
   ('quandela-mosaiq', 'quandela', 'Quandela MosaiQ', 'qpu', 12, array['phase','beamsplitter','measure'], 960, 0.96, 0.93, 0.0015, 0.50, '{"architecture":"photonic","availability":"partner"}'),

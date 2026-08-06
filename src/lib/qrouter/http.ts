@@ -3,8 +3,10 @@ import { NextResponse } from "next/server";
 import { AIInferenceError } from "@/lib/ai/inference";
 import { logRedactedError } from "@/lib/security/log";
 import { AuthenticationError, RateLimitError } from "./auth";
+import { BackendUnavailableError, resolutionFor } from "./availability";
 import { CircuitValidationError } from "./analyze";
 import { RepositorySourceError } from "./repositories";
+import { TranspilerUnavailableError } from "./transpiler";
 
 /**
  * v1 error responder. The modelled error classes below carry messages that are
@@ -49,6 +51,36 @@ export function apiError(error: unknown, requestIdValue?: string) {
         code: error.code,
       },
     }, { status, headers });
+  }
+  if (error instanceof BackendUnavailableError) {
+    // 409: the workload is valid, but the backend the caller pinned conflicts
+    // with the current state of the fleet. The alternatives make this
+    // actionable — the caller resubmits with one of the offered targets.
+    return NextResponse.json({
+      error: {
+        type: "backend_unavailable",
+        message: error.message,
+        requested: {
+          backend_id: error.backend.id,
+          display_name: error.backend.displayName,
+          provider: error.backend.provider,
+          reason_code: error.reason.code,
+          reason: error.reason.message,
+          resolution: resolutionFor(error.backend, error.reason),
+        },
+        alternatives: error.alternatives,
+        retry_with_auto: error.alternatives.length ? { target: "auto" } : undefined,
+      },
+    }, { status: 409, headers });
+  }
+  if (error instanceof TranspilerUnavailableError) {
+    // Missing config or an unreachable compiler worker is an operational
+    // outage, not a bug in the caller's request. It carries an actionable
+    // message, so it is forwarded verbatim like the other modelled errors.
+    return NextResponse.json(
+      { error: { type: "compiler_unavailable", message: error.message } },
+      { status: 503, headers: { ...headers, "retry-after": "30" } },
+    );
   }
   if (error instanceof Error && error.message.includes("No backend")) {
     return NextResponse.json({ error: { type: "routing_error", message: error.message } }, { status: 422, headers });

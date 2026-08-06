@@ -47,6 +47,56 @@ certificates automatically, mounts a durable job database, runs the worker as a
 non-root user with a read-only filesystem, and refuses CPU fallback. The worker
 returns HTTP 429 with `Retry-After` when `MAX_QUEUED_JOBS` is reached.
 
+## Bare-metal deployment (no Docker)
+
+Use this when the instance runs the worker directly under systemd instead of
+Compose. Assets are in `deploy/native/`. The topology is identical to the
+Compose one — uvicorn on loopback, Caddy as the only ingress on 80/443 — so the
+web tier configuration does not change between the two.
+
+1. Point a DNS A record for the worker hostname at the instance. **ACME cannot
+   issue a certificate for a bare IP**, so an IP-only setup leaves Caddy without
+   a certificate and every TLS handshake fails with `internal error`.
+2. Create the service account and directories:
+
+   ```bash
+   sudo useradd --system --home /opt/qrouter --shell /usr/sbin/nologin qrouter
+   sudo mkdir -p /opt/qrouter/simulator /var/lib/qrouter /etc/qrouter
+   sudo chown -R qrouter:qrouter /opt/qrouter /var/lib/qrouter
+   ```
+
+3. Install the code and a virtualenv (`qiskit-aer-gpu` needs the NVIDIA driver
+   and a matching CUDA runtime already present on the host):
+
+   ```bash
+   sudo -u qrouter python3 -m venv /opt/qrouter/venv
+   sudo -u qrouter /opt/qrouter/venv/bin/pip install -r requirements.txt
+   sudo install -o qrouter -g qrouter -m 0644 app.py /opt/qrouter/simulator/app.py
+   ```
+
+4. Install the environment file from `deploy/native/worker.env.example` to
+   `/etc/qrouter/worker.env` and generate a real `SIMULATOR_TOKEN`. It holds the
+   shared secret, so restrict it:
+
+   ```bash
+   sudo chown root:qrouter /etc/qrouter/worker.env && sudo chmod 0640 /etc/qrouter/worker.env
+   ```
+
+5. Install and start the unit:
+
+   ```bash
+   sudo install -m 0644 deploy/native/qrouter-worker.service /etc/systemd/system/
+   sudo systemctl daemon-reload && sudo systemctl enable --now qrouter-worker
+   ```
+
+6. Install `deploy/native/Caddyfile` to `/etc/caddy/Caddyfile`, set
+   `WORKER_DOMAIN` and `ACME_EMAIL` in `/etc/default/caddy`, then
+   `sudo systemctl reload caddy`. Watch `journalctl -u caddy -f` for
+   `certificate obtained successfully`.
+7. Verify `https://$WORKER_DOMAIN/health` reports `device: GPU`, then set the
+   web tier's `VULTR_SIMULATOR_URL` and `VULTR_SIMULATOR_TOKEN` as in step 5 of
+   the Compose deployment above.
+
 ## Pilot operations
 
 Use `/metrics` with the bearer token to monitor active jobs, capacity, terminal

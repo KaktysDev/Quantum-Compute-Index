@@ -149,10 +149,19 @@ export async function transpileForBackend(
     };
   } catch (error) {
     // A physical QPU must never run without hardware-aware compilation, so the
-    // failure surfaces. A simulator has no coupling constraints to satisfy, so
-    // an unreachable compiler degrades to local optimization instead of losing
-    // the job — the reason is recorded in the verification note.
-    if (backend.kind === "qpu") throw error;
+    // failure surfaces. It is re-thrown as TranspilerUnavailableError so the
+    // v1 responder can report it as an upstream/config outage (503) rather
+    // than letting a raw `fetch failed` collapse into an opaque 500.
+    // A simulator has no coupling constraints to satisfy, so an unreachable
+    // compiler degrades to local optimization instead of losing the job — the
+    // reason is recorded in the verification note.
+    if (backend.kind === "qpu") {
+      if (error instanceof TranspilerUnavailableError) throw error;
+      const reason = error instanceof Error ? error.message : "unknown error";
+      throw new TranspilerUnavailableError(
+        `The hardware-aware Qiskit compiler service is unreachable (${reason}), and "${backend.id}" is a physical QPU that cannot run without it.`,
+      );
+    }
     const reason = error instanceof Error ? error.message : "unknown error";
     const local = localTranspile(backend, analysis, optimizationLevel);
     return {

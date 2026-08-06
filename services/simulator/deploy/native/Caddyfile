@@ -1,0 +1,27 @@
+# Bare-metal Caddy config for the QRouter Qiskit worker.
+# Install to /etc/caddy/Caddyfile. Set WORKER_DOMAIN and ACME_EMAIL in
+# /etc/default/caddy so systemd passes them through, or replace the two
+# {$...} placeholders below with literal values.
+#
+# WORKER_DOMAIN must be a real hostname with a DNS record pointing at this
+# host. ACME cannot issue a certificate for a bare IP address, so an IP here
+# leaves Caddy with no certificate and every TLS handshake fails with
+# "internal error".
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$WORKER_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8080
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+	log {
+		output file /var/log/caddy/worker.log
+		format json
+	}
+}

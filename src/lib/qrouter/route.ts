@@ -1,3 +1,4 @@
+import { BackendUnavailableError, buildAlternatives, type UnavailabilityReason } from "./availability";
 import { BACKENDS, getBackend } from "./catalog";
 import type { Backend, CircuitAnalysis, Quote, RouteCandidate, RouteDecision, RoutingConstraints, RoutingMode } from "./types";
 
@@ -13,18 +14,50 @@ function providerCost(backend: Backend, analysis: CircuitAnalysis, shots: number
 }
 
 function compatibility(backend: Backend, analysis: CircuitAnalysis, constraints: RoutingConstraints, shots: number) {
-  const reasons: string[] = [];
+  const reasons: UnavailabilityReason[] = [];
   const cost = providerCost(backend, analysis, shots);
-  if (!backend.available) reasons.push(backend.capabilityNote ?? "provider connection is not configured");
-  if (backend.status === "offline") reasons.push("backend is offline");
-  if (analysis.qubits > backend.qubits) reasons.push(`requires ${analysis.qubits} qubits; backend has ${backend.qubits}`);
-  if (constraints.kind && backend.kind !== constraints.kind) reasons.push(`requires a ${constraints.kind}`);
-  if (constraints.providers?.length && !constraints.providers.includes(backend.provider)) reasons.push("provider is not allowed");
-  if (constraints.excludeProviders?.includes(backend.provider)) reasons.push("provider is excluded");
-  if (constraints.maxQueueSeconds != null && backend.queueSeconds > constraints.maxQueueSeconds) reasons.push("queue exceeds limit");
-  if (constraints.minFidelity != null && backend.fidelity < constraints.minFidelity) reasons.push("fidelity is below limit");
-  if (constraints.maxCost != null && cost > constraints.maxCost) reasons.push("estimated cost exceeds limit");
+  // `available` is derived from provider credentials in the catalog, so an
+  // unset key and a genuine capability gap are distinguished by whether the
+  // backend documents a capabilityNote.
+  if (!backend.available) {
+    reasons.push(backend.capabilityNote
+      ? { code: "capability_mismatch", message: backend.capabilityNote }
+      : { code: "credentials_missing", message: `the ${backend.provider} provider connection is not configured on this deployment` });
+  }
+  if (backend.status === "offline") reasons.push({ code: "offline", message: "backend is offline" });
+  if (analysis.qubits > backend.qubits) reasons.push({ code: "insufficient_qubits", message: `requires ${analysis.qubits} qubits; backend has ${backend.qubits}` });
+  if (constraints.kind && backend.kind !== constraints.kind) reasons.push({ code: "kind_constraint", message: `requires a ${constraints.kind}` });
+  if (constraints.providers?.length && !constraints.providers.includes(backend.provider)) reasons.push({ code: "provider_not_allowed", message: "provider is not allowed" });
+  if (constraints.excludeProviders?.includes(backend.provider)) reasons.push({ code: "provider_excluded", message: "provider is excluded" });
+  if (constraints.maxQueueSeconds != null && backend.queueSeconds > constraints.maxQueueSeconds) reasons.push({ code: "queue_limit", message: "queue exceeds limit" });
+  if (constraints.minFidelity != null && backend.fidelity < constraints.minFidelity) reasons.push({ code: "fidelity_limit", message: "fidelity is below limit" });
+  if (constraints.maxCost != null && cost > constraints.maxCost) reasons.push({ code: "cost_limit", message: "estimated cost exceeds limit" });
   return { reasons, cost };
+}
+
+type CompatibilityData = ReturnType<typeof compatibility> & { backend: Backend };
+
+/** Scores a pool, normalising cost and queue against the runnable entries in it. */
+function scoreCandidates(data: CompatibilityData[], analysis: CircuitAnalysis, shots: number, mode: RoutingMode): RouteCandidate[] {
+  const runnable = data.filter((item) => item.reasons.length === 0);
+  const maxCost = Math.max(...runnable.map((item) => item.cost), 0.000001);
+  const maxQueue = Math.max(...runnable.map((item) => item.backend.queueSeconds), 1);
+  const w = weights(mode);
+  return data.map((item) => {
+    const nqh = estimatedNqh(analysis, shots);
+    const score = item.reasons.length ? 0 :
+      (1 - item.cost / maxCost) * w.cost +
+      (1 - item.backend.queueSeconds / maxQueue) * w.speed +
+      item.backend.fidelity * w.quality + item.backend.reliability * w.reliability;
+    return {
+      backend: item.backend,
+      compatible: item.reasons.length === 0,
+      rejectionReasons: item.reasons.map((reason) => reason.message),
+      score,
+      estimatedProviderCost: item.cost,
+      estimatedNqh: nqh,
+    };
+  }).sort((a, b) => b.score - a.score);
 }
 
 function weights(mode: RoutingMode) {
@@ -46,25 +79,26 @@ export function routeCircuit(input: {
 }): RouteDecision {
   const constraints = input.constraints ?? {};
   const backends = input.backends ?? BACKENDS;
-  const pool = input.target === "auto" ? backends : backends.filter((backend) => backend.id === input.target);
+  const allData: CompatibilityData[] = backends.map((backend) => ({ backend, ...compatibility(backend, input.analysis, constraints, input.shots) }));
+  const pool = input.target === "auto" ? allData : allData.filter((item) => item.backend.id === input.target);
   if (!pool.length) throw new Error(`Unknown backend: ${input.target}`);
-  const compatibleData = pool.map((backend) => ({ backend, ...compatibility(backend, input.analysis, constraints, input.shots) }));
-  const valid = compatibleData.filter((item) => item.reasons.length === 0);
+  const valid = pool.filter((item) => item.reasons.length === 0);
   if (!valid.length) {
-    const summary = compatibleData.map((item) => `${item.backend.id}: ${item.reasons.join(", ")}`).join("; ");
+    // A pinned target that cannot run is answerable: report why, and offer the
+    // backends that can, described relative to what was asked for. Under `auto`
+    // nothing is runnable at all, so there is no alternative to offer.
+    if (input.target !== "auto") {
+      const requested = pool[0];
+      throw new BackendUnavailableError(
+        requested.backend,
+        requested.reasons[0],
+        buildAlternatives(requested.backend, requested.cost, scoreCandidates(allData, input.analysis, input.shots, input.mode)),
+      );
+    }
+    const summary = pool.map((item) => `${item.backend.id}: ${item.reasons.map((reason) => reason.message).join(", ")}`).join("; ");
     throw new Error(`No backend can run this workload. ${summary}`);
   }
-  const maxCost = Math.max(...valid.map((item) => item.cost), 0.000001);
-  const maxQueue = Math.max(...valid.map((item) => item.backend.queueSeconds), 1);
-  const w = weights(input.mode);
-  const candidates: RouteCandidate[] = compatibleData.map((item) => {
-    const nqh = estimatedNqh(input.analysis, input.shots);
-    const score = item.reasons.length ? 0 :
-      (1 - item.cost / maxCost) * w.cost +
-      (1 - item.backend.queueSeconds / maxQueue) * w.speed +
-      item.backend.fidelity * w.quality + item.backend.reliability * w.reliability;
-    return { backend: item.backend, compatible: item.reasons.length === 0, rejectionReasons: item.reasons, score, estimatedProviderCost: item.cost, estimatedNqh: nqh };
-  }).sort((a, b) => b.score - a.score);
+  const candidates = scoreCandidates(pool, input.analysis, input.shots, input.mode);
   const selected = candidates.find((candidate) => candidate.compatible)!;
   return {
     selected: selected.backend, candidates, mode: input.mode, qciSnapshotId: input.qciSnapshotId, qciTimestamp: input.qciTimestamp,

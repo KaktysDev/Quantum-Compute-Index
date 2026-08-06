@@ -14,6 +14,7 @@
       "runtimeArgs": [
         "NEXT_PUBLIC_SUPABASE_URL=",
         "NEXT_PUBLIC_SUPABASE_ANON_KEY=",
+        "QROUTER_DEMO_MODE=true",
         "npm",
         "run",
         "dev"

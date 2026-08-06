@@ -1,0 +1,36 @@
+[Unit]
+Description=QRouter Qiskit worker
+Documentation=https://github.com/quantum-compute-index/services/simulator
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=qrouter
+Group=qrouter
+WorkingDirectory=/opt/qrouter/simulator
+EnvironmentFile=/etc/qrouter/worker.env
+Environment=JOB_DB_PATH=/var/lib/qrouter/jobs.sqlite3
+# Bound to loopback on purpose: Caddy is the only ingress, which reproduces the
+# Compose topology where the worker port is exposed to the proxy but never
+# published to the internet. Do not change this to 0.0.0.0 without a firewall.
+ExecStart=/opt/qrouter/venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8080
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+
+# Mirrors the container's non-root user and read-only root filesystem.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/qrouter
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
