@@ -24,7 +24,7 @@ export class QRouterError extends Error {
 }
 
 export class QRouter {
-  constructor(private readonly apiKey: string, private readonly baseUrl = "https://api.qrouter.dev") {}
+  constructor(private readonly apiKey: string, private readonly baseUrl = "https://qrouter.app") {}
 
   private async request<T = JsonObject>(path: string, init: RequestInit = {}, responseType: "json" | "text" = "json"): Promise<T> {
     const response = await fetch(`${this.baseUrl.replace(/\/$/, "")}${path}`, {
@@ -135,7 +135,7 @@ const SETTLED_STATUSES = ["completed", "failed", "cancelled", "awaiting_payment"
  * so existing QRouter users are not forced onto the resource model at once.
  */
 export class QRouterV2 {
-  constructor(private readonly apiKey: string, private readonly baseUrl = "https://api.qrouter.dev") {}
+  constructor(private readonly apiKey: string, private readonly baseUrl = "https://qrouter.app") {}
 
   private async request<T = JsonObject>(path: string, init: RequestInit = {}, responseType: "json" | "text" = "json"): Promise<T> {
     const response = await fetch(`${this.baseUrl.replace(/\/$/, "")}${path}`, {

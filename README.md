@@ -5,6 +5,23 @@ transpiles the circuit, prices it against a versioned QCI snapshot, routes it to
 an eligible provider, reserves credits, and returns a normalized asynchronous
 job result.
 
+## Start here
+
+```bash
+npx qrouter.app
+```
+
+Paste your API key once. QRouter verifies it, tells you what it can reach, and
+opens the same AI assistant the console runs — in your terminal. Describe a run
+("run the quantum job at https://github.com/owner/repo on the qci cpu") and it
+prepares the job; you see QRouter's own quote and selected backend, and nothing
+executes until you type `run`. Results are written to your Downloads folder as
+`qrouter quantum results ___<provider>___ <timestamp>.json`.
+
+The client lives in [`cli/`](cli/) and is documented in
+[`cli/README.md`](cli/README.md). Scripts can skip the conversation:
+`qrouter run ./bell.qasm --shots 1024 --yes`.
+
 ## Try it on your account
 
 - End-to-end smoke guide (API key + GitHub repo or pasted OpenQASM):
@@ -22,7 +39,7 @@ public API surface:
 ## QRouter quick start
 
 ```bash
-curl https://api.qrouter.dev/api/v1/jobs \
+curl https://qrouter.app/api/v1/jobs \
   -H "Authorization: Bearer qci_live_..." \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: bell-001" \
@@ -51,13 +68,13 @@ per organization; replaying a key returns the stored response with
 every response carries `x-request-id`.
 
 ```bash
-CIRCUIT=$(curl -s https://api.qrouter.dev/api/v2/circuits \
+CIRCUIT=$(curl -s https://qrouter.app/api/v2/circuits \
   -H "Authorization: Bearer qci_live_..." -H "Content-Type: application/json" \
   -H "Idempotency-Key: bell-circuit-001" \
   -d '{ "circuit": "OPENQASM 2.0; include \"qelib1.inc\"; qreg q[2]; creg c[2]; h q[0]; cx q[0],q[1]; measure q -> c;" }' \
   | jq -r .data.id)
 
-curl https://api.qrouter.dev/api/v2/jobs \
+curl https://qrouter.app/api/v2/jobs \
   -H "Authorization: Bearer qci_live_..." -H "Content-Type: application/json" \
   -H "Idempotency-Key: bell-job-001" \
   -d "{
@@ -132,6 +149,14 @@ the project can deploy on Vercel Hobby. The QRouter execution pollers run more
 than once per day, so host those on Vercel Pro Cron, GitHub Actions, or a small
 Vultr instance running cron — always with the shared scheduler secret from your
 environment, never unauthenticated.
+
+Until that scheduler exists, a submitted job would sit in `queued` forever, so
+`POST /api/v1/jobs/{id}/advance` lets a job's own workspace drive it: it runs the
+same dispatch and poll code as `/api/internal/jobs`, but for exactly one job,
+filtered on the caller's `organization_id`, and only when that job carries both a
+quote and a matching `reserve` ledger entry. The terminal client calls it while
+it waits. It complements the scheduler rather than replacing it — a fleet with
+real traffic still wants the cron.
 
 The execution worker atomically leases queued jobs and active provider polls.
 Failed attempts can move to the next compatible route candidate when `failover`

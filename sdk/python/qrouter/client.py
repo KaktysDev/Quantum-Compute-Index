@@ -13,7 +13,7 @@ class QRouterError(RuntimeError):
 
 
 class QRouter:
-    def __init__(self, api_key: str, base_url: str = "https://api.qrouter.dev", timeout: float = 120):
+    def __init__(self, api_key: str, base_url: str = "https://qrouter.app", timeout: float = 120):
         self.client = httpx.Client(
             base_url=base_url.rstrip("/"),
             headers={"Authorization": f"Bearer {api_key}"},

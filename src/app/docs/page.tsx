@@ -33,6 +33,7 @@ export const metadata: Metadata = {
 };
 
 const endpoints = [
+  ["GET", "/api/v1/session", "Verify a key and read its workspace, credits, scopes, and runnable backends."],
   ["GET", "/api/v1/repositories/inspect", "Discover OpenQASM entrypoints in a connected GitHub repository."],
   ["POST", "/api/v1/projects", "Import a repository, production branch, entrypoint, and routing defaults."],
   ["POST", "/api/v1/repository-jobs", "Deploy a commit-pinned circuit from a connected repository."],
@@ -42,6 +43,7 @@ const endpoints = [
   ["GET", "/api/v1/jobs/{id}", "Read normalized job state and route metadata."],
   ["GET", "/api/v1/jobs/{id}/result", "Retrieve normalized counts and probabilities."],
   ["GET", "/api/v1/jobs/{id}/transpiled", "Download the provider-targeted OpenQASM artifact."],
+  ["POST", "/api/v1/jobs/{id}/advance", "Drive one of your own jobs forward when no fleet scheduler is deployed."],
   ["POST", "/api/v1/jobs/{id}/cancel", "Request cancellation and release reserved credits."],
   ["POST", "/api/v1/webhooks", "Register an HTTPS endpoint and issue a signing secret."],
   ["GET", "/api/v1/webhooks/deliveries", "Inspect delivery attempts, retries, and terminal failures."],
@@ -122,6 +124,7 @@ export default function DocsPage() {
           <div>
             <p>Getting started</p>
             <a href="#quickstart">Quickstart</a>
+            <a href="#cli">Terminal client</a>
             <a href="#authentication">Authentication</a>
             <a href="#key-security">Key security</a>
             <a href="#versions">Choosing v1 or v2</a>
@@ -174,6 +177,16 @@ export default function DocsPage() {
           <h1>One contract for quantum compute.</h1>
           <p>Submit OpenQASM once. The QCI Engine analyzes the workload, selects an eligible configured backend, transpiles against its native target, creates a quote, and normalizes the result. One workspace key authenticates both the single-request <code>/api/v1</code> surface and the circuit-and-execution resource model in <code>/api/v2</code>.</p>
           <div className="docs-actions"><Link href="/dashboard/playground">Open deployments <ArrowRight size={14} /></Link><a href="/openapi.json">Download specification <FileJson size={14} /></a></div>
+        </section>
+
+        <section className="docs-section" id="cli">
+          <div className="docs-section-title"><Terminal size={17} /><div><h2>Terminal client</h2><p>No SDK, no curl, no scaffolding: one command, one pasted key, then plain English.</p></div></div>
+          <pre className="docs-inline-code"><code>npx qrouter.app</code></pre>
+          <p className="docs-copy-text">The client asks for an API key once, verifies it against <code>GET /api/v1/session</code>, and reports the workspace, credit balance, and which backends the key can actually reach before anything else happens. The key is stored at <code>~/.config/qrouter/config.json</code> with <code>0600</code> permissions; <code>QROUTER_API_KEY</code> overrides it and is never written to disk.</p>
+          <p className="docs-copy-text">After that it is the same assistant as the console. Describe the run — including a GitHub repository to take the circuit from — and it prepares a job. The confirmation prompt shows QRouter&apos;s own quote and selected backend from <code>/api/chat/quote</code>, never the model&apos;s estimate, and nothing executes or is charged until you type <code>run</code>. Completed runs are written to your Downloads folder as <code>qrouter quantum results ___provider___ &lt;timestamp&gt;.json</code> with a readable <code>.txt</code> companion.</p>
+          <pre className="docs-inline-code"><code>{`› run the quantum job at https://github.com/owner/repo using the qci cpu simulator`}</code></pre>
+          <p className="docs-copy-text">For scripts and CI there is a non-conversational path: <code>qrouter run ./bell.qasm --shots 1024 --yes</code>, <code>qrouter status &lt;job-id&gt; --wait</code>, and <code>qrouter backends --json</code>. Prefer a permanent install to <code>npx</code>? <code>curl -fsSL https://qrouter.app/install | sh</code>.</p>
+          <div className="docs-callout"><ShieldCheck size={16} /><p>While it waits, the client calls <code>POST /api/v1/jobs/&#123;id&#125;/advance</code> for its own job, so a run finishes even on a deployment with no execution scheduler configured. The endpoint is scoped to the caller&apos;s workspace and refuses any job without a quote and a matching credit reservation.</p></div>
         </section>
 
         <section className="docs-section">

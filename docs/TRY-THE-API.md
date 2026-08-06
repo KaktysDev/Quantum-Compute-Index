@@ -8,6 +8,36 @@ Full reference: in-app [`/docs`](../src/app/docs/page.tsx), OpenAPI at
 
 ---
 
+## Path 0 — the terminal client (fastest)
+
+```bash
+npx qrouter.app
+```
+
+Paste the key when asked. It is verified against `GET /api/v1/session` before
+anything else, so a bad key, an empty balance, or a deployment with no
+configured backend is reported immediately rather than as a failed job later.
+Then describe the run in plain English; the confirmation prompt shows QRouter's
+own quote, and results land in your Downloads folder.
+
+Against a local server:
+
+```bash
+QROUTER_BASE_URL=http://localhost:3000 npx qrouter.app
+```
+
+Non-interactive (CI, scripts):
+
+```bash
+QROUTER_API_KEY=qci_live_... npx qrouter.app run ./examples/bell.qasm --shots 1024 --yes
+```
+
+The client is in [`cli/`](../cli/) — see [`cli/README.md`](../cli/README.md) for
+every command and flag. The curl paths below remain the reference for building
+your own integration.
+
+---
+
 ## Before you start
 
 1. **Database** — operators must apply the current Supabase migrations
@@ -21,8 +51,8 @@ Full reference: in-app [`/docs`](../src/app/docs/page.tsx), OpenAPI at
    QPUs need server-side provider credentials configured on the deployment.
 5. **Base URL**
    - Local: `http://localhost:3000`
-   - Deployed: your site origin, or the public API host
-     (`https://api.qrouter.dev`). Same path prefixes: `/api/v1/...`, `/api/v2/...`.
+   - Deployed: your site origin (`https://qrouter.app`). Same path prefixes:
+     `/api/v1/...`, `/api/v2/...`.
 
 ```bash
 export BASE_URL="http://localhost:3000"   # or https://your-deployed-host

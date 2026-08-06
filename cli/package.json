@@ -1,0 +1,43 @@
+{
+  "name": "qrouter.app",
+  "version": "0.1.0",
+  "description": "QRouter in your terminal — paste one API key and run quantum jobs through an AI assistant that routes, quotes and executes them.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "qrouter": "bin/qrouter.mjs",
+    "qrouter.app": "bin/qrouter.mjs"
+  },
+  "main": "src/cli.mjs",
+  "exports": {
+    ".": "./src/cli.mjs",
+    "./results": "./src/results.mjs",
+    "./markdown": "./src/markdown.mjs",
+    "./sse": "./src/sse.mjs",
+    "./proposal": "./src/proposal.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "keywords": [
+    "quantum",
+    "qrouter",
+    "openqasm",
+    "qiskit",
+    "cli"
+  ],
+  "homepage": "https://qrouter.app",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/olehlahoda/Quantum-Compute-Index.git",
+    "directory": "cli"
+  },
+  "scripts": {
+    "start": "node bin/qrouter.mjs"
+  }
+}
