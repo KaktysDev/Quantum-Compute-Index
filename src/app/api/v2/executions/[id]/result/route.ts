@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolvePrincipal } from "@/lib/qrouter/auth";
+import { requireScopeV2 } from "@/lib/qrouter/scopes";
 import { requestId, v2Problem } from "@/lib/qrouter/v2-http";
 import { getExecutionArtifact } from "@/lib/qrouter/v2-service";
 
@@ -9,6 +10,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const requestIdValue = requestId(request);
   try {
     const principal = await resolvePrincipal(request);
+    requireScopeV2(principal, "jobs:read");
     const { id } = await params;
     const result = await getExecutionArtifact(principal, id, "result");
     return new NextResponse(result, { headers: { "content-type": "application/json", "cache-control": "no-store", "x-request-id": requestIdValue } });

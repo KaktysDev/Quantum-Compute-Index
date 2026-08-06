@@ -5,6 +5,20 @@ transpiles the circuit, prices it against a versioned QCI snapshot, routes it to
 an eligible provider, reserves credits, and returns a normalized asynchronous
 job result.
 
+## Try it on your account
+
+- End-to-end smoke guide (API key + GitHub repo or pasted OpenQASM):
+  [`docs/TRY-THE-API.md`](docs/TRY-THE-API.md)
+
+### Operators only (do not publish as customer docs)
+
+Database apply runbooks for people who administer the Supabase project. They
+include migration order and security-hardening steps that are not part of the
+public API surface:
+
+- [`supabase/WHAT-TO-RUN.md`](supabase/WHAT-TO-RUN.md)
+- [`supabase/APPLY-V2-MIGRATION.md`](supabase/APPLY-V2-MIGRATION.md)
+
 ## QRouter quick start
 
 ```bash
@@ -24,6 +38,44 @@ curl https://api.qrouter.dev/api/v1/jobs \
     "constraints": { "maxCost": 2.00 }
   }'
 ```
+
+### v2: reusable circuits and multi-backend jobs
+
+`/api/v2` takes the same `qci_*` key and splits the v1 job into a stored circuit
+plus a parent job that fans out into independent executions, so one circuit can
+be compared across backends without being re-uploaded. `Idempotency-Key` is
+**required** on `POST /api/v2/circuits` and `POST /api/v2/jobs`, and is scoped
+per organization; replaying a key returns the stored response with
+`idempotent-replayed: true`, while reusing it with a different payload is a
+`409 idempotency_conflict`. Errors are RFC 7807 `application/problem+json` and
+every response carries `x-request-id`.
+
+```bash
+CIRCUIT=$(curl -s https://api.qrouter.dev/api/v2/circuits \
+  -H "Authorization: Bearer qci_live_..." -H "Content-Type: application/json" \
+  -H "Idempotency-Key: bell-circuit-001" \
+  -d '{ "circuit": "OPENQASM 2.0; include \"qelib1.inc\"; qreg q[2]; creg c[2]; h q[0]; cx q[0],q[1]; measure q -> c;" }' \
+  | jq -r .data.id)
+
+curl https://api.qrouter.dev/api/v2/jobs \
+  -H "Authorization: Bearer qci_live_..." -H "Content-Type: application/json" \
+  -H "Idempotency-Key: bell-job-001" \
+  -d "{
+    \"circuit_id\": \"$CIRCUIT\",
+    \"executions\": [
+      { \"key\": \"recommended\", \"target\": \"auto\", \"shots\": 1024 },
+      { \"key\": \"simulator\", \"target\": \"qci-aer-gpu\", \"shots\": 1024 }
+    ]
+  }"
+```
+
+Credits for every execution in a job are quoted and reserved together, so a
+comparison never starts half-funded; an underfunded job returns `402` with the
+parked job body and resumes once credits arrive. `POST /api/v2/circuits/{id}/release`
+purges stored source/results, attempt and webhook payloads, and compiled artifacts
+once every job is terminal; `DELETE /api/v2/circuits/{id}` runs the same scrub and
+removes the circuit record. `qci_test_` keys are simulator-only; scopes are enforced
+for API-key principals.
 
 Run the Supabase files in this order: `supabase/schema.sql`, then
 `supabase/qrouter.sql`, then `supabase/admin.sql`, then `supabase/access.sql`,
@@ -70,16 +122,16 @@ contract is published at `/openapi.json`.
 
 1. Apply the Supabase files in order: `schema.sql`, `qrouter.sql`, `admin.sql`, `access.sql`, `chat.sql`, `contact.sql`.
 2. Deploy `services/simulator` behind TLS and configure matching compiler/worker tokens.
-3. Configure Supabase, Stripe, artifact encryption, cron, and provider credentials from `.env.local.example`.
-4. Configure an external one-minute scheduler for `GET /api/internal/jobs`, an every-two-minute scheduler for `GET /api/internal/providers/health`, and the Stripe webhook.
+3. Configure Supabase, Stripe, artifact encryption, authenticated schedulers, and provider credentials from `.env.local.example`.
+4. Configure external authenticated schedulers for job polling, provider health checks, and the Stripe webhook (see `.env.local.example` for the required secrets).
 5. Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`.
 6. Run credentialed smoke jobs against each enabled paid provider before exposing that backend in production.
 
 `vercel.json` intentionally contains only the once-daily index refresh cron so
 the project can deploy on Vercel Hobby. The QRouter execution pollers run more
 than once per day, so host those on Vercel Pro Cron, GitHub Actions, or a small
-Vultr instance running cron. Send `Authorization: Bearer $CRON_SECRET` with each
-poller request.
+Vultr instance running cron — always with the shared scheduler secret from your
+environment, never unauthenticated.
 
 The execution worker atomically leases queued jobs and active provider polls.
 Failed attempts can move to the next compatible route candidate when `failover`

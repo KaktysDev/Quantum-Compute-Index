@@ -59,10 +59,12 @@ export class QRouter {
     cancel: (id: string) => this.request<Job>(`/api/v1/jobs/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
     result: (id: string) => this.request(`/api/v1/jobs/${encodeURIComponent(id)}/result`),
     transpiledQasm: (id: string) => this.request<string>(`/api/v1/jobs/${encodeURIComponent(id)}/transpiled`, {}, "text"),
+    // awaiting_payment counts as settled: it only clears once the caller buys
+    // credits, so polling through it just spins until the caller gives up.
     wait: async (id: string, intervalMs = 2_000) => {
       for (;;) {
         const job = await this.jobs.get(id);
-        if (["completed", "failed", "cancelled"].includes(job.status)) return job;
+        if (["completed", "failed", "cancelled", "awaiting_payment"].includes(job.status)) return job;
         await new Promise((resolve) => setTimeout(resolve, intervalMs));
       }
     },
@@ -71,11 +73,13 @@ export class QRouter {
 
 export interface Circuit {
   id: string;
+  organization_id: string;
   name: string | null;
   format: "openqasm2" | "openqasm3";
   source_hash: string;
   analysis: JsonObject;
   created_at: string;
+  expires_at: string | null;
   released_at: string | null;
 }
 
@@ -89,16 +93,31 @@ export interface Execution {
   status: string;
   target: string;
   selected_backend_id: string | null;
+  shots: number;
+  routing_mode: RoutingMode;
+  analysis: JsonObject;
+  route_decision: JsonObject;
   result_available: boolean;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
   quote?: JsonObject;
   error?: JsonObject | null;
 }
 
+export type HostedJobStatus = "queued" | "running" | "awaiting_payment" | "completed" | "failed" | "cancelled";
+
 export interface HostedJob extends JsonObject {
   id: string;
   circuit_id: string;
-  status: string;
+  organization_id: string;
+  status: HostedJobStatus;
+  metadata: Record<string, string>;
   executions: Execution[];
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  error: JsonObject | null;
 }
 
 export interface CreateHostedJob {
@@ -106,6 +125,10 @@ export interface CreateHostedJob {
   executions: ExecutionTarget[];
   metadata?: Record<string, string>;
 }
+
+// Terminal for polling purposes: awaiting_payment only clears once the caller
+// buys credits, so waiting on it would spin until the caller gives up.
+const SETTLED_STATUSES = ["completed", "failed", "cancelled", "awaiting_payment"];
 
 /**
  * The FileRouter-style hosted API. It deliberately lives beside the v1 client
@@ -145,10 +168,18 @@ export class QRouterV2 {
 
   jobs = {
     create: async (input: CreateHostedJob, idempotencyKey = crypto.randomUUID()) => {
-      const response = await this.request<{ data: HostedJob }>("/api/v2/jobs", {
-        method: "POST", headers: { "idempotency-key": idempotencyKey }, body: JSON.stringify(input),
-      });
-      return response.data;
+      try {
+        const response = await this.request<{ data: HostedJob }>("/api/v2/jobs", {
+          method: "POST", headers: { "idempotency-key": idempotencyKey }, body: JSON.stringify(input),
+        });
+        return response.data;
+      } catch (error) {
+        // 402 still carries the parked job; the caller needs its id to resume
+        // the run once credits arrive.
+        const parked = error instanceof QRouterError && error.status === 402 ? (error.body as { data?: HostedJob } | null) : null;
+        if (parked?.data) return parked.data;
+        throw error;
+      }
     },
     get: async (id: string) => (await this.request<{ data: HostedJob }>(`/api/v2/jobs/${encodeURIComponent(id)}`)).data,
     wait: async (id: string, intervalMs = 2_000, onStatus?: (job: HostedJob) => void) => {
@@ -156,7 +187,7 @@ export class QRouterV2 {
       for (;;) {
         const job = await this.jobs.get(id);
         if (job.status !== previous) { onStatus?.(job); previous = job.status; }
-        if (["completed", "failed", "cancelled"].includes(job.status)) return job;
+        if (SETTLED_STATUSES.includes(job.status)) return job;
         await new Promise((resolve) => setTimeout(resolve, intervalMs));
       }
     },
@@ -168,7 +199,7 @@ export class QRouterV2 {
         const current = job.executions.find((candidate) => candidate.id === executionId);
         if (!current) throw new QRouterError(`Execution ${executionId} is not part of job ${jobId}.`, 404, null);
         if (current.status !== previous) { onStatus?.(current); previous = current.status; }
-        if (["completed", "failed", "cancelled"].includes(current.status)) return current;
+        if (SETTLED_STATUSES.includes(current.status)) return current;
         await new Promise((resolve) => setTimeout(resolve, intervalMs));
       }
     },

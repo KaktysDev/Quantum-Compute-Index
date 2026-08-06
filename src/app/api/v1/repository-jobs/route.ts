@@ -6,6 +6,7 @@ import { demoJobs, demoProjects } from "@/lib/qrouter/demo-store";
 import { apiError } from "@/lib/qrouter/http";
 import { getGithubAccess } from "@/lib/qrouter/github";
 import { normalizeCircuitPath, normalizeRef, readCircuitFromRepository, type ProjectSettings, type QRouterProject } from "@/lib/qrouter/repositories";
+import { requireScope } from "@/lib/qrouter/scopes";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const schema = z.object({
@@ -29,6 +30,7 @@ export const maxDuration = 300;
 export async function GET(request: Request) {
   try {
     const principal = await resolvePrincipal(request);
+    requireScope(principal, "jobs:read");
     const projectId = new URL(request.url).searchParams.get("project_id");
     if (!projectId) return NextResponse.json({ error: { type: "invalid_request", message: "project_id is required." } }, { status: 400 });
     if (principal.demo) {
@@ -50,6 +52,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const principal = await resolvePrincipal(request);
+    requireScope(principal, "jobs:write");
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return NextResponse.json({ error: { type: "invalid_request", message: "The repository deployment is invalid.", details: parsed.error.flatten() } }, { status: 400 });
     let project: QRouterProject | null;

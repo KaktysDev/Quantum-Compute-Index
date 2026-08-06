@@ -1,4 +1,5 @@
 import { resolvePrincipal } from "@/lib/qrouter/auth";
+import { requireScopeV2 } from "@/lib/qrouter/scopes";
 import { v2Json } from "@/lib/qrouter/v2-http";
 import { v2Route } from "@/lib/qrouter/v2-route";
 import { cancelExecution } from "@/lib/qrouter/v2-service";
@@ -8,6 +9,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   return v2Route(request, async (requestId) => {
     const principal = await resolvePrincipal(request);
+    requireScopeV2(principal, "jobs:write");
     const { id } = await params;
     return v2Json({ object: "execution", data: await cancelExecution(principal, id) }, requestId, { status: 202 });
   });

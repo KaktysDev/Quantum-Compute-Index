@@ -2,6 +2,10 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { canAccessConsole, consoleDevBypassEnabled } from "@/lib/access";
 
+// Security response headers (HSTS, CSP, frame protection, …) are set in
+// next.config.mjs headers(), which — unlike the matcher below — also covers
+// static assets. This file stays responsible for x-request-id and auth only.
+
 type CookieToSet = { name: string; value: string; options: CookieOptions };
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";

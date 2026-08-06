@@ -30,6 +30,7 @@
   --qr-glow: 0 0 24px rgba(66, 229, 158, 0.18);
   --qr-radius: 14px;
   --qr-radius-sm: 10px;
+  --qr-legal-h: 46px;
 
   min-height: 100vh;
   padding-top: 64px;
@@ -49,7 +50,7 @@
 /* Retired chrome from earlier console generations. */
 .console-sidebar, .console-mobile-bar, .console-mobile-tabs { display: none !important; }
 
-.console-main { min-height: calc(100vh - 64px); margin-left: 0; }
+.console-main { min-height: calc(100vh - 64px - var(--qr-legal-h)); margin-left: 0; }
 
 /* ── Topbar ───────────────────────────────────────────────────────────── */
 
@@ -203,6 +204,9 @@
 }
 .router-account-menu a:hover, .router-account-menu button:hover { background: var(--qr-emerald-soft); color: var(--qr-emerald); }
 .router-account-menu > div a.active { background: var(--qr-emerald-soft); color: var(--qr-emerald); }
+.router-account-legal { display: flex; gap: 1rem; margin-top: 0.3rem; padding: 0.5rem 0.65rem 0.1rem; border-top: 1px solid var(--qr-line); }
+.router-account-menu .router-account-legal a { width: auto; min-height: 0; padding: 0; border-radius: 0; color: var(--qr-dim); font-size: 0.6rem; }
+.router-account-menu .router-account-legal a:hover { background: transparent; color: var(--qr-emerald); }
 .router-mobile-nav { display: none; }
 
 .router-topbar :is(a, button, summary, input):focus-visible {
@@ -210,6 +214,22 @@
   outline-offset: 2px;
   border-radius: 6px;
 }
+
+/* ── Legal strip ──────────────────────────────────────────────────────── */
+
+.console-legal { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.4rem 1.2rem; width: min(1280px, 100%); min-height: var(--qr-legal-h); margin: 0 auto; padding: 0 clamp(1rem, 3vw, 2rem); border-top: 1px solid var(--qr-line); }
+.console-legal > span { color: var(--qr-dim); font: 0.56rem var(--qr-mono); letter-spacing: 0.12em; text-transform: uppercase; }
+.console-legal > nav { display: flex; flex-wrap: wrap; gap: 1.2rem; }
+.console-legal a { color: var(--qr-muted); font-size: 0.68rem; transition: color 150ms ease; }
+.console-legal a:hover { color: var(--qr-emerald); }
+/* The assistant sizes itself to the viewport, so a strip underneath it would
+   put a scrollbar on a surface built not to scroll. Reach it from the account
+   menu there instead. No-op in browsers without :has(). */
+.console-shell:has(.qc-page) .console-legal { display: none; }
+
+/* Tailwind's `underline` loses to the shell's link reset on specificity, so
+   restore it for the inline consent lines that opt into it. */
+.console-shell a.underline { text-decoration-line: underline; }
 
 /* ── Page scaffolding ─────────────────────────────────────────────────── */
 
@@ -1274,7 +1294,7 @@
 
 @media (max-width: 900px) {
   .console-shell { padding-top: 106px; }
-  .console-main { min-height: calc(100vh - 106px); }
+  .console-main { min-height: calc(100vh - 106px - var(--qr-legal-h)); }
   .router-topbar-main { height: 62px; padding: 0 0.85rem; }
   .router-product-nav { display: none; }
   .router-account-actions { margin-left: auto; }

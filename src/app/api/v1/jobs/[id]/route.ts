@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { resolvePrincipal } from "@/lib/qrouter/auth";
 import { demoJobs } from "@/lib/qrouter/demo-store";
 import { apiError } from "@/lib/qrouter/http";
+import { requireScope } from "@/lib/qrouter/scopes";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const principal = await resolvePrincipal(request);
+    requireScope(principal, "jobs:read");
     const { id } = await params;
     if (principal.demo) {
       const job = demoJobs.get(id);

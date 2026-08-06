@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { resolvePrincipal } from "@/lib/qrouter/auth";
 import { apiError } from "@/lib/qrouter/http";
+import { webhookFailureReason } from "@/lib/qrouter/webhooks";
 import { createAdminClient } from "@/lib/supabase/admin";
+
+type DeliveryRow = Record<string, unknown> & { error: unknown };
 
 export async function GET(request: Request) {
   try {
@@ -14,7 +17,11 @@ export async function GET(request: Request) {
       .order("created_at", { ascending: false })
       .limit(100);
     if (error) throw error;
-    return NextResponse.json({ object: "list", data });
+    // `error` is a classification, never upstream text: raw failure strings next
+    // to `response_status` would hand the caller an internal network scanner.
+    // Rows written before that rule collapse to the catch-all reason.
+    const deliveries = ((data ?? []) as DeliveryRow[]).map((delivery) => ({ ...delivery, error: webhookFailureReason(delivery.error) }));
+    return NextResponse.json({ object: "list", data: deliveries });
   } catch (error) {
     return apiError(error);
   }

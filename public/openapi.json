@@ -18,6 +18,19 @@
         "bearerFormat": "qci_live_*"
       }
     },
+    "headers": {
+      "RequestId": { "schema": { "type": "string" }, "description": "Correlation id; echoed from the request when x-request-id is supplied." },
+      "IdempotentReplayed": { "schema": { "const": "true" }, "description": "Set when the stored response for this Idempotency-Key was returned." }
+    },
+    "responses": {
+      "BadRequest": { "description": "Invalid body, or a missing/out-of-range Idempotency-Key (codes: invalid_request, invalid_idempotency_key)", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "Unauthorized": { "description": "Missing, malformed, revoked, or expired API key (code: authentication_error)", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "NotFound": { "description": "Resource does not exist in this organization (codes: circuit_not_found, job_not_found, execution_not_found)", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "Conflict": { "description": "State conflict (codes: idempotency_conflict, circuit_active, circuit_released, not_cancellable, execution_changed, result_not_available, transpiled_not_available)", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "Unprocessable": { "description": "Circuit could not be parsed (code: invalid_circuit)", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "RateLimited": { "description": "Organization rate limit exceeded (code: rate_limit_error)", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" }, "retry-after": { "schema": { "type": "integer" }, "description": "Seconds to wait before retrying." } }, "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "ServerError": { "description": "Unexpected server error (code: internal_error). Upstream provider and database errors are never echoed.", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } }
+    },
     "parameters": {
       "JobId": {
         "in": "path",
@@ -145,32 +158,41 @@
       },
       "Circuit": {
         "type": "object",
-        "required": ["id", "format", "source_hash", "analysis", "created_at"],
+        "required": ["id", "organization_id", "name", "format", "source_hash", "analysis", "created_at", "expires_at", "released_at"],
         "properties": {
           "id": { "type": "string", "format": "uuid" },
+          "organization_id": { "type": "string", "format": "uuid" },
           "name": { "type": ["string", "null"] },
           "format": { "enum": ["openqasm2", "openqasm3"] },
           "source_hash": { "type": "string" },
           "analysis": { "type": "object" },
           "created_at": { "type": "string", "format": "date-time" },
+          "expires_at": { "type": ["string", "null"], "format": "date-time" },
           "released_at": { "type": ["string", "null"], "format": "date-time" }
         }
       },
+      "CircuitResponse": {
+        "type": "object",
+        "required": ["object", "data"],
+        "properties": { "object": { "const": "circuit" }, "data": { "$ref": "#/components/schemas/Circuit" } }
+      },
       "CreateCircuit": {
         "type": "object",
+        "additionalProperties": false,
         "required": ["circuit"],
         "properties": {
-          "name": { "type": "string", "maxLength": 120 },
-          "circuit": { "type": "string", "maxLength": 256000 },
+          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "circuit": { "type": "string", "minLength": 1, "maxLength": 256000 },
           "format": { "enum": ["openqasm2", "openqasm3"], "default": "openqasm2" }
         }
       },
       "ExecutionTarget": {
         "type": "object",
+        "additionalProperties": false,
         "required": ["key"],
         "properties": {
-          "key": { "type": "string", "maxLength": 64 },
-          "target": { "type": "string", "default": "auto" },
+          "key": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "target": { "type": "string", "minLength": 1, "maxLength": 120, "default": "auto" },
           "shots": { "type": "integer", "minimum": 1, "maximum": 1000000, "default": 1024 },
           "routing_mode": { "enum": ["balanced", "cost", "speed", "quality"], "default": "balanced" },
           "optimization_level": { "type": "integer", "minimum": 0, "maximum": 3, "default": 2 },
@@ -182,43 +204,96 @@
       },
       "CreateHostedJob": {
         "type": "object",
+        "additionalProperties": false,
         "required": ["circuit_id", "executions"],
         "properties": {
           "circuit_id": { "type": "string", "format": "uuid" },
-          "executions": { "type": "array", "minItems": 1, "maxItems": 25, "items": { "$ref": "#/components/schemas/ExecutionTarget" } },
-          "metadata": { "type": "object", "additionalProperties": { "type": "string" } }
+          "executions": { "type": "array", "minItems": 1, "maxItems": 25, "description": "Each key must be unique within the job.", "items": { "$ref": "#/components/schemas/ExecutionTarget" } },
+          "metadata": { "$ref": "#/components/schemas/Metadata" }
         }
+      },
+      "Metadata": {
+        "type": "object",
+        "default": {},
+        "maxProperties": 50,
+        "propertyNames": { "maxLength": 64 },
+        "additionalProperties": { "type": "string", "maxLength": 500 }
       },
       "HostedExecution": {
         "type": "object",
-        "required": ["id", "key", "status"],
+        "required": ["id", "key", "status", "target", "shots", "routing_mode", "result_available", "created_at", "updated_at", "completed_at"],
         "properties": {
           "id": { "type": "string", "format": "uuid" },
-          "key": { "type": "string" },
-          "status": { "enum": ["queued", "awaiting_payment", "dispatching", "submitted", "processing", "completed", "failed", "cancelled"] },
+          "key": { "type": "string", "maxLength": 64 },
+          "status": { "enum": ["quoted", "awaiting_payment", "queued", "dispatching", "submitted", "processing", "completed", "failed", "cancellation_requested", "cancelled"] },
+          "target": { "type": "string" },
           "selected_backend_id": { "type": ["string", "null"] },
+          "shots": { "type": "integer" },
+          "routing_mode": { "enum": ["balanced", "cost", "speed", "quality"] },
+          "analysis": { "type": ["object", "null"], "description": "Circuit analysis plus the transpilation summary. Reduced to { \"released\": true } once the circuit is released." },
+          "route_decision": { "type": ["object", "null"] },
           "result_available": { "type": "boolean" },
-          "quote": { "type": "object" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" },
+          "completed_at": { "type": ["string", "null"], "format": "date-time" },
+          "quote": { "type": "object", "description": "Present once the execution has been quoted." },
           "error": { "type": ["object", "null"] }
         }
       },
       "HostedJob": {
         "type": "object",
-        "required": ["id", "circuit_id", "status", "executions"],
+        "required": ["id", "circuit_id", "organization_id", "status", "metadata", "executions", "created_at", "updated_at", "completed_at", "error"],
         "properties": {
           "id": { "type": "string", "format": "uuid" },
           "circuit_id": { "type": "string", "format": "uuid" },
+          "organization_id": { "type": "string", "format": "uuid" },
           "status": { "enum": ["queued", "running", "awaiting_payment", "completed", "failed", "cancelled"] },
+          "metadata": { "$ref": "#/components/schemas/Metadata" },
           "executions": { "type": "array", "items": { "$ref": "#/components/schemas/HostedExecution" } },
-          "metadata": { "type": "object", "additionalProperties": { "type": "string" } }
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" },
+          "completed_at": { "type": ["string", "null"], "format": "date-time" },
+          "error": { "type": ["object", "null"] }
+        }
+      },
+      "HostedJobResponse": {
+        "type": "object",
+        "required": ["object", "data"],
+        "properties": { "object": { "const": "job" }, "data": { "$ref": "#/components/schemas/HostedJob" } }
+      },
+      "HostedJobParkedResponse": {
+        "type": "object",
+        "required": ["object", "data", "error"],
+        "properties": {
+          "object": { "const": "job" },
+          "data": { "$ref": "#/components/schemas/HostedJob" },
+          "error": { "type": "object", "required": ["code", "message"], "properties": { "code": { "const": "insufficient_credits" }, "message": { "type": "string" } } }
+        }
+      },
+      "CancelledExecutionResponse": {
+        "type": "object",
+        "required": ["object", "data"],
+        "properties": {
+          "object": { "const": "execution" },
+          "data": { "type": "object", "required": ["id", "status"], "properties": { "id": { "type": "string", "format": "uuid" }, "status": { "enum": ["cancelled", "cancellation_requested"] } } }
+        }
+      },
+      "BackendListResponse": {
+        "type": "object",
+        "required": ["object", "data", "qci"],
+        "properties": {
+          "object": { "const": "list" },
+          "data": { "type": "array", "items": { "type": "object", "properties": { "id": { "type": "string" }, "capabilities": { "type": "object", "properties": { "input_formats": { "type": "array", "items": { "enum": ["openqasm2", "openqasm3"] } }, "execution": { "const": "async" }, "result": { "type": "array", "items": { "type": "string" } } } } } } },
+          "qci": { "type": "object", "required": ["timestamp", "source", "index", "price_per_qc_hour"], "properties": { "timestamp": { "type": "string", "format": "date-time" }, "source": { "type": "string" }, "index": { "type": "number" }, "price_per_qc_hour": { "type": "number" } } }
         }
       },
       "Problem": {
         "type": "object",
-        "required": ["type", "title", "status", "detail", "code", "request_id"],
+        "required": ["type", "title", "status", "detail", "instance", "code", "request_id"],
         "properties": {
           "type": { "type": "string" }, "title": { "type": "string" }, "status": { "type": "integer" },
-          "detail": { "type": "string" }, "code": { "type": "string" }, "request_id": { "type": "string" }
+          "detail": { "type": "string" }, "instance": { "type": "string", "description": "Path of the request that failed." },
+          "code": { "type": "string" }, "request_id": { "type": "string", "description": "Mirrors the x-request-id response header." }
         }
       },
       "ProjectSettings": {
@@ -368,8 +443,10 @@
             ]
           },
           "quote": {
-            "type": "object",
-            "nullable": true,
+            "type": [
+              "object",
+              "null"
+            ],
             "description": "Quote issued for this job (present on creation and detail responses).",
             "properties": {
               "providerCost": {
@@ -572,10 +649,14 @@
         "parameters": [{ "in": "header", "name": "Idempotency-Key", "required": true, "schema": { "type": "string", "minLength": 8, "maxLength": 255 } }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateCircuit" } } } },
         "responses": {
-          "201": { "description": "Circuit stored", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Circuit" } } } },
-          "200": { "description": "Idempotent replay" },
-          "400": { "description": "Invalid request", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
-          "409": { "description": "Idempotency conflict" }, "422": { "description": "Invalid circuit" }
+          "201": { "description": "Circuit stored", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CircuitResponse" } } } },
+          "200": { "description": "Idempotent replay of a previously stored circuit", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" }, "idempotent-replayed": { "$ref": "#/components/headers/IdempotentReplayed" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CircuitResponse" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/Unprocessable" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/ServerError" }
         }
       }
     },
@@ -583,19 +664,39 @@
       "get": {
         "summary": "Read circuit metadata",
         "parameters": [{ "$ref": "#/components/parameters/JobId" }],
-        "responses": { "200": { "description": "Circuit", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Circuit" } } } }, "404": { "description": "Not found" } }
+        "responses": {
+          "200": { "description": "Circuit. Remains readable after release; the source is never returned.", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CircuitResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
       },
       "delete": {
         "summary": "Delete a released or terminal circuit and its job history",
         "parameters": [{ "$ref": "#/components/parameters/JobId" }],
-        "responses": { "204": { "description": "Circuit deleted" }, "409": { "description": "Circuit has active jobs" } }
+        "responses": {
+          "204": { "description": "Circuit, its jobs, and their stored artifacts were purged", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
       }
     },
     "/api/v2/circuits/{id}/release": {
       "post": {
         "summary": "Release a circuit after all of its jobs are terminal",
         "parameters": [{ "$ref": "#/components/parameters/JobId" }],
-        "responses": { "200": { "description": "Circuit released" }, "409": { "description": "Circuit has active jobs" } }
+        "responses": {
+          "200": { "description": "Source and stored artifacts purged; the circuit record stays readable", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CircuitResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
       }
     },
     "/api/v2/jobs": {
@@ -604,9 +705,15 @@
         "parameters": [{ "in": "header", "name": "Idempotency-Key", "required": true, "schema": { "type": "string", "minLength": 8, "maxLength": 255 } }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateHostedJob" } } } },
         "responses": {
-          "202": { "description": "Job accepted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostedJob" } } } },
-          "200": { "description": "Idempotent replay" }, "402": { "description": "Insufficient credits" },
-          "409": { "description": "Idempotency conflict" }
+          "202": { "description": "Job accepted; credits reserved for every execution", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostedJobResponse" } } } },
+          "200": { "description": "Idempotent replay of a previously accepted job", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" }, "idempotent-replayed": { "$ref": "#/components/headers/IdempotentReplayed" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostedJobResponse" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "402": { "description": "Insufficient credits. The job is parked as awaiting_payment and resumes once credits are added.", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostedJobParkedResponse" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/ServerError" }
         }
       }
     },
@@ -614,34 +721,66 @@
       "get": {
         "summary": "Read a parent job and all execution statuses",
         "parameters": [{ "$ref": "#/components/parameters/JobId" }],
-        "responses": { "200": { "description": "Job", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostedJob" } } } }, "404": { "description": "Not found" } }
+        "responses": {
+          "200": { "description": "Job with one summary per execution", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostedJobResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
       }
     },
     "/api/v2/executions/{id}/result": {
       "get": {
         "summary": "Retrieve one normalized execution result",
         "parameters": [{ "$ref": "#/components/parameters/JobId" }],
-        "responses": { "200": { "description": "Normalized result JSON" }, "409": { "description": "Result not available" } }
+        "responses": {
+          "200": { "description": "Normalized result document", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "type": "object", "properties": { "backend": { "type": "string" }, "shots": { "type": "integer" }, "counts": { "type": "object", "additionalProperties": { "type": "integer" } }, "probabilities": { "type": "object", "additionalProperties": { "type": "number" } } } } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
       }
     },
     "/api/v2/executions/{id}/transpiled": {
       "get": {
         "summary": "Retrieve one compiled OpenQASM artifact",
         "parameters": [{ "$ref": "#/components/parameters/JobId" }],
-        "responses": { "200": { "description": "Compiled OpenQASM" }, "409": { "description": "Artifact not available" } }
+        "responses": {
+          "200": { "description": "Compiled OpenQASM for the selected backend", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "text/plain": { "schema": { "type": "string" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
       }
     },
     "/api/v2/executions/{id}/cancel": {
       "post": {
         "summary": "Cancel one execution without cancelling sibling executions",
         "parameters": [{ "$ref": "#/components/parameters/JobId" }],
-        "responses": { "202": { "description": "Cancellation requested" }, "409": { "description": "Execution is terminal or changed" } }
+        "responses": {
+          "202": { "description": "Cancelled, or cancellation requested from the provider", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CancelledExecutionResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
       }
     },
     "/api/v2/backends": {
       "get": {
         "summary": "Discover authenticated backend capabilities and QCI pricing",
-        "responses": { "200": { "description": "Backend catalog" } }
+        "responses": {
+          "200": { "description": "Backend catalog with capabilities and the current QCI snapshot", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BackendListResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
       }
     },
     "/api/v1/transpile": {

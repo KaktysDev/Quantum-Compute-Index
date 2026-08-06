@@ -11,7 +11,13 @@ import { POST as createCircuitV2 } from "@/app/api/v2/circuits/route";
 import { POST as createHostedJobV2 } from "@/app/api/v2/jobs/route";
 import { GET as getHostedJobV2 } from "@/app/api/v2/jobs/[id]/route";
 import { GET as getExecutionResultV2 } from "@/app/api/v2/executions/[id]/result/route";
+import { GET as getExecutionTranspiledV2 } from "@/app/api/v2/executions/[id]/transpiled/route";
+import { POST as cancelExecutionV2 } from "@/app/api/v2/executions/[id]/cancel/route";
 import { POST as releaseCircuitV2 } from "@/app/api/v2/circuits/[id]/release/route";
+import { DELETE as deleteCircuitV2, GET as getCircuitV2 } from "@/app/api/v2/circuits/[id]/route";
+import { GET as listBackendsV2 } from "@/app/api/v2/backends/route";
+import type { Principal } from "@/lib/qrouter/auth";
+import { cancelExecution, createCircuitResource, createExecutionGroup, deleteCircuitResource, getCircuitResource, getExecutionArtifact, getExecutionGroup, releaseCircuitResource } from "@/lib/qrouter/v2-service";
 import { sampleProviderSeries, sampleSnapshot } from "@/lib/qci/sample";
 import { createAIChatCompletion } from "@/lib/ai/inference";
 import { canAccessConsole } from "@/lib/access";
@@ -179,6 +185,217 @@ describe("QRouter circuit pipeline", () => {
     });
     expect(releasedResult.status).toBe(409);
     await expect(releasedResult.json()).resolves.toMatchObject({ code: "result_not_available" });
+
+    const removed = await deleteCircuitV2(new Request(`http://localhost/api/v2/circuits/${circuitPayload.data.id}`, { method: "DELETE", headers: { authorization } }), {
+      params: Promise.resolve({ id: circuitPayload.data.id }),
+    });
+    expect(removed.status).toBe(204);
+    const gone = await getCircuitV2(new Request(`http://localhost/api/v2/circuits/${circuitPayload.data.id}`, { headers: { authorization } }), {
+      params: Promise.resolve({ id: circuitPayload.data.id }),
+    });
+    expect(gone.status).toBe(404);
+    await expect(gone.json()).resolves.toMatchObject({ code: "circuit_not_found" });
+  });
+
+  it("never returns circuit source or idempotency bookkeeping on v2 resources", async () => {
+    const authorization = "Bearer qci_test_local_development";
+    const created = await createCircuitV2(new Request("http://localhost/api/v2/circuits", {
+      method: "POST",
+      headers: { authorization, "content-type": "application/json", "idempotency-key": "v2-shape-circuit" },
+      body: JSON.stringify({ circuit: bell }),
+    }));
+    const circuit = (await created.json()).data;
+    // The database path projects through circuitResource(); demo mode must not
+    // hand back the raw store row or the contracts silently diverge.
+    expect(Object.keys(circuit).sort()).toEqual(["analysis", "created_at", "expires_at", "format", "id", "name", "organization_id", "released_at", "source_hash"]);
+
+    const job = await createHostedJobV2(new Request("http://localhost/api/v2/jobs", {
+      method: "POST",
+      headers: { authorization, "content-type": "application/json", "idempotency-key": "v2-shape-job" },
+      body: JSON.stringify({ circuit_id: circuit.id, executions: [{ key: "only", shots: 32 }] }),
+    }));
+    const group = (await job.json()).data;
+    expect(Object.keys(group).sort()).toEqual(["circuit_id", "completed_at", "created_at", "error", "executions", "id", "metadata", "organization_id", "status", "updated_at"]);
+    expect(group.executions[0]).not.toHaveProperty("position");
+  });
+
+  it("rejects v2 requests that are not authenticated with a usable API key", async () => {
+    const cases = [
+      { authorization: "Bearer qci_live_not_a_real_key", detail: "API key storage is not configured." },
+      { authorization: "Bearer not-a-qci-key", detail: "Invalid API key format." },
+    ];
+    for (const { authorization, detail } of cases) {
+      const response = await listBackendsV2(new Request("http://localhost/api/v2/backends", { headers: { authorization } }));
+      expect(response.status).toBe(401);
+      expect(response.headers.get("content-type")).toContain("application/problem+json");
+      expect(response.headers.get("x-request-id")).toBeTruthy();
+      await expect(response.json()).resolves.toMatchObject({
+        type: "https://api.qrouter.dev/problems/authentication_error", title: "Authentication Error",
+        status: 401, detail, instance: "/api/v2/backends", code: "authentication_error",
+      });
+    }
+  });
+
+  it("echoes a caller-supplied request id on v2 responses", async () => {
+    const response = await listBackendsV2(new Request("http://localhost/api/v2/backends", {
+      headers: { authorization: "Bearer qci_test_local_development", "x-request-id": "trace-abc" },
+    }));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-request-id")).toBe("trace-abc");
+    await expect(response.json()).resolves.toMatchObject({ object: "list", qci: { source: expect.any(String) } });
+  });
+
+  it("requires a well-formed Idempotency-Key on v2 writes", async () => {
+    const authorization = "Bearer qci_test_local_development";
+    const body = JSON.stringify({ circuit: bell });
+    const variants: Record<string, string>[] = [
+      { authorization, "content-type": "application/json" },
+      { authorization, "content-type": "application/json", "idempotency-key": "short" },
+    ];
+    for (const headers of variants) {
+      const response = await createCircuitV2(new Request("http://localhost/api/v2/circuits", { method: "POST", headers, body }));
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({ code: "invalid_idempotency_key" });
+    }
+  });
+
+  it("maps v2 validation failures to 400 and unparseable circuits to 422", async () => {
+    const authorization = "Bearer qci_test_local_development";
+    const post = (path: string, handler: typeof createCircuitV2, body: unknown, key: string) =>
+      handler(new Request(`http://localhost${path}`, {
+        method: "POST", headers: { authorization, "content-type": "application/json", "idempotency-key": key }, body: JSON.stringify(body),
+      }));
+
+    const invalidCircuit = await post("/api/v2/circuits", createCircuitV2, { circuit: "not openqasm" }, "v2-invalid-circuit");
+    expect(invalidCircuit.status).toBe(422);
+    await expect(invalidCircuit.json()).resolves.toMatchObject({ code: "invalid_circuit" });
+
+    const unknownField = await post("/api/v2/circuits", createCircuitV2, { circuit: bell, bogus: true }, "v2-strict-circuit");
+    expect(unknownField.status).toBe(400);
+    await expect(unknownField.json()).resolves.toMatchObject({ code: "invalid_request" });
+
+    const malformed = await createCircuitV2(new Request("http://localhost/api/v2/circuits", {
+      method: "POST", headers: { authorization, "content-type": "application/json", "idempotency-key": "v2-broken-json" }, body: "{",
+    }));
+    expect(malformed.status).toBe(400);
+    await expect(malformed.json()).resolves.toMatchObject({ code: "invalid_request" });
+
+    const circuit = (await (await post("/api/v2/circuits", createCircuitV2, { circuit: bell }, "v2-validation-circuit")).json()).data;
+    for (const [label, executions] of [
+      ["duplicate keys", [{ key: "same" }, { key: "same" }]],
+      ["no executions", []],
+      ["shots out of range", [{ key: "a", shots: 0 }]],
+      ["unknown execution field", [{ key: "a", nope: 1 }]],
+    ] as const) {
+      const response = await post("/api/v2/jobs", createHostedJobV2, { circuit_id: circuit.id, executions }, `v2-bad-${label.replace(/\s/g, "-")}`);
+      expect(response.status, label).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({ code: "invalid_request" });
+    }
+
+    const missingCircuit = await post("/api/v2/jobs", createHostedJobV2, { circuit_id: "8d3f7f1e-5a1a-4a1a-9a1a-2a1a3a1a4a1a", executions: [{ key: "a" }] }, "v2-missing-circuit");
+    expect(missingCircuit.status).toBe(404);
+    await expect(missingCircuit.json()).resolves.toMatchObject({ code: "circuit_not_found" });
+  });
+
+  it("keeps v2 circuits, jobs, and executions private to their organization", async () => {
+    const owner: Principal = { organizationId: "org-a", userId: null, apiKeyId: "key-a", demo: true };
+    const intruder: Principal = { organizationId: "org-b", userId: null, apiKeyId: "key-b", demo: true };
+    const { circuit } = await createCircuitResource(owner, { circuit: bell, format: "openqasm2", name: undefined }, "org-a-circuit-key");
+    const { group } = await createExecutionGroup(owner, {
+      circuit_id: circuit.id, metadata: {}, executions: [{ key: "only", target: "qci-aer-gpu", shots: 32, routing_mode: "balanced", optimization_level: 2, failover: false, max_attempts: 1, timeout_seconds: 60, constraints: {} }],
+    }, "org-a-job-key", "request-a");
+    const executionId = String(group.executions[0].id);
+
+    const denied = async (label: string, run: () => Promise<unknown>, code: string) => {
+      await expect(run(), label).rejects.toMatchObject({ status: 404, code });
+    };
+    await denied("read circuit", () => getCircuitResource(intruder, circuit.id), "circuit_not_found");
+    await denied("release circuit", () => releaseCircuitResource(intruder, circuit.id), "circuit_not_found");
+    await denied("delete circuit", () => deleteCircuitResource(intruder, circuit.id), "circuit_not_found");
+    await denied("read job", () => getExecutionGroup(intruder, group.id), "job_not_found");
+    await denied("read result", () => getExecutionArtifact(intruder, executionId, "result"), "execution_not_found");
+    await denied("read transpiled", () => getExecutionArtifact(intruder, executionId, "transpiled"), "execution_not_found");
+    await denied("cancel execution", () => cancelExecution(intruder, executionId), "execution_not_found");
+
+    // The owner is unaffected by the rejected cross-organization attempts.
+    await expect(getExecutionGroup(owner, group.id)).resolves.toMatchObject({ id: group.id, organization_id: "org-a" });
+
+    // An idempotency key is scoped per organization, so the same key is reusable.
+    const { circuit: other, replayed } = await createCircuitResource(intruder, { circuit: bell, format: "openqasm2", name: undefined }, "org-a-circuit-key");
+    expect(replayed).toBe(false);
+    expect(other.id).not.toBe(circuit.id);
+    expect(other.organization_id).toBe("org-b");
+  });
+
+  it("cancels one execution without settling siblings that are still running", async () => {
+    const authorization = "Bearer qci_test_local_development";
+    const circuit = (await (await createCircuitV2(new Request("http://localhost/api/v2/circuits", {
+      method: "POST", headers: { authorization, "content-type": "application/json", "idempotency-key": "v2-cancel-circuit" },
+      body: JSON.stringify({ circuit: bell }),
+    }))).json()).data;
+    const created = await createHostedJobV2(new Request("http://localhost/api/v2/jobs", {
+      method: "POST", headers: { authorization, "content-type": "application/json", "idempotency-key": "v2-cancel-job" },
+      body: JSON.stringify({ circuit_id: circuit.id, executions: [{ key: "first", shots: 32 }, { key: "second", shots: 32 }] }),
+    }));
+    const group = (await created.json()).data;
+
+    // The demo simulator settles instantly; reopen both executions so the
+    // cancellation path and the group rollup are exercised realistically.
+    const stored = demoV2Groups.get(group.id)!;
+    for (const execution of stored.executions) {
+      execution.status = "submitted";
+      demoJobs.get(String(execution.id))!.status = "submitted";
+    }
+    const [first, second] = group.executions.map((execution: { id: string }) => execution.id);
+
+    const cancelled = await cancelExecutionV2(new Request(`http://localhost/api/v2/executions/${first}/cancel`, { method: "POST", headers: { authorization } }), {
+      params: Promise.resolve({ id: first }),
+    });
+    expect(cancelled.status).toBe(202);
+    await expect(cancelled.json()).resolves.toMatchObject({ object: "execution", data: { id: first, status: "cancelled" } });
+
+    const readBack = await getHostedJobV2(new Request(`http://localhost/api/v2/jobs/${group.id}`, { headers: { authorization } }), {
+      params: Promise.resolve({ id: group.id }),
+    });
+    const refreshed = (await readBack.json()).data;
+    expect(refreshed.executions.map((execution: { status: string }) => execution.status)).toEqual(["cancelled", "submitted"]);
+    // finalize_qrouter_job keeps a group running while any execution is active.
+    expect(refreshed.status).toBe("running");
+    expect(refreshed.completed_at).toBeNull();
+
+    const again = await cancelExecutionV2(new Request(`http://localhost/api/v2/executions/${first}/cancel`, { method: "POST", headers: { authorization } }), {
+      params: Promise.resolve({ id: first }),
+    });
+    expect(again.status).toBe(409);
+    await expect(again.json()).resolves.toMatchObject({ code: "not_cancellable" });
+
+    demoJobs.get(String(second))!.status = "cancelled";
+    stored.executions[1].status = "cancelled";
+    const transpiled = await getExecutionTranspiledV2(new Request(`http://localhost/api/v2/executions/${second}/transpiled`, { headers: { authorization } }), {
+      params: Promise.resolve({ id: second }),
+    });
+    expect(transpiled.status).toBe(200);
+    expect(transpiled.headers.get("content-type")).toContain("text/plain");
+    await expect(transpiled.text()).resolves.toContain("OPENQASM");
+  });
+
+  it("blocks release and delete while a v2 job is still active", async () => {
+    const owner: Principal = { organizationId: "org-active", userId: null, apiKeyId: "key", demo: true };
+    const { circuit } = await createCircuitResource(owner, { circuit: bell, format: "openqasm2", name: undefined }, "active-circuit-key");
+    const { group } = await createExecutionGroup(owner, {
+      circuit_id: circuit.id, metadata: {}, executions: [{ key: "only", target: "qci-aer-gpu", shots: 32, routing_mode: "balanced", optimization_level: 2, failover: false, max_attempts: 1, timeout_seconds: 60, constraints: {} }],
+    }, "active-job-key", "request-active");
+    demoV2Groups.get(group.id)!.status = "running";
+
+    await expect(releaseCircuitResource(owner, circuit.id)).rejects.toMatchObject({ status: 409, code: "circuit_active" });
+    await expect(deleteCircuitResource(owner, circuit.id)).rejects.toMatchObject({ status: 409, code: "circuit_active" });
+
+    demoV2Groups.get(group.id)!.status = "completed";
+    await expect(releaseCircuitResource(owner, circuit.id)).resolves.toMatchObject({ released_at: expect.any(String) });
+    // A released circuit can no longer back a new job.
+    await expect(createExecutionGroup(owner, {
+      circuit_id: circuit.id, metadata: {}, executions: [{ key: "again", target: "qci-aer-gpu", shots: 32, routing_mode: "balanced", optimization_level: 2, failover: false, max_attempts: 1, timeout_seconds: 60, constraints: {} }],
+    }, "active-job-key-2", "request-active-2")).rejects.toMatchObject({ status: 409, code: "circuit_released" });
   });
 
   it("analyzes semicolon-delimited OpenQASM on one line", () => {

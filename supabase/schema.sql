@@ -125,7 +125,7 @@ create or replace function public.enforce_email_allowlist()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 begin
   if not exists (
@@ -149,7 +149,7 @@ create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 begin
   insert into public.profiles (id, email)
@@ -194,7 +194,7 @@ returns boolean
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
   select exists (
     select 1 from public.contact_viewers cv
@@ -232,7 +232,12 @@ create table if not exists public.organizations (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   slug text not null unique,
-  created_by uuid not null references auth.users(id) on delete restrict,
+  -- Nullable / ON DELETE SET NULL so a user account can actually be erased:
+  -- handle_new_user() gives every signup an organization it owns, so a NOT NULL
+  -- ON DELETE RESTRICT reference pins the auth.users row forever. Billing
+  -- history hangs off organization_id, not created_by. See qrouter.sql, which
+  -- repairs this column on databases created before the change.
+  created_by uuid references auth.users(id) on delete set null,
   stripe_customer_id text,
   billing_setup_complete boolean not null default false,
   created_at timestamptz not null default now(),
@@ -250,12 +255,12 @@ create table if not exists public.organization_members (
 alter table public.organization_members enable row level security;
 
 create or replace function public.is_org_member(org_id uuid)
-returns boolean language sql stable security definer set search_path = public as $$
+returns boolean language sql stable security definer set search_path = public, pg_temp as $$
   select exists(select 1 from public.organization_members m where m.organization_id = org_id and m.user_id = auth.uid());
 $$;
 
 create or replace function public.is_org_admin(org_id uuid)
-returns boolean language sql stable security definer set search_path = public as $$
+returns boolean language sql stable security definer set search_path = public, pg_temp as $$
   select exists(select 1 from public.organization_members m where m.organization_id = org_id and m.user_id = auth.uid() and m.role in ('owner','admin'));
 $$;
 
@@ -363,8 +368,15 @@ create index if not exists jobs_dispatch_idx on public.jobs(status, next_attempt
 alter table public.jobs enable row level security;
 drop policy if exists "jobs: member read" on public.jobs;
 create policy "jobs: member read" on public.jobs for select using (public.is_org_member(organization_id));
+-- CRITICAL: there must be NO user-facing INSERT policy on jobs. The policy that
+-- used to live here validated organization_id and nothing else, so any member
+-- could POST a row to /rest/v1/jobs with status='queued', quote_id=null and an
+-- expensive QPU in selected_backend_id and have it dispatched to a real
+-- provider, unbilled. Every jobs write in the application uses the service
+-- role, which bypasses RLS, so there is nothing to replace it with.
 drop policy if exists "jobs: member create" on public.jobs;
-create policy "jobs: member create" on public.jobs for insert with check (public.is_org_member(organization_id));
+drop policy if exists "job member create" on public.jobs;
+revoke insert, update, delete on public.jobs from anon, authenticated;
 
 create table if not exists public.quotes (
   id uuid primary key default gen_random_uuid(),
@@ -420,7 +432,7 @@ drop policy if exists "events: member read" on public.job_events;
 create policy "events: member read" on public.job_events for select using (exists(select 1 from public.jobs j where j.id = job_id and public.is_org_member(j.organization_id)));
 
 create or replace function public.claim_qrouter_jobs(p_limit integer default 25, p_lease_seconds integer default 120)
-returns setof public.jobs language sql security definer set search_path=public as $$
+returns setof public.jobs language sql security definer set search_path=public,pg_temp as $$
   with candidates as (
     select id from public.jobs
     where (status = 'queued' and next_attempt_at <= now())
@@ -438,7 +450,7 @@ revoke all on function public.claim_qrouter_jobs(integer, integer) from public;
 grant execute on function public.claim_qrouter_jobs(integer, integer) to service_role;
 
 create or replace function public.claim_qrouter_poll_jobs(p_limit integer default 25, p_lease_seconds integer default 120)
-returns setof public.jobs language sql security definer set search_path=public as $$
+returns setof public.jobs language sql security definer set search_path=public,pg_temp as $$
   with candidates as (
     select id from public.jobs
     where status in ('submitted','processing','cancellation_requested')
@@ -462,7 +474,7 @@ create or replace function public.finalize_qrouter_job(
   p_result jsonb default null,
   p_error text default null,
   p_actual_provider_cost numeric default null
-) returns boolean language plpgsql security definer set search_path=public as $$
+) returns boolean language plpgsql security definer set search_path=public,pg_temp as $$
 declare
   current_job public.jobs%rowtype;
   job_quote public.quotes%rowtype;
@@ -555,7 +567,7 @@ drop policy if exists "ledger: member read" on public.ledger_entries;
 create policy "ledger: member read" on public.ledger_entries for select using (public.is_org_member(organization_id));
 
 create or replace function public.reserve_job_credits(p_job_id uuid, p_amount numeric)
-returns void language plpgsql security definer set search_path = public as $$
+returns void language plpgsql security definer set search_path = public, pg_temp as $$
 declare v_org uuid; v_available numeric;
 begin
   select organization_id into v_org from public.jobs where id = p_job_id;
@@ -568,7 +580,7 @@ end;
 $$;
 
 create or replace function public.settle_job_credits(p_job_id uuid, p_reserved numeric, p_actual numeric)
-returns void language plpgsql security definer set search_path = public as $$
+returns void language plpgsql security definer set search_path = public, pg_temp as $$
 declare v_org uuid; v_available numeric;
 begin
   select organization_id into v_org from public.jobs where id = p_job_id;
@@ -581,7 +593,7 @@ end;
 $$;
 
 create or replace function public.release_job_credits(p_job_id uuid, p_amount numeric)
-returns void language plpgsql security definer set search_path = public as $$
+returns void language plpgsql security definer set search_path = public, pg_temp as $$
 declare v_org uuid; v_available numeric;
 begin
   select organization_id into v_org from public.jobs where id = p_job_id;
@@ -594,7 +606,7 @@ end;
 $$;
 
 create or replace function public.add_credits(p_organization_id uuid, p_amount numeric, p_external_id text, p_metadata jsonb default '{}'::jsonb)
-returns void language plpgsql security definer set search_path = public as $$
+returns void language plpgsql security definer set search_path = public, pg_temp as $$
 declare v_available numeric;
 begin
   if exists(select 1 from public.ledger_entries where external_id = p_external_id and type = 'purchase') then return; end if;
@@ -649,7 +661,7 @@ drop policy if exists "deliveries: member read" on public.webhook_deliveries;
 create policy "deliveries: member read" on public.webhook_deliveries for select using (exists(select 1 from public.webhook_endpoints e where e.id=endpoint_id and public.is_org_member(e.organization_id)));
 
 create or replace function public.claim_webhook_deliveries(p_limit integer default 25,p_lease_seconds integer default 60)
-returns setof public.webhook_deliveries language sql security definer set search_path=public as $$
+returns setof public.webhook_deliveries language sql security definer set search_path=public,pg_temp as $$
   with candidates as (
     select id from public.webhook_deliveries
     where delivered_at is null and failed_at is null and next_attempt_at<=now()
@@ -666,7 +678,7 @@ grant execute on function public.claim_webhook_deliveries(integer,integer) to se
 
 -- A new account receives a personal workspace and a small test balance.
 create or replace function public.handle_new_user()
-returns trigger language plpgsql security definer set search_path = public as $$
+returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
 declare org_id uuid;
 begin
   insert into public.profiles (id, email, full_name)
@@ -728,9 +740,13 @@ create index if not exists waitlist_submissions_status_created_idx
   on public.waitlist_submissions (status, created_at desc);
 alter table public.waitlist_submissions enable row level security;
 
-insert into public.allowed_emails (email, added_by)
-values ('gouthamkrishnaronanki@gmail.com', 'console-pilot')
-on conflict (email) do nothing;
+-- Seed the first pilot account here. Commented out and placeholder-only so no
+-- personal address is committed; edit and run it locally, or insert directly
+-- from the Supabase SQL editor. Signups are blocked by
+-- enforce_email_allowlist() until at least one address is on this list.
+-- insert into public.allowed_emails (email, added_by)
+-- values ('founder@example.com', 'console-pilot')
+-- on conflict (email) do nothing;
 
 drop trigger if exists on_auth_user_created_allowlist on auth.users;
 create trigger on_auth_user_created_allowlist

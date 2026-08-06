@@ -10,3 +10,19 @@ export const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ""
 export function isSupabaseConfigured(): boolean {
   return /^https?:\/\/.+\..+/.test(SUPABASE_URL) && SUPABASE_ANON_KEY.length > 20;
 }
+
+/**
+ * Stricter check for code paths that are about to authenticate a caller or
+ * perform a service-role write. `isSupabaseConfigured()` deliberately ignores
+ * the service-role key so the public landing page keeps rendering sample data
+ * on a fresh clone; a half-configured deployment (URL + anon key present, no
+ * service-role key) must NOT be mistaken for "no backend at all", because that
+ * is what lets authentication fall through to an unauthenticated principal.
+ *
+ * Read at call time rather than module load so a deployment that injects the
+ * secret late — and tests — see the current value. The value itself is never
+ * logged or returned.
+ */
+export function isSupabaseServiceConfigured(): boolean {
+  return isSupabaseConfigured() && (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").length > 20;
+}

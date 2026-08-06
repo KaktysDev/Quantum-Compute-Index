@@ -3,11 +3,13 @@ import { resolvePrincipal } from "@/lib/qrouter/auth";
 import { demoJobs } from "@/lib/qrouter/demo-store";
 import { cancelProviderJob } from "@/lib/qrouter/execution";
 import { apiError } from "@/lib/qrouter/http";
+import { requireScope } from "@/lib/qrouter/scopes";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const principal = await resolvePrincipal(request);
+    requireScope(principal, "jobs:write");
     const { id } = await params;
     if (principal.demo) {
       const job = demoJobs.get(id);

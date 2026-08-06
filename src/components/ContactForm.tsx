@@ -121,6 +121,14 @@ export default function ContactForm() {
       >
         {status === "sending" ? "Sending…" : "Submit request"}
       </button>
+
+      <p className="text-xs leading-relaxed text-[var(--muted)]">
+        We use these details only to respond to your request. See our{" "}
+        <a href="/privacy" className="underline underline-offset-2 hover:text-[var(--fg)]">
+          Privacy Policy
+        </a>{" "}
+        for how long we keep them and how to have them deleted.
+      </p>
     </form>
   );
 }

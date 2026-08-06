@@ -12,12 +12,41 @@ alter table public.profiles add column if not exists preferences jsonb not null 
 drop policy if exists "provider_keys: authenticated all" on public.provider_keys;
 -- Keep the private-pilot auth allowlist installed by schema.sql.
 
+-- created_by is nullable and ON DELETE SET NULL on purpose. handle_new_user()
+-- gives every signup an organization it owns, so a NOT NULL / ON DELETE
+-- RESTRICT reference would pin the auth.users row forever and make account
+-- erasure structurally impossible — including from the Supabase dashboard.
+-- Billing history hangs off organization_id, not created_by, so nulling the
+-- creator erases the person without orphaning any financial record.
 create table if not exists public.organizations (
   id uuid primary key default gen_random_uuid(), name text not null, slug text not null unique,
-  created_by uuid not null references auth.users(id), stripe_customer_id text,
+  created_by uuid references auth.users(id) on delete set null, stripe_customer_id text,
   billing_setup_complete boolean not null default false,
   created_at timestamptz not null default now(), updated_at timestamptz not null default now()
 );
+-- CREATE TABLE IF NOT EXISTS skips an existing table, so repair the column and
+-- the constraint explicitly for databases created by schema.sql (which declared
+-- `created_by uuid not null ... on delete restrict`).
+alter table public.organizations alter column created_by drop not null;
+do $$begin
+  if exists(
+    select 1 from pg_constraint
+    where conrelid='public.organizations'::regclass and conname='organizations_created_by_fkey'
+      and confdeltype <> 'n'
+  ) then
+    alter table public.organizations drop constraint organizations_created_by_fkey;
+  end if;
+end$$;
+do $$begin
+  if not exists(
+    select 1 from pg_constraint
+    where conrelid='public.organizations'::regclass and conname='organizations_created_by_fkey'
+  ) then
+    alter table public.organizations
+      add constraint organizations_created_by_fkey
+      foreign key (created_by) references auth.users(id) on delete set null;
+  end if;
+end$$;
 create table if not exists public.organization_members (
   organization_id uuid not null references public.organizations(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -26,8 +55,11 @@ create table if not exists public.organization_members (
 );
 alter table public.organizations enable row level security;
 alter table public.organization_members enable row level security;
-create or replace function public.is_org_member(org_id uuid) returns boolean language sql stable security definer set search_path=public as $$select exists(select 1 from public.organization_members where organization_id=org_id and user_id=auth.uid())$$;
-create or replace function public.is_org_admin(org_id uuid) returns boolean language sql stable security definer set search_path=public as $$select exists(select 1 from public.organization_members where organization_id=org_id and user_id=auth.uid() and role in('owner','admin'))$$;
+-- search_path pins pg_temp last on every SECURITY DEFINER function in this file:
+-- without it a caller can create a temp object that shadows an unqualified name
+-- and have it resolved with the definer's privileges.
+create or replace function public.is_org_member(org_id uuid) returns boolean language sql stable security definer set search_path=public,pg_temp as $$select exists(select 1 from public.organization_members where organization_id=org_id and user_id=auth.uid())$$;
+create or replace function public.is_org_admin(org_id uuid) returns boolean language sql stable security definer set search_path=public,pg_temp as $$select exists(select 1 from public.organization_members where organization_id=org_id and user_id=auth.uid() and role in('owner','admin'))$$;
 drop policy if exists "org member read" on public.organizations; create policy "org member read" on public.organizations for select using(public.is_org_member(id));
 drop policy if exists "org admin update" on public.organizations; create policy "org admin update" on public.organizations for update using(public.is_org_admin(id));
 drop policy if exists "membership read" on public.organization_members; create policy "membership read" on public.organization_members for select using(public.is_org_member(organization_id));
@@ -43,6 +75,19 @@ create index if not exists api_keys_org_idx on public.api_keys(organization_id,c
 alter table public.api_keys enable row level security;
 drop policy if exists "api key member read" on public.api_keys; create policy "api key member read" on public.api_keys for select using(public.is_org_member(organization_id));
 drop policy if exists "api key admin write" on public.api_keys; create policy "api key admin write" on public.api_keys for all using(public.is_org_admin(organization_id)) with check(public.is_org_admin(organization_id));
+-- RLS is row-level only, so the member read policy also exposed key_hash — the
+-- sha256 of the live secret — to every member over PostgREST. Column privileges
+-- are the only way to withhold it: drop the table-wide SELECT and grant back
+-- every column except key_hash. The console reads api_keys through the service
+-- role (src/app/api/v1/api-keys/route.ts:10) and the admin page selects only
+-- non-secret columns, so nothing in the app loses access.
+revoke select on public.api_keys from anon, authenticated;
+grant select (id, organization_id, created_by, name, key_prefix, environment, scopes,
+              last_used_at, expires_at, revoked_at, created_at)
+  on public.api_keys to authenticated;
+-- Writes stay service-role only; the admin write policy above is retained for
+-- completeness but the grant below is what actually gates DML.
+revoke insert, update, delete on public.api_keys from anon, authenticated;
 
 create table if not exists public.github_connections (
   id uuid primary key default gen_random_uuid(), organization_id uuid not null unique references public.organizations(id) on delete cascade,
@@ -106,13 +151,19 @@ create table if not exists public.circuits (
   analysis jsonb not null,
   idempotency_key text not null,
   request_hash text not null,
-  expires_at timestamptz,
+  -- Retention deadline. purge_expired_circuits() scrubs source, results and
+  -- artifacts once this passes; the row itself survives so the id keeps
+  -- resolving and billing history stays intact.
+  expires_at timestamptz not null default now() + interval '90 days',
   released_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique(organization_id,idempotency_key)
 );
+alter table public.circuits alter column expires_at set default now() + interval '90 days';
+update public.circuits set expires_at = created_at + interval '90 days' where expires_at is null;
 create index if not exists circuits_org_created_idx on public.circuits(organization_id,created_at desc);
+create index if not exists circuits_retention_idx on public.circuits(expires_at) where released_at is null;
 alter table public.circuits enable row level security;
 drop policy if exists "circuit member read" on public.circuits;
 create policy "circuit member read" on public.circuits for select using(public.is_org_member(organization_id));
@@ -155,7 +206,22 @@ create table if not exists public.provider_health (
 alter table public.provider_health enable row level security;
 alter table public.jobs enable row level security;
 drop policy if exists "job member read" on public.jobs; create policy "job member read" on public.jobs for select using(public.is_org_member(organization_id));
-drop policy if exists "job member create" on public.jobs; create policy "job member create" on public.jobs for insert with check(public.is_org_member(organization_id));
+-- CRITICAL: there must be NO user-facing INSERT policy on jobs. The old one
+-- validated organization_id and nothing else, so any member could POST a row to
+-- /rest/v1/jobs with status='queued', quote_id=null and an expensive QPU in
+-- selected_backend_id and have it dispatched to a real provider, unbilled.
+-- Both historical policy names are dropped: schema.sql shipped "jobs: member
+-- create" and this file shipped "job member create".
+-- Every jobs write in the application uses the service role, which bypasses
+-- RLS, so removing this is behaviour-neutral:
+--   src/app/api/v1/jobs/route.ts:102 and src/lib/qrouter/v2-service.ts:342.
+drop policy if exists "job member create" on public.jobs;
+drop policy if exists "jobs: member create" on public.jobs;
+-- Supabase's default privileges hand anon/authenticated full DML on public
+-- tables and RLS is the only thing holding them back; dropping the grant means
+-- a future policy mistake is not immediately exploitable.
+revoke insert, update, delete on public.jobs from anon, authenticated;
+revoke insert, update, delete on public.circuits, public.execution_groups from anon, authenticated;
 
 create table if not exists public.quotes (
   id uuid primary key default gen_random_uuid(), job_id uuid not null unique references public.jobs(id) on delete cascade,
@@ -183,26 +249,12 @@ alter table public.job_attempts enable row level security; alter table public.jo
 drop policy if exists "attempt member read" on public.job_attempts; create policy "attempt member read" on public.job_attempts for select using(exists(select 1 from public.jobs where id=job_id and public.is_org_member(organization_id)));
 drop policy if exists "event member read" on public.job_events; create policy "event member read" on public.job_events for select using(exists(select 1 from public.jobs where id=job_id and public.is_org_member(organization_id)));
 
-create or replace function public.claim_qrouter_jobs(p_limit integer default 25,p_lease_seconds integer default 120)
-returns setof public.jobs language sql security definer set search_path=public as $$
-  with candidates as (
-    select id from public.jobs
-    where (status='queued' and next_attempt_at<=now())
-       or (status='dispatching' and lease_expires_at<=now())
-    order by next_attempt_at,created_at
-    for update skip locked
-    limit greatest(1,least(p_limit,100))
-  )
-  update public.jobs as job
-  set status='dispatching',lease_expires_at=now()+make_interval(secs=>greatest(30,p_lease_seconds)),updated_at=now()
-  from candidates where job.id=candidates.id
-  returning job.*
-$$;
-revoke all on function public.claim_qrouter_jobs(integer,integer) from public;
-grant execute on function public.claim_qrouter_jobs(integer,integer) to service_role;
+-- NOTE: the hardened claim_qrouter_jobs() lives further down, immediately after
+-- public.ledger_entries is created — its dispatch guard reads that table, and a
+-- `language sql` body is validated at CREATE time, so it cannot be defined here.
 
 create or replace function public.claim_qrouter_poll_jobs(p_limit integer default 25,p_lease_seconds integer default 120)
-returns setof public.jobs language sql security definer set search_path=public as $$
+returns setof public.jobs language sql security definer set search_path=public,pg_temp as $$
   with candidates as (
     select id from public.jobs
     where status in('submitted','processing','cancellation_requested')
@@ -222,7 +274,7 @@ grant execute on function public.claim_qrouter_poll_jobs(integer,integer) to ser
 
 create or replace function public.finalize_qrouter_job(
   p_job_id uuid,p_status text,p_result jsonb default null,p_error text default null,p_actual_provider_cost numeric default null
-) returns boolean language plpgsql security definer set search_path=public as $$
+) returns boolean language plpgsql security definer set search_path=public,pg_temp as $$
 declare current_job public.jobs%rowtype;job_quote public.quotes%rowtype;actual_total numeric;balance numeric;
 begin
   if p_status not in('completed','failed','cancelled')then raise exception 'invalid terminal status';end if;
@@ -285,14 +337,49 @@ create table if not exists public.ledger_entries (
   metadata jsonb not null default '{}', created_at timestamptz not null default now()
 );
 create unique index if not exists ledger_external_unique on public.ledger_entries(external_id) where external_id is not null;
+-- Supports the reservation guard in claim_qrouter_jobs() below.
+create index if not exists ledger_entries_reserve_job_idx on public.ledger_entries(job_id) where type='reserve';
+create index if not exists ledger_entries_reserve_group_idx on public.ledger_entries((metadata->>'group_id')) where type='reserve';
 alter table public.credit_accounts enable row level security; alter table public.ledger_entries enable row level security;
 drop policy if exists "credit member read" on public.credit_accounts; create policy "credit member read" on public.credit_accounts for select using(public.is_org_member(organization_id));
 drop policy if exists "ledger member read" on public.ledger_entries; create policy "ledger member read" on public.ledger_entries for select using(public.is_org_member(organization_id));
 
-create or replace function public.reserve_job_credits(p_job_id uuid,p_amount numeric) returns void language plpgsql security definer set search_path=public as $$declare o uuid;b numeric;begin select organization_id into o from public.jobs where id=p_job_id;select available into b from public.credit_accounts where organization_id=o for update;if b is null or b<p_amount then raise exception 'insufficient_credits';end if;update public.credit_accounts set available=available-p_amount,reserved=reserved+p_amount,updated_at=now() where organization_id=o;insert into public.ledger_entries(organization_id,job_id,type,amount,balance_after)values(o,p_job_id,'reserve',-p_amount,b-p_amount);end$$;
-create or replace function public.settle_job_credits(p_job_id uuid,p_reserved numeric,p_actual numeric) returns void language plpgsql security definer set search_path=public as $$declare o uuid;b numeric;begin select organization_id into o from public.jobs where id=p_job_id;update public.credit_accounts set available=available+greatest(p_reserved-p_actual,0),reserved=greatest(reserved-p_reserved,0),updated_at=now() where organization_id=o returning available into b;insert into public.ledger_entries(organization_id,job_id,type,amount,balance_after)values(o,p_job_id,'charge',-p_actual,b);end$$;
-create or replace function public.release_job_credits(p_job_id uuid,p_amount numeric) returns void language plpgsql security definer set search_path=public as $$declare o uuid;b numeric;begin select organization_id into o from public.jobs where id=p_job_id;update public.credit_accounts set available=available+p_amount,reserved=greatest(reserved-p_amount,0),updated_at=now() where organization_id=o returning available into b;insert into public.ledger_entries(organization_id,job_id,type,amount,balance_after)values(o,p_job_id,'release',p_amount,b);end$$;
-create or replace function public.add_credits(p_organization_id uuid,p_amount numeric,p_external_id text,p_metadata jsonb default '{}') returns void language plpgsql security definer set search_path=public as $$declare b numeric;begin if exists(select 1 from public.ledger_entries where external_id=p_external_id)then return;end if;update public.credit_accounts set available=available+p_amount,updated_at=now() where organization_id=p_organization_id returning available into b;insert into public.ledger_entries(organization_id,type,amount,balance_after,external_id,metadata)values(p_organization_id,'purchase',p_amount,b,p_external_id,p_metadata);end$$;
+-- Defence in depth for the dropped jobs INSERT policy: selecting dispatch
+-- candidates on status alone meant a hand-inserted row went to a real provider
+-- and was never charged (finalize_qrouter_job only bills when a quote is
+-- attached). A job is now claimable only if it carries a quote AND credits were
+-- actually reserved for it. v1 reserves per job (queue_job_with_quote,
+-- requeue_awaiting_payment_jobs); v2 reserves once per execution group
+-- (queue_execution_group_with_quotes), so both shapes are accepted.
+create or replace function public.claim_qrouter_jobs(p_limit integer default 25,p_lease_seconds integer default 120)
+returns setof public.jobs language sql security definer set search_path=public,pg_temp as $$
+  with candidates as (
+    select job.id from public.jobs job
+    where ((job.status='queued' and job.next_attempt_at<=now())
+        or (job.status='dispatching' and job.lease_expires_at<=now()))
+      and job.quote_id is not null
+      and exists(
+        select 1 from public.ledger_entries entry
+        where entry.type='reserve'
+          and (entry.job_id=job.id
+            or (job.group_id is not null and entry.metadata->>'group_id'=job.group_id::text))
+      )
+    order by job.next_attempt_at,job.created_at
+    for update skip locked
+    limit greatest(1,least(p_limit,100))
+  )
+  update public.jobs as job
+  set status='dispatching',lease_expires_at=now()+make_interval(secs=>greatest(30,p_lease_seconds)),updated_at=now()
+  from candidates where job.id=candidates.id
+  returning job.*
+$$;
+revoke all on function public.claim_qrouter_jobs(integer,integer) from public;
+grant execute on function public.claim_qrouter_jobs(integer,integer) to service_role;
+
+create or replace function public.reserve_job_credits(p_job_id uuid,p_amount numeric) returns void language plpgsql security definer set search_path=public,pg_temp as $$declare o uuid;b numeric;begin select organization_id into o from public.jobs where id=p_job_id;select available into b from public.credit_accounts where organization_id=o for update;if b is null or b<p_amount then raise exception 'insufficient_credits';end if;update public.credit_accounts set available=available-p_amount,reserved=reserved+p_amount,updated_at=now() where organization_id=o;insert into public.ledger_entries(organization_id,job_id,type,amount,balance_after)values(o,p_job_id,'reserve',-p_amount,b-p_amount);end$$;
+create or replace function public.settle_job_credits(p_job_id uuid,p_reserved numeric,p_actual numeric) returns void language plpgsql security definer set search_path=public,pg_temp as $$declare o uuid;b numeric;begin select organization_id into o from public.jobs where id=p_job_id;update public.credit_accounts set available=available+greatest(p_reserved-p_actual,0),reserved=greatest(reserved-p_reserved,0),updated_at=now() where organization_id=o returning available into b;insert into public.ledger_entries(organization_id,job_id,type,amount,balance_after)values(o,p_job_id,'charge',-p_actual,b);end$$;
+create or replace function public.release_job_credits(p_job_id uuid,p_amount numeric) returns void language plpgsql security definer set search_path=public,pg_temp as $$declare o uuid;b numeric;begin select organization_id into o from public.jobs where id=p_job_id;update public.credit_accounts set available=available+p_amount,reserved=greatest(reserved-p_amount,0),updated_at=now() where organization_id=o returning available into b;insert into public.ledger_entries(organization_id,job_id,type,amount,balance_after)values(o,p_job_id,'release',p_amount,b);end$$;
+create or replace function public.add_credits(p_organization_id uuid,p_amount numeric,p_external_id text,p_metadata jsonb default '{}') returns void language plpgsql security definer set search_path=public,pg_temp as $$declare b numeric;begin if exists(select 1 from public.ledger_entries where external_id=p_external_id)then return;end if;update public.credit_accounts set available=available+p_amount,updated_at=now() where organization_id=p_organization_id returning available into b;insert into public.ledger_entries(organization_id,type,amount,balance_after,external_id,metadata)values(p_organization_id,'purchase',p_amount,b,p_external_id,p_metadata);end$$;
 
 -- Credit-mutating security-definer functions must never be callable through
 -- PostgREST by end users; only the service role may execute them.
@@ -311,7 +398,7 @@ grant execute on function public.add_credits(uuid,numeric,text,jsonb) to service
 create or replace function public.queue_job_with_quote(
   p_job_id uuid,p_provider_cost numeric,p_transpiler_fee numeric,p_platform_fee numeric,
   p_total numeric,p_rate_snapshot jsonb,p_expires_at timestamptz
-) returns text language plpgsql security definer set search_path=public as $$
+) returns text language plpgsql security definer set search_path=public,pg_temp as $$
 declare current_job public.jobs%rowtype;new_quote_id uuid;balance numeric;
 begin
   select * into current_job from public.jobs where id=p_job_id for update;
@@ -342,7 +429,7 @@ grant execute on function public.queue_job_with_quote(uuid,numeric,numeric,numer
 -- never start only some executions because a balance changed mid-request.
 create or replace function public.queue_execution_group_with_quotes(
   p_group_id uuid,p_quotes jsonb
-) returns text language plpgsql security definer set search_path=public as $$
+) returns text language plpgsql security definer set search_path=public,pg_temp as $$
 declare current_group public.execution_groups%rowtype;required_total numeric;balance numeric;execution_count integer;quote_count integer;
 begin
   select * into current_group from public.execution_groups where id=p_group_id for update;
@@ -350,7 +437,10 @@ begin
   if current_group.status in('completed','failed','cancelled') then return current_group.status;end if;
   select count(*) into execution_count from public.jobs where group_id=p_group_id and status in('quoted','awaiting_payment');
   select count(*) into quote_count from jsonb_to_recordset(p_quotes) as input(job_id uuid,provider_cost numeric,transpiler_fee numeric,platform_fee numeric,total numeric,rate_snapshot jsonb,expires_at timestamptz);
-  if execution_count=0 or quote_count<>execution_count then raise exception 'every pending execution requires one quote';end if;
+  -- Nothing pending (every execution was cancelled) is not an error. Raising
+  -- here used to wedge the caller's whole batch, so report the status instead.
+  if execution_count=0 then return current_group.status;end if;
+  if quote_count<>execution_count then raise exception 'every pending execution requires one quote';end if;
   if exists(
     select 1 from jsonb_to_recordset(p_quotes) as input(job_id uuid,provider_cost numeric,transpiler_fee numeric,platform_fee numeric,total numeric,rate_snapshot jsonb,expires_at timestamptz)
     where not exists(select 1 from public.jobs where id=input.job_id and group_id=p_group_id and status in('quoted','awaiting_payment'))
@@ -376,23 +466,44 @@ end$$;
 revoke all on function public.queue_execution_group_with_quotes(uuid,jsonb) from public;
 grant execute on function public.queue_execution_group_with_quotes(uuid,jsonb) to service_role;
 
+-- Unparks awaiting_payment execution groups after credits arrive.
+--
+-- Two wedges used to live here. The quote aggregate covered EVERY job in the
+-- group while queue_execution_group_with_quotes counts only pending ones, so
+-- cancelling a single execution made the counts diverge permanently and the
+-- resulting exception propagated out through src/lib/qrouter/credits.ts and
+-- blocked unparking for every other job in the organization. Both queries are
+-- now filtered to the same statuses, and each group runs inside its own
+-- exception block so one bad group can never abort the batch.
 create or replace function public.requeue_awaiting_payment_execution_groups(p_organization_id uuid,p_limit integer default 20)
-returns table(group_id uuid,outcome text) language plpgsql security definer set search_path=public as $$
-declare parked public.execution_groups%rowtype;group_quotes jsonb;
+returns table(group_id uuid,outcome text) language plpgsql security definer set search_path=public,pg_temp as $$
+declare parked public.execution_groups%rowtype;group_quotes jsonb;group_outcome text;balance_exhausted boolean:=false;
 begin
   for parked in
     select * from public.execution_groups where organization_id=p_organization_id and status='awaiting_payment'
     order by created_at limit greatest(1,least(p_limit,100)) for update skip locked
   loop
-    select jsonb_agg(jsonb_build_object('job_id',quote.job_id,'provider_cost',quote.provider_cost,'transpiler_fee',quote.transpiler_fee,'platform_fee',quote.platform_fee,'total',quote.total,'rate_snapshot',quote.rate_snapshot,'expires_at',quote.expires_at))
-    into group_quotes from public.quotes quote join public.jobs job on job.id=quote.job_id
-    where job.group_id=parked.id;
-    if group_quotes is null or exists(select 1 from public.quotes quote join public.jobs job on job.id=quote.job_id where job.group_id=parked.id and quote.expires_at<=now()) then
-      group_id=parked.id;outcome='quote_expired';return next;continue;
-    end if;
-    outcome=public.queue_execution_group_with_quotes(parked.id,group_quotes);
-    group_id=parked.id;return next;
-    if outcome='awaiting_payment' then exit;end if;
+    begin
+      select jsonb_agg(jsonb_build_object('job_id',quote.job_id,'provider_cost',quote.provider_cost,'transpiler_fee',quote.transpiler_fee,'platform_fee',quote.platform_fee,'total',quote.total,'rate_snapshot',quote.rate_snapshot,'expires_at',quote.expires_at))
+      into group_quotes from public.quotes quote join public.jobs job on job.id=quote.job_id
+      where job.group_id=parked.id and job.status in('quoted','awaiting_payment');
+      if group_quotes is null or exists(
+        select 1 from public.quotes quote join public.jobs job on job.id=quote.job_id
+        where job.group_id=parked.id and job.status in('quoted','awaiting_payment') and quote.expires_at<=now()
+      ) then
+        group_outcome='quote_expired';
+      else
+        group_outcome=public.queue_execution_group_with_quotes(parked.id,group_quotes);
+      end if;
+    exception when others then
+      -- Contained: the failed group rolls back to its parked state and the
+      -- remaining groups still get their turn.
+      group_outcome='error';
+      raise warning 'requeue_awaiting_payment_execution_groups: group % failed: %',parked.id,sqlerrm;
+    end;
+    group_id=parked.id;outcome=group_outcome;return next;
+    if group_outcome='awaiting_payment' then balance_exhausted=true;end if;
+    exit when balance_exhausted;
   end loop;
 end$$;
 revoke all on function public.requeue_awaiting_payment_execution_groups(uuid,integer) from public;
@@ -401,7 +512,7 @@ grant execute on function public.requeue_awaiting_payment_execution_groups(uuid,
 -- Unparks awaiting_payment jobs (oldest first) after credits arrive. Jobs whose
 -- quote expired are reported so the caller can reprice and requeue them.
 create or replace function public.requeue_awaiting_payment_jobs(p_organization_id uuid,p_limit integer default 20)
-returns table(job_id uuid,outcome text) language plpgsql security definer set search_path=public as $$
+returns table(job_id uuid,outcome text) language plpgsql security definer set search_path=public,pg_temp as $$
 declare parked record;job_quote public.quotes%rowtype;balance numeric;
 begin
   for parked in
@@ -460,7 +571,7 @@ drop policy if exists "delivery member read" on public.webhook_deliveries;
 create policy "delivery member read" on public.webhook_deliveries for select using(exists(select 1 from public.webhook_endpoints where id=endpoint_id and public.is_org_member(organization_id)));
 
 create or replace function public.claim_webhook_deliveries(p_limit integer default 25,p_lease_seconds integer default 60)
-returns setof public.webhook_deliveries language sql security definer set search_path=public as $$
+returns setof public.webhook_deliveries language sql security definer set search_path=public,pg_temp as $$
   with candidates as (
     select id from public.webhook_deliveries where delivered_at is null and failed_at is null and next_attempt_at<=now()
       and (lease_expires_at is null or lease_expires_at<=now()) order by next_attempt_at,created_at
@@ -472,25 +583,296 @@ $$;
 revoke all on function public.claim_webhook_deliveries(integer,integer) from public;
 grant execute on function public.claim_webhook_deliveries(integer,integer) to service_role;
 
+-- Generic fixed-window counter. The old table keyed on api_key_id, which meant
+-- the ceiling could not be applied to cookie-authenticated callers (no key) and
+-- that N keys bought one organization N x the limit. An opaque text bucket
+-- covers organizations, API keys and client IPs with one implementation.
+-- Callers: src/lib/security/rate-limit.ts.
+create table if not exists public.rate_limit_windows (
+  bucket text not null,
+  window_start timestamptz not null,
+  request_count integer not null default 0,
+  primary key(bucket,window_start)
+);
+alter table public.rate_limit_windows enable row level security;
+revoke all on public.rate_limit_windows from anon, authenticated;
+create index if not exists rate_limit_windows_sweep_idx on public.rate_limit_windows(window_start);
+
+create or replace function public.consume_rate_limit(p_bucket text,p_limit integer default 120,p_window_seconds integer default 60)
+returns boolean language plpgsql security definer set search_path=public,pg_temp as $$
+declare window_seconds integer;window_start timestamptz;counted integer;
+begin
+  if p_bucket is null or p_bucket='' then return false;end if;
+  window_seconds=greatest(1,least(coalesce(p_window_seconds,60),86400));
+  window_start=to_timestamp(floor(extract(epoch from now())/window_seconds)*window_seconds);
+  insert into public.rate_limit_windows(bucket,window_start,request_count)
+  values(left(p_bucket,200),window_start,1)
+  on conflict(bucket,window_start) do update set request_count=public.rate_limit_windows.request_count+1
+  returning request_count into counted;
+  return counted<=greatest(1,p_limit);
+end$$;
+revoke all on function public.consume_rate_limit(text,integer,integer) from public;
+grant execute on function public.consume_rate_limit(text,integer,integer) to service_role;
+
+-- Retained so a deploy that still points at the old RPC keeps working. Nothing
+-- in the application calls it any more; consume_rate_limit supersedes it.
 create table if not exists public.api_rate_windows (
   api_key_id uuid not null references public.api_keys(id) on delete cascade,
   window_start timestamptz not null, request_count integer not null default 0,
   primary key(api_key_id,window_start)
 );
 alter table public.api_rate_windows enable row level security;
+revoke all on public.api_rate_windows from anon, authenticated;
+
+-- The old limiter swept the whole window table on EVERY request. Sweeping is a
+-- scheduled job now; the orchestrator cron calls it (or use pg_cron).
+create or replace function public.purge_rate_limit_windows(p_older_than interval default interval '1 hour')
+returns integer language plpgsql security definer set search_path=public,pg_temp as $$
+declare removed integer;
+begin
+  delete from public.rate_limit_windows where window_start < now() - p_older_than;
+  get diagnostics removed = row_count;
+  delete from public.api_rate_windows where window_start < now() - p_older_than;
+  return removed;
+end$$;
+revoke all on function public.purge_rate_limit_windows(interval) from public;
+grant execute on function public.purge_rate_limit_windows(interval) to service_role;
+
 create or replace function public.consume_api_rate_limit(p_api_key_id uuid,p_limit integer default 120)
-returns boolean language plpgsql security definer set search_path=public as $$declare w timestamptz;c integer;begin
-  w=date_trunc('minute',now());
-  insert into public.api_rate_windows(api_key_id,window_start,request_count) values(p_api_key_id,w,1)
-  on conflict(api_key_id,window_start) do update set request_count=public.api_rate_windows.request_count+1
-  returning request_count into c;
-  delete from public.api_rate_windows where window_start<now()-interval '10 minutes';
-  return c<=p_limit;
+returns boolean language plpgsql security definer set search_path=public,pg_temp as $$
+declare organization uuid;
+begin
+  select organization_id into organization from public.api_keys where id=p_api_key_id;
+  if organization is null then return false;end if;
+  -- Deliberately shares the organization bucket with consume_rate_limit so a
+  -- mixed-version deploy cannot hand one organization two separate budgets.
+  return public.consume_rate_limit('org:'||organization::text,p_limit,60);
 end$$;
 revoke all on function public.consume_api_rate_limit(uuid,integer) from public;
 grant execute on function public.consume_api_rate_limit(uuid,integer) to service_role;
 
-create or replace function public.handle_new_user() returns trigger language plpgsql security definer set search_path=public as $$declare o uuid;begin insert into public.profiles(id,email,full_name)values(new.id,new.email,coalesce(new.raw_user_meta_data->>'full_name',split_part(coalesce(new.email,''),'@',1)))on conflict(id)do nothing;insert into public.organizations(name,slug,created_by)values(coalesce(new.raw_user_meta_data->>'full_name','Personal')||'''s workspace','ws-'||replace(new.id::text,'-',''),new.id)returning id into o;insert into public.organization_members values(o,new.id,'owner',now());insert into public.credit_accounts(organization_id,available)values(o,10);return new;end$$;
+-- ════════════════════════════════════════════════════════════════════════════
+-- Data lifecycle — circuit release / delete really does purge
+-- ════════════════════════════════════════════════════════════════════════════
+-- Clearing jobs.source/result/analysis was never enough: the full QASM and the
+-- full result survived in job_attempts.request/response (readable by any org
+-- member through the "attempt member read" policy), in webhook_deliveries
+-- .payload (the whole result is embedded by finalize_qrouter_job), and in
+-- job_events.payload. Deleting a circuit was worse — jobs.circuit_id is
+-- ON DELETE SET NULL, so the job rows kept the complete source with no link
+-- back to the circuit that had supposedly been erased.
+--
+-- One transaction, called by both release and delete
+-- (src/lib/qrouter/v2-service.ts). It does NOT delete the circuit, the
+-- execution groups or the jobs: the caller does that afterwards for the delete
+-- path, and by then every sensitive column is already zeroed, so a failure
+-- halfway through can never leave recoverable circuit data behind.
+--
+-- Artifact OBJECTS live in Supabase Storage / Vultr object storage and cannot
+-- be removed from SQL. The returned job_ids drive deleteJobArtifacts() in the
+-- caller, which deletes the encrypted objects and then their metadata rows.
+create or replace function public.purge_circuit_data(p_circuit_id uuid,p_organization_id uuid)
+returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare target public.circuits%rowtype;active_groups integer;job_ids uuid[];purged jsonb;
+begin
+  select * into target from public.circuits
+   where id=p_circuit_id and organization_id=p_organization_id for update;
+  if not found then return null;end if;
+
+  select count(*) into active_groups from public.execution_groups
+   where circuit_id=p_circuit_id and status in('queued','running','awaiting_payment');
+  if active_groups>0 then
+    raise exception 'circuit_active' using errcode='55006';
+  end if;
+
+  -- released_at is stamped BEFORE anything is purged. readCircuit() rejects a
+  -- released circuit, so this closes the window in which a concurrent job
+  -- creation could copy the source into fresh rows behind the purge.
+  --
+  -- analysis.normalizedQasm2 is the whole circuit again and analysis is part of
+  -- the public circuit resource, so clearing only `source` left the source
+  -- readable through GET /api/v2/circuits/{id}. The remaining keys (qubit and
+  -- gate counts, depth, complexity) are metrics that cannot rebuild a program.
+  update public.circuits
+     set released_at=coalesce(released_at,now()),
+         source='',
+         analysis=(coalesce(analysis,'{}'::jsonb) - 'normalizedQasm2' - 'transpilation') || jsonb_build_object('released',true),
+         updated_at=now()
+   where id=p_circuit_id;
+
+  select coalesce(array_agg(id),'{}'::uuid[]) into job_ids from public.jobs
+   where circuit_id=p_circuit_id and organization_id=p_organization_id;
+
+  update public.jobs
+     set source='',result=null,analysis=jsonb_build_object('released',true),updated_at=now()
+   where id=any(job_ids);
+
+  -- request/response hold the submitted program and the raw provider result.
+  delete from public.job_attempts where job_id=any(job_ids);
+
+  -- Structure (type/from_status/to_status) is audit data and stays; payload is
+  -- the only field that can carry circuit or result content.
+  update public.job_events set payload='{}'::jsonb
+   where job_id=any(job_ids) and payload<>'{}'::jsonb;
+
+  -- An undelivered payload is dropped rather than posted empty, so the customer
+  -- never receives a hollow event for data they asked us to erase.
+  update public.webhook_deliveries
+     set payload='{}'::jsonb,
+         failed_at=case when delivered_at is null and failed_at is null then now() else failed_at end,
+         error=case when delivered_at is null and failed_at is null then 'payload_purged' else error end,
+         lease_expires_at=null
+   where job_id=any(job_ids);
+
+  purged=jsonb_build_object(
+    'circuit_id',p_circuit_id,
+    'job_ids',to_jsonb(job_ids),
+    'jobs',coalesce(array_length(job_ids,1),0),
+    'released_at',(select released_at from public.circuits where id=p_circuit_id)
+  );
+  return purged;
+end$$;
+revoke all on function public.purge_circuit_data(uuid,uuid) from public;
+grant execute on function public.purge_circuit_data(uuid,uuid) to service_role;
+
+-- Retention automation for circuits.expires_at, which was defined, returned in
+-- API responses and never enforced. Returns the circuits it purged so the
+-- caller can drop their artifact objects.
+create or replace function public.purge_expired_circuits(p_limit integer default 50)
+returns table(circuit_id uuid,organization_id uuid,job_ids jsonb)
+language plpgsql security definer set search_path=public,pg_temp as $$
+declare expired record;purged jsonb;
+begin
+  for expired in
+    select circuit.id,circuit.organization_id from public.circuits circuit
+     where circuit.released_at is null and circuit.expires_at is not null and circuit.expires_at<=now()
+       and not exists(
+         select 1 from public.execution_groups grp
+          where grp.circuit_id=circuit.id and grp.status in('queued','running','awaiting_payment')
+       )
+     order by circuit.expires_at
+     limit greatest(1,least(p_limit,500))
+  loop
+    begin
+      purged=public.purge_circuit_data(expired.id,expired.organization_id);
+      if purged is null then continue;end if;
+      circuit_id=expired.id;organization_id=expired.organization_id;job_ids=purged->'job_ids';
+      return next;
+    exception when others then
+      raise warning 'purge_expired_circuits: circuit % failed: %',expired.id,sqlerrm;
+    end;
+  end loop;
+end$$;
+revoke all on function public.purge_expired_circuits(integer) from public;
+grant execute on function public.purge_expired_circuits(integer) to service_role;
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- GDPR / account erasure
+-- ════════════════════════════════════════════════════════════════════════════
+-- Erases or anonymises everything that identifies a person while keeping the
+-- financial record that has to be retained: credit_accounts, ledger_entries and
+-- quotes carry no personal data once user ids are detached, and they are joined
+-- by organization_id, not by user.
+--
+-- Run this FIRST, then delete the auth.users row (Supabase dashboard, or
+-- supabase.auth.admin.deleteUser). Deleting the auth row is deliberately not
+-- done here: it belongs to the auth schema and wants an explicit operator
+-- action. Until organizations.created_by was made ON DELETE SET NULL (top of
+-- this file) that delete could not succeed at all.
+create or replace function public.erase_user_personal_data(p_user_id uuid)
+returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare target_email text;solo_org uuid;erased jsonb;anonymized text;
+begin
+  select email into target_email from public.profiles where id=p_user_id;
+  if target_email is null then
+    select email into target_email from auth.users where id=p_user_id;
+  end if;
+  -- md5 is a builtin; pgcrypto's digest() lives in the extensions schema and
+  -- would not resolve under this function's pinned search_path.
+  anonymized='erased-'||md5(p_user_id::text)||'@erased.invalid';
+
+  -- Purge circuit payloads for every organization this user is the only member
+  -- of. Shared workspaces keep their data — it belongs to the other members.
+  for solo_org in
+    select member.organization_id from public.organization_members member
+     where member.user_id=p_user_id
+       and (select count(*) from public.organization_members other
+             where other.organization_id=member.organization_id)=1
+  loop
+    perform public.purge_circuit_data(circuit.id,circuit.organization_id)
+       from public.circuits circuit
+      where circuit.organization_id=solo_org
+        and not exists(
+          select 1 from public.execution_groups grp
+           where grp.circuit_id=circuit.id and grp.status in('queued','running','awaiting_payment')
+        );
+    update public.jobs set source='',result=null,analysis=jsonb_build_object('erased',true)
+     where organization_id=solo_org;
+    delete from public.job_attempts where job_id in(select id from public.jobs where organization_id=solo_org);
+    update public.job_events set payload='{}'::jsonb
+     where job_id in(select id from public.jobs where organization_id=solo_org);
+    update public.webhook_deliveries set payload='{}'::jsonb
+     where job_id in(select id from public.jobs where organization_id=solo_org);
+    delete from public.webhook_endpoints where organization_id=solo_org;
+    delete from public.github_connections where organization_id=solo_org;
+    update public.api_keys set revoked_at=coalesce(revoked_at,now()) where organization_id=solo_org;
+  end loop;
+
+  -- Detach the person from everything that outlives them.
+  update public.jobs set user_id=null where user_id=p_user_id;
+  update public.circuits set user_id=null where user_id=p_user_id;
+  update public.execution_groups set user_id=null where user_id=p_user_id;
+  update public.api_keys set created_by=null where created_by=p_user_id;
+  update public.organizations set created_by=null where created_by=p_user_id;
+
+  -- Personal data proper.
+  delete from public.organization_members where user_id=p_user_id;
+  update public.profiles
+     set email=anonymized,full_name=null,company=null,stripe_customer_id=null,preferences='{}'::jsonb
+   where id=p_user_id;
+  if target_email is not null then
+    delete from public.allowed_emails where lower(email)=lower(target_email);
+    delete from public.admin_emails where lower(email)=lower(target_email);
+    delete from public.waitlist_submissions where lower(email)=lower(target_email);
+    delete from public.contact_submissions where lower(email)=lower(target_email);
+  end if;
+
+  erased=jsonb_build_object(
+    'user_id',p_user_id,
+    'profile_anonymized',true,
+    'retained','credit_accounts, ledger_entries, quotes and organizations are kept for financial records and carry no personal data once detached',
+    'next_step','delete the auth.users row to complete erasure'
+  );
+  return erased;
+end$$;
+revoke all on function public.erase_user_personal_data(uuid) from public;
+grant execute on function public.erase_user_personal_data(uuid) to service_role;
+
+-- A new account receives a personal workspace and a small starting balance.
+--
+-- The grant is recorded in the ledger rather than written straight onto the
+-- balance, so no organization can hold credits that no ledger row explains.
+-- Signup itself is gated by enforce_email_allowlist() (schema.sql), so this is
+-- not an open faucet today — but if self-serve signup is ever enabled, this
+-- grant becomes free quantum compute per throwaway email and must be gated or
+-- dropped at the same time.
+create or replace function public.handle_new_user() returns trigger language plpgsql security definer set search_path=public,pg_temp as $$
+declare o uuid;welcome_credits numeric:=10;balance numeric;
+begin
+  insert into public.profiles(id,email,full_name)
+  values(new.id,new.email,coalesce(new.raw_user_meta_data->>'full_name',split_part(coalesce(new.email,''),'@',1)))
+  on conflict(id) do nothing;
+  insert into public.organizations(name,slug,created_by)
+  values(coalesce(new.raw_user_meta_data->>'full_name','Personal')||'''s workspace','ws-'||replace(new.id::text,'-',''),new.id)
+  returning id into o;
+  insert into public.organization_members values(o,new.id,'owner',now());
+  insert into public.credit_accounts(organization_id,available) values(o,welcome_credits)
+  returning available into balance;
+  insert into public.ledger_entries(organization_id,type,amount,balance_after,external_id,metadata)
+  values(o,'adjustment',welcome_credits,balance,'welcome:'||o::text,jsonb_build_object('reason','signup grant'))
+  on conflict do nothing;
+  return new;
+end$$;
 
 -- Backfill workspaces for accounts created by the original private QCI app.
 do $$declare p record;o uuid;begin

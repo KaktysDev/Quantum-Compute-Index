@@ -8,6 +8,7 @@ import { analysisFromTranspilation, transpileForBackend } from "@/lib/qrouter/tr
 import type { CircuitAnalysis, InputFormat, JobStatus, RouteDecision, TranspilationResult } from "@/lib/qrouter/types";
 import { normalizeProviderResult } from "@/lib/qrouter/results";
 import { processWebhookDeliveries } from "@/lib/qrouter/webhooks";
+import { authorizeCronRequest } from "@/lib/security/secrets";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const maxDuration = 60;
@@ -239,7 +240,7 @@ async function pollJob(admin: AdminClient, job: OrchestratedJob) {
 }
 
 export async function POST(request: Request) {
-  if (request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}` || !process.env.CRON_SECRET) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!authorizeCronRequest(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const admin = createAdminClient();
   const [{ data: queued, error: claimError }, { data: active, error: pollClaimError }] = await Promise.all([
     admin.rpc("claim_qrouter_jobs", { p_limit: 25, p_lease_seconds: JOB_LEASE_SECONDS }),

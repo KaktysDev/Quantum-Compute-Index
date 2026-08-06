@@ -191,6 +191,10 @@ export default function RouterTopbar({
                   <LogOut size={14} /> Sign out
                 </button>
               </form>
+              <nav className="router-account-legal" aria-label="Legal">
+                <Link href="/terms">Terms</Link>
+                <Link href="/privacy">Privacy</Link>
+              </nav>
             </div>
           </details>
         </div>

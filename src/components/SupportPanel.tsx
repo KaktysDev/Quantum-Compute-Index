@@ -27,7 +27,7 @@ const STATUS_STYLE: Record<string, string> = {
   open: "text-amber-300 border-amber-300/30",
   in_progress: "text-sky-300 border-sky-300/30",
   resolved: "text-emerald-300 border-emerald-300/30",
-  closed: "text-[var(--muted)] border-white/10",
+  closed: "text-[var(--qr-muted)] border-white/10",
 };
 
 export default function SupportPanel({ reports }: { reports: UserReport[] }) {
@@ -64,7 +64,7 @@ export default function SupportPanel({ reports }: { reports: UserReport[] }) {
   }
 
   const inputClass =
-    "w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white placeholder:text-[var(--muted)] outline-none focus:border-[var(--qr-emerald,#34d399)] transition-colors";
+    "w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white placeholder:text-[var(--qr-muted)] outline-none focus:border-[var(--qr-emerald,#34d399)] transition-colors";
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
@@ -75,7 +75,7 @@ export default function SupportPanel({ reports }: { reports: UserReport[] }) {
         </div>
         <form onSubmit={submit} className="flex flex-col gap-4">
           <div>
-            <label className="mb-1.5 block text-xs text-[var(--muted)]">Category</label>
+            <label className="mb-1.5 block text-xs text-[var(--qr-muted)]">Category</label>
             <select className={inputClass} value={category} onChange={(e) => setCategory(e.target.value)}>
               {CATEGORIES.map((c) => (
                 <option key={c.id} value={c.id}>{c.label}</option>
@@ -83,7 +83,7 @@ export default function SupportPanel({ reports }: { reports: UserReport[] }) {
             </select>
           </div>
           <div>
-            <label className="mb-1.5 block text-xs text-[var(--muted)]">Subject</label>
+            <label className="mb-1.5 block text-xs text-[var(--qr-muted)]">Subject</label>
             <input
               className={inputClass}
               value={subject}
@@ -95,7 +95,7 @@ export default function SupportPanel({ reports }: { reports: UserReport[] }) {
             />
           </div>
           <div>
-            <label className="mb-1.5 block text-xs text-[var(--muted)]">What happened?</label>
+            <label className="mb-1.5 block text-xs text-[var(--qr-muted)]">What happened?</label>
             <textarea
               className={`${inputClass} min-h-[120px] resize-y`}
               value={message}
@@ -111,6 +111,11 @@ export default function SupportPanel({ reports }: { reports: UserReport[] }) {
             {sending ? <Loader2 size={13} className="animate-spin" /> : sent ? <CheckCircle2 size={13} /> : <Send size={13} />}
             {sending ? "Sending…" : sent ? "Report received" : "Submit report"}
           </button>
+          <p className="text-[0.64rem] leading-relaxed text-[var(--qr-muted)]">
+            We use these details only to respond to your report. See our{" "}
+            <a href="/privacy" className="underline underline-offset-2">Privacy Policy</a> for how long we
+            keep them and how to have them deleted.
+          </p>
         </form>
       </GlassCard>
 
@@ -118,7 +123,7 @@ export default function SupportPanel({ reports }: { reports: UserReport[] }) {
         <h2 className="text-sm font-semibold tracking-wide text-white">Your reports</h2>
         {reports.length === 0 ? (
           <GlassCard className="p-8 text-center">
-            <p className="text-sm text-[var(--muted)]">No reports yet. Anything broken? Tell us on the left.</p>
+            <p className="text-sm text-[var(--qr-muted)]">No reports yet. Anything broken? Tell us on the left.</p>
           </GlassCard>
         ) : (
           reports.map((r) => (
@@ -128,14 +133,14 @@ export default function SupportPanel({ reports }: { reports: UserReport[] }) {
                   <span className={`rounded border px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest ${STATUS_STYLE[r.status] ?? STATUS_STYLE.closed}`}>
                     {r.status.replace("_", " ")}
                   </span>
-                  <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">{r.category}</span>
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--qr-muted)]">{r.category}</span>
                 </div>
-                <span className="font-mono text-[10px] text-[var(--muted)]">
+                <span className="font-mono text-[10px] text-[var(--qr-muted)]">
                   {new Date(r.created_at).toLocaleString()}
                 </span>
               </div>
               <p className="mt-2 text-sm font-medium text-white">{r.subject}</p>
-              <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-[var(--muted)]">{r.message}</p>
+              <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-[var(--qr-muted)]">{r.message}</p>
               {r.admin_notes && (
                 <div className="mt-3 rounded-lg border border-emerald-300/20 bg-emerald-300/5 p-3">
                   <p className="font-mono text-[10px] uppercase tracking-widest text-emerald-300">Team response</p>

@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { logRedactedError } from "@/lib/security/log";
+import { guardPublicForm } from "@/lib/security/public-form";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { validateWaitlistSubmission } from "@/lib/waitlist";
@@ -27,6 +29,11 @@ export async function POST(request: Request) {
   if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 });
   const { name, email, linkedinUrl, jobTitle, quantumExperience, referralSource } = validation.submission;
 
+  // After validation (a malformed body must not burn an honest caller's budget)
+  // and after the honeypot, which never reaches the database anyway.
+  const limited = await guardPublicForm(request, "waitlist");
+  if (limited) return limited;
+
   try {
     const admin = createAdminClient();
     const { error } = await admin.from("waitlist_submissions").upsert({
@@ -41,7 +48,7 @@ export async function POST(request: Request) {
     if (error) throw error;
     return NextResponse.json({ ok: true });
   } catch (error) {
-    console.error("waitlist submission failed", error);
+    logRedactedError("waitlist submission failed", error);
     return NextResponse.json({ error: "We could not save your request. Please try again." }, { status: 500 });
   }
 }

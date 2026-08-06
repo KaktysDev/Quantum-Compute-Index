@@ -287,9 +287,15 @@ export default async function LandingPage() {
             <h3>Company</h3>
             <Link href="/history">History</Link>
             <Link href="/contact">Contact</Link>
+            <Link href="/terms">Terms of Service</Link>
+            <Link href="/privacy">Privacy Policy</Link>
           </nav>
           <div className="ql-footer-bottom">
             <span>{PUBLIC_CONFIG.copyright}</span>
+            <nav aria-label="Legal" className="flex flex-wrap gap-x-4 gap-y-1">
+              <Link href="/terms">Terms</Link>
+              <Link href="/privacy">Privacy</Link>
+            </nav>
             <span>QCI values identify sample or provider-snapshot sources.</span>
           </div>
         </div>

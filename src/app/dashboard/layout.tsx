@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import RouterTopbar from "@/components/RouterTopbar";
 import { checkIsAdmin } from "@/lib/admin";
@@ -40,6 +41,13 @@ export default async function DashboardLayout({
     <div className="console-shell min-h-screen">
       <RouterTopbar email={email} organization={organization} balance={balance} isAdmin={isAdmin} />
       <div className="console-main">{children}</div>
+      <footer className="console-legal">
+        <span>© {new Date().getFullYear()} QRouter</span>
+        <nav aria-label="Legal">
+          <Link href="/terms">Terms</Link>
+          <Link href="/privacy">Privacy</Link>
+        </nav>
+      </footer>
     </div>
   );
 }

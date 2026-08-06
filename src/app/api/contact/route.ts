@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { logRedactedError } from "@/lib/security/log";
+import { guardPublicForm } from "@/lib/security/public-form";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -46,6 +48,11 @@ export async function POST(req: Request) {
     );
   }
 
+  // Validation is cheap and runs first so a malformed body cannot burn an
+  // honest caller's budget; the limiter still gates the service-role write.
+  const limited = await guardPublicForm(req, "contact");
+  if (limited) return limited;
+
   // Written with the service role (RLS keeps the table private to viewers).
   let admin;
   try {
@@ -58,7 +65,9 @@ export async function POST(req: Request) {
     .from("contact_submissions")
     .insert({ name, email, phone, message });
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // Anonymous caller: the Postgres text stays server-side.
+    logRedactedError("contact submission failed", error);
+    return NextResponse.json({ error: "We could not save your message. Please try again." }, { status: 500 });
   }
   return NextResponse.json({ ok: true });
 }

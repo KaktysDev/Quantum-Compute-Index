@@ -72,7 +72,13 @@ function SigninInner() {
             className="qh-signin-btn w-full [&>button]:w-full [&>button]:justify-center"
           />
         </div>
-        <small className="qh-signin-fine">Secure OAuth via Supabase · no passwords stored.</small>
+        <small className="qh-signin-fine">
+          By continuing you agree to our{" "}
+          <a href="/terms" className="underline underline-offset-2">Terms of Service</a> and{" "}
+          <a href="/privacy" className="underline underline-offset-2">Privacy Policy</a>.
+          <br />
+          Secure OAuth via Supabase · no passwords stored.
+        </small>
       </section>
     </div>
   );

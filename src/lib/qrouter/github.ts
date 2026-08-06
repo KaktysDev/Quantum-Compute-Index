@@ -34,13 +34,38 @@ function githubAppJwt() {
   return `${body}.${base64url(signature)}`;
 }
 
+const STATE_SECRET_LABEL = "qrouter:github-oauth-state:v1";
+
+/**
+ * Keys accepted for the OAuth `state` HMAC, best first. New states are signed
+ * with the head of this list; verification accepts any entry so a deploy that
+ * introduces GITHUB_OAUTH_STATE_SECRET does not invalidate the states already
+ * in flight (they live for 10 minutes).
+ *
+ * GITHUB_OAUTH_STATE_SECRET is the dedicated, independently rotatable secret
+ * and should be set in every environment. When it is absent we fall back to
+ * KEY_ENCRYPTION_SECRET, but domain-separated behind a fixed label rather than
+ * used raw, so the two secrets are not literally the same HMAC key. The raw
+ * value stays in the accept list purely for states signed before this change.
+ */
+function stateSecretCandidates(): string[] {
+  const keyEncryptionSecret = process.env.KEY_ENCRYPTION_SECRET ?? "";
+  return [
+    process.env.GITHUB_OAUTH_STATE_SECRET ?? "",
+    process.env.GITHUB_STATE_SECRET ?? "",
+    keyEncryptionSecret ? createHmac("sha256", keyEncryptionSecret).update(STATE_SECRET_LABEL).digest("base64url") : "",
+    keyEncryptionSecret,
+    appPrivateKey(),
+  ].filter(Boolean);
+}
+
 function stateSecret() {
-  return process.env.GITHUB_STATE_SECRET || process.env.KEY_ENCRYPTION_SECRET || appPrivateKey();
+  return stateSecretCandidates()[0] ?? "";
 }
 
 export function createGithubInstallationState(principal: Principal) {
   const secret = stateSecret();
-  if (!secret) throw new Error("GITHUB_STATE_SECRET is not configured.");
+  if (!secret) throw new Error("GITHUB_OAUTH_STATE_SECRET is not configured.");
   const payload = base64url(JSON.stringify({
     organizationId: principal.organizationId,
     userId: principal.userId,
@@ -51,13 +76,15 @@ export function createGithubInstallationState(principal: Principal) {
 }
 
 export function verifyGithubInstallationState(state: string, principal: Principal) {
-  const secret = stateSecret();
+  const candidates = stateSecretCandidates();
   const [payload, signature] = state.split(".");
-  if (!secret || !payload || !signature) return false;
-  const expected = createHmac("sha256", secret).update(payload).digest("base64url");
+  if (!candidates.length || !payload || !signature) return false;
   const givenBuffer = Buffer.from(signature);
-  const expectedBuffer = Buffer.from(expected);
-  if (givenBuffer.length !== expectedBuffer.length || !timingSafeEqual(givenBuffer, expectedBuffer)) return false;
+  const signed = candidates.some((secret) => {
+    const expectedBuffer = Buffer.from(createHmac("sha256", secret).update(payload).digest("base64url"));
+    return givenBuffer.length === expectedBuffer.length && timingSafeEqual(givenBuffer, expectedBuffer);
+  });
+  if (!signed) return false;
   try {
     const value = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { organizationId?: string; userId?: string | null; expiresAt?: number };
     return value.organizationId === principal.organizationId && value.userId === principal.userId && Number(value.expiresAt) > Date.now();

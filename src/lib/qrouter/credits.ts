@@ -24,9 +24,13 @@ interface ParkedExecutionGroupJob extends ParkedJob {
  */
 export async function requeueAwaitingPaymentJobs(admin: AdminClient, organizationId: string) {
   const { data: groupData, error: groupError } = await admin.rpc("requeue_awaiting_payment_execution_groups", { p_organization_id: organizationId });
-  if (groupError) throw groupError;
-  const groupOutcomes = (groupData ?? []) as Array<{ group_id: string; outcome: "queued" | "insufficient" | "quote_expired" }>;
+  // A wedged execution group must not block the single-job requeue below: this
+  // runs on the Stripe webhook and the purchase path, and throwing here used to
+  // stop credits unparking anything else in the organization.
+  if (groupError) console.error(`Failed to requeue awaiting_payment execution groups for ${organizationId}`, groupError);
+  const groupOutcomes = (groupData ?? []) as Array<{ group_id: string; outcome: "queued" | "awaiting_payment" | "quote_expired" | "error" }>;
   for (const entry of groupOutcomes) {
+    if (entry.outcome === "awaiting_payment") break; // balance exhausted; keep FIFO order
     if (entry.outcome !== "quote_expired") continue;
     const { data: jobs, error: jobsError } = await admin.from("jobs")
       .select("id,group_id,shots,analysis,route_decision")

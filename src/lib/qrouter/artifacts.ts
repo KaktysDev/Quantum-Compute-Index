@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
+import { logRedactedError } from "@/lib/security/log";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type ArtifactKind = "source" | "transpiled" | "result";
@@ -44,6 +45,16 @@ function objectStoragePath(bucket: string, key: string) {
   return `${VULTR_SCHEME}${bucket}/${key}`;
 }
 
+/**
+ * Storage and Postgrest messages quote the offending row — here that row is
+ * encrypted circuit source or job results — and these errors bubble all the way
+ * out to the customer through `apiError`. Keep the detail in the log only.
+ */
+function artifactFailure(stage: string, error: unknown): Error {
+  logRedactedError(`Artifact ${stage} failed`, error);
+  return new Error(`Artifact ${stage} failed.`);
+}
+
 function parseObjectStoragePath(storagePath: string) {
   if (!storagePath.startsWith(VULTR_SCHEME)) return null;
   const value = storagePath.slice(VULTR_SCHEME.length);
@@ -77,7 +88,7 @@ async function uploadEncryptedArtifact(path: string, encrypted: string, contentT
   const { error } = await createAdminClient().storage
     .from(SUPABASE_BUCKET)
     .upload(path, encrypted, { contentType: "text/plain", upsert: true });
-  if (error) throw new Error(`Artifact upload failed: ${error.message}`);
+  if (error) throw artifactFailure("upload", error);
   return path;
 }
 
@@ -94,7 +105,7 @@ async function downloadEncryptedArtifact(storagePath: string) {
   const { data, error } = await createAdminClient().storage
     .from(SUPABASE_BUCKET)
     .download(storagePath);
-  if (error) throw new Error(`Artifact download failed: ${error.message}`);
+  if (error) throw artifactFailure("download", error);
   return data.text();
 }
 
@@ -107,7 +118,7 @@ async function deleteEncryptedArtifact(storagePath: string) {
     return;
   }
   const { error } = await createAdminClient().storage.from(SUPABASE_BUCKET).remove([storagePath]);
-  if (error) throw new Error(`Artifact deletion failed: ${error.message}`);
+  if (error) throw artifactFailure("deletion", error);
 }
 
 export async function storeArtifact(input: {
@@ -131,7 +142,7 @@ export async function storeArtifact(input: {
     sha256: createHash("sha256").update(input.content).digest("hex"),
     encrypted: true,
   }, { onConflict: "job_id,kind" });
-  if (rowError) throw new Error(`Artifact metadata write failed: ${rowError.message}`);
+  if (rowError) throw artifactFailure("metadata write", rowError);
   return storagePath;
 }
 
@@ -143,7 +154,7 @@ export async function loadArtifact(jobId: string, kind: ArtifactKind) {
     .eq("job_id", jobId)
     .eq("kind", kind)
     .maybeSingle();
-  if (rowError) throw new Error(`Artifact lookup failed: ${rowError.message}`);
+  if (rowError) throw artifactFailure("lookup", rowError);
   if (!artifact) return null;
   return decryptSecret(await downloadEncryptedArtifact(artifact.storage_path));
 }
@@ -153,10 +164,10 @@ export async function deleteJobArtifacts(jobIds: string[]) {
   if (!jobIds.length) return;
   const admin = createAdminClient();
   const { data, error } = await admin.from("artifacts").select("id,storage_path").in("job_id", jobIds);
-  if (error) throw new Error(`Artifact lookup failed: ${error.message}`);
+  if (error) throw artifactFailure("lookup", error);
   const artifacts = data ?? [];
   await Promise.all(artifacts.map((artifact) => deleteEncryptedArtifact(artifact.storage_path)));
   if (!artifacts.length) return;
   const { error: deleteError } = await admin.from("artifacts").delete().in("id", artifacts.map((artifact) => artifact.id));
-  if (deleteError) throw new Error(`Artifact metadata deletion failed: ${deleteError.message}`);
+  if (deleteError) throw artifactFailure("metadata deletion", deleteError);
 }

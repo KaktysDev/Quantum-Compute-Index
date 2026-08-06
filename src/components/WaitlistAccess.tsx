@@ -119,12 +119,26 @@ export default function WaitlistAccess({ unauthorized = false }: { unauthorized?
         <button className="access-submit access-span-two" type="submit" disabled={status === "submitting"}>
           {status === "submitting" ? <><Loader2 className="spin" /> Submitting</> : <>Request pilot access <ArrowRight /></>}
         </button>
+        {/* Opacity rather than a fixed color so the line stays legible on this
+            page's light surface and anywhere else this form is reused. */}
+        <p className="access-span-two m-0 text-[0.66rem] leading-relaxed opacity-70">
+          By requesting access you agree to our{" "}
+          <a href="/terms" className="underline underline-offset-2">Terms of Service</a> and confirm you
+          have read our{" "}
+          <a href="/privacy" className="underline underline-offset-2">Privacy Policy</a>, which explains
+          how we handle the details you submit here.
+        </p>
       </form>
 
       <div className="access-signin">
         <span><LogIn /> Already approved?</span>
         <SignInButton label="Sign in with Google" variant="glass" next="/dashboard" className="access-google" />
       </div>
+      <p className="mt-4 text-[0.66rem] leading-relaxed opacity-70">
+        Signing in creates a QRouter account and means you accept the{" "}
+        <a href="/terms" className="underline underline-offset-2">Terms of Service</a> and{" "}
+        <a href="/privacy" className="underline underline-offset-2">Privacy Policy</a>.
+      </p>
     </section>
   );
 }

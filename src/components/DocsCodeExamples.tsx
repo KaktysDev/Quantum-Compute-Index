@@ -1,7 +1,4 @@
-"use client";
-
-import { Check, Copy } from "lucide-react";
-import { useState } from "react";
+import DocsCodeTabs from "@/components/docs/DocsCodeTabs";
 import { PUBLIC_JOBS_ENDPOINT } from "@/lib/publicConfig";
 
 const EXAMPLES = {
@@ -49,26 +46,5 @@ with QRouter(os.environ["QROUTER_API_KEY"]) as qrouter:
 };
 
 export default function DocsCodeExamples() {
-  const [language, setLanguage] = useState<keyof typeof EXAMPLES>("curl");
-  const [copied, setCopied] = useState(false);
-
-  async function copy() {
-    await navigator.clipboard.writeText(EXAMPLES[language]);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1400);
-  }
-
-  return (
-    <div className="docs-code-example">
-      <div className="docs-code-toolbar">
-        <div role="tablist" aria-label="Quickstart language">
-          {(Object.keys(EXAMPLES) as Array<keyof typeof EXAMPLES>).map((item) => (
-            <button role="tab" aria-selected={language === item} className={language === item ? "active" : ""} key={item} onClick={() => setLanguage(item)}>{item}</button>
-          ))}
-        </div>
-        <button className="docs-copy" onClick={copy} aria-label="Copy code">{copied ? <Check size={14} /> : <Copy size={14} />}</button>
-      </div>
-      <pre><code>{EXAMPLES[language]}</code></pre>
-    </div>
-  );
+  return <DocsCodeTabs examples={EXAMPLES} label="Quickstart language" />;
 }

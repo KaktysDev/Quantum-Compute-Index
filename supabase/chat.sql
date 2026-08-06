@@ -48,7 +48,7 @@ alter table public.assistant_usage enable row level security;
 create or replace function public.consume_assistant_quota(
   p_org uuid, p_msg_limit integer, p_token_limit bigint, p_window_seconds integer default 10800
 ) returns table (allowed boolean, messages integer, tokens bigint, reset_at timestamptz)
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = public, pg_temp as $$
 declare w timestamptz; m integer; t bigint;
 begin
   w := to_timestamp(floor(extract(epoch from now()) / p_window_seconds) * p_window_seconds);
@@ -67,7 +67,7 @@ grant execute on function public.consume_assistant_quota(uuid, integer, bigint, 
 -- Add the streamed token count after a turn completes.
 create or replace function public.record_assistant_tokens(
   p_org uuid, p_tokens bigint, p_window_seconds integer default 10800
-) returns void language plpgsql security definer set search_path = public as $$
+) returns void language plpgsql security definer set search_path = public, pg_temp as $$
 declare w timestamptz;
 begin
   w := to_timestamp(floor(extract(epoch from now()) / p_window_seconds) * p_window_seconds);

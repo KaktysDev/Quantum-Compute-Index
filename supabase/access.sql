@@ -16,13 +16,22 @@
 -- page you use to approve other people.
 -- ════════════════════════════════════════════════════════════════════════════
 
--- ── 1. ADMINS — EDIT THIS LIST ──────────────────────────────────────────────
+-- ── 1. ADMINS — EDIT THIS LIST, THEN UNCOMMENT ──────────────────────────────
 -- These accounts get the Admin tab and permanent console access.
-insert into public.admin_emails (email, added_by) values
-  ('lagodaoleg1357@gmail.com',        'founder'),
-  ('qci.research@gmail.com',          'founder'),
-  ('gouthamkrishnaronanki@gmail.com', 'founder')
-on conflict (email) do nothing;
+--
+-- Deliberately commented out and placeholder-only: this file is committed, and
+-- a personal email address in version control is both a privacy leak and a
+-- ready-made target list for anyone who gets read access to the repository.
+-- Seed the real addresses by editing this block locally and running it, or by
+-- inserting straight into public.admin_emails from the Supabase SQL editor.
+--
+-- NOTE: real addresses were previously committed here and are still present in
+-- git history and in the live public.admin_emails table. Removing them from
+-- either is an operator decision — see supabase/APPLY-V2-MIGRATION.md.
+--
+-- insert into public.admin_emails (email, added_by) values
+--   ('founder@example.com', 'founder')
+-- on conflict (email) do nothing;
 
 -- To remove an admin, delete the row (they keep console access unless you also
 -- delete them from allowed_emails):
@@ -43,7 +52,7 @@ returns boolean
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
   select exists (
     select 1 from public.allowed_emails a
@@ -63,7 +72,7 @@ create or replace function public.grant_console_access(p_email text)
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare target text := lower(nullif(trim(p_email), ''));
 begin
@@ -89,7 +98,7 @@ create or replace function public.revoke_console_access(p_email text)
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare target text := lower(nullif(trim(p_email), ''));
 begin
@@ -114,7 +123,7 @@ create or replace function public.decline_waitlist_submission(p_email text)
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare target text := lower(nullif(trim(p_email), ''));
 begin

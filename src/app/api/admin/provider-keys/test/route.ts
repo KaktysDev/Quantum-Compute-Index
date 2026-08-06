@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdminApi } from "@/lib/admin";
+import { logRedactedError } from "@/lib/security/log";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptSecret } from "@/lib/crypto";
 import { getProvider, isProviderId } from "@/lib/providers";
@@ -94,8 +95,11 @@ export async function POST(req: Request) {
     const result = await adapter.testConnection(credential);
     return NextResponse.json(result);
   } catch (e) {
+    // Upstream provider text can quote the credential or internal endpoints, so
+    // it stays in the server log; the admin UI just gets the outcome.
+    logRedactedError(`provider connection test failed for ${parsed.provider}`, e);
     return NextResponse.json(
-      { ok: false, message: e instanceof Error ? e.message : "Connection test failed." },
+      { ok: false, message: "Connection test failed. Check the server logs for details." },
       { status: 200 },
     );
   }

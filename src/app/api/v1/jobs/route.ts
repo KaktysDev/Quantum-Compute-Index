@@ -8,6 +8,7 @@ import { submitToProvider } from "@/lib/qrouter/execution";
 import { apiError } from "@/lib/qrouter/http";
 import { prepareExecution } from "@/lib/qrouter/pipeline";
 import { loadRoutingContext } from "@/lib/qrouter/routingContext";
+import { assertTargetAllowed, backendsForPrincipal, requireScope } from "@/lib/qrouter/scopes";
 import { publicTranspilation } from "@/lib/qrouter/transpiler";
 import { createJobSchema } from "@/lib/qrouter/validation";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -20,6 +21,7 @@ export const maxDuration = 60;
 export async function GET(request: Request) {
   try {
     const principal = await resolvePrincipal(request);
+    requireScope(principal, "jobs:read");
     if (principal.demo) {
       const data = [...demoJobs.values()].filter((job) => job.organization_id === principal.organizationId).sort((a, b) => b.created_at.localeCompare(a.created_at));
       return NextResponse.json({ object: "list", data });
@@ -36,6 +38,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const principal = await resolvePrincipal(request);
+    requireScope(principal, "jobs:write");
     const parsed = createJobSchema.safeParse(await request.json());
     if (!parsed.success) {
       return NextResponse.json({ error: { type: "invalid_request", message: "The request body is invalid.", details: parsed.error.flatten() } }, { status: 400 });
@@ -43,8 +46,9 @@ export async function POST(request: Request) {
     const input = parsed.data;
     const originalAnalysis = analyzeCircuit(input.circuit, input.format);
     const { snapshot, backends } = await loadRoutingContext(principal.demo);
+    assertTargetAllowed(principal, input.target, backends);
     const prepared = await prepareExecution({
-      backends,
+      backends: backendsForPrincipal(principal, backends),
       analysis: originalAnalysis,
       shots: input.shots,
       target: input.target,

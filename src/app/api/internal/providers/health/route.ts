@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { checkProviderConnections } from "@/lib/qrouter/providerHealth";
+import { authorizeCronRequest } from "@/lib/security/secrets";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
-  if (!process.env.CRON_SECRET || request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!authorizeCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const providers = await checkProviderConnections();

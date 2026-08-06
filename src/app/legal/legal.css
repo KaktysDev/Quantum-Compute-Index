@@ -1,0 +1,531 @@
+/* ═════════════════════════════════════════════════════════════════════════
+   Legal document pages (/terms, /privacy).
+
+   Same editorial language as the rest of the public site — square corners,
+   64px grid backdrop, Geist Sans — but tuned for long-form reading: a fixed
+   measure, a sticky section index, and generous vertical rhythm.
+
+   Theming: the shell remaps the shared global tokens (--bg / --fg / --muted /
+   --line / --accent …) the way .qci-light does, then re-remaps them under
+   [data-theme="dark"]. Every rule below reads those variables, so the page
+   follows the appearance switch without a single hard-coded color outside the
+   two token blocks.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.legal-shell {
+  --bg: #f8f8f5;
+  --surface: #ffffff;
+  --surface-raised: #f2f6f3;
+  --fg: #111612;
+  --muted: #626963;
+  --muted-dim: #8a918b;
+  --line: #d9ddd8;
+  --accent: #009c63;
+  --legal-line-soft: #e6e9e5;
+  --legal-accent-soft: rgba(0, 156, 99, 0.07);
+  --legal-grid: rgba(17, 22, 18, 0.018);
+  --legal-todo-bg: #fdf5e0;
+  --legal-todo-line: #e0c98d;
+  --legal-todo-fg: #7a5904;
+
+  color-scheme: light;
+  min-height: 100vh;
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(var(--legal-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--legal-grid) 1px, transparent 1px);
+  background-size: 64px 64px;
+  color: var(--fg);
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+:root[data-theme="dark"] .legal-shell {
+  --bg: #030705;
+  --surface: #0a100d;
+  --surface-raised: #0e1611;
+  --fg: #eef4f1;
+  --muted: #93a69d;
+  --muted-dim: #5d6f67;
+  --line: rgba(255, 255, 255, 0.11);
+  --accent: #42e59e;
+  --legal-line-soft: rgba(255, 255, 255, 0.06);
+  --legal-accent-soft: rgba(66, 229, 158, 0.1);
+  --legal-grid: rgba(255, 255, 255, 0.022);
+  --legal-todo-bg: rgba(230, 178, 51, 0.11);
+  --legal-todo-line: rgba(230, 178, 51, 0.4);
+  --legal-todo-fg: #e8c463;
+
+  color-scheme: dark;
+}
+
+/* The shared site nav is styled light-only in landing.css. On a dark legal
+   page that would leave a bright bar above dark copy, so retint it here —
+   scoped to legal pages, and a no-op in browsers without :has(). */
+:root[data-theme="dark"] body:has(.legal-shell) .ql-nav-wrap,
+:root[data-theme="dark"] body:has(.legal-shell) .ql-nav-wrap.scrolled {
+  background: var(--surface);
+}
+:root[data-theme="dark"] body:has(.legal-shell) .ql-announce {
+  border-color: var(--line);
+  background: var(--surface-raised);
+  color: var(--muted);
+}
+:root[data-theme="dark"] body:has(.legal-shell) .ql-brand strong,
+:root[data-theme="dark"] body:has(.legal-shell) .ql-login,
+:root[data-theme="dark"] body:has(.legal-shell) .ql-burger {
+  background: transparent;
+  color: var(--fg);
+}
+:root[data-theme="dark"] body:has(.legal-shell) .ql-tabs > a {
+  color: var(--muted);
+}
+
+/* The shared Logo lockup hard-codes text-white for the dark console. Remap it
+   to the shell's foreground the same way .qci-light does, so the wordmark stays
+   legible on the light page. */
+.legal-shell .text-white {
+  color: var(--fg);
+}
+
+/* ── Page frame ───────────────────────────────────────────────────────── */
+
+.legal-wrap {
+  width: min(100%, 1180px);
+  margin-inline: auto;
+  padding-inline: clamp(1.25rem, 4vw, 3.5rem);
+}
+
+.legal-header {
+  padding-block: clamp(3.5rem, 7vw, 6rem) clamp(2rem, 4vw, 3rem);
+  border-bottom: 1px solid var(--line);
+}
+
+.legal-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0 0 1.1rem;
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+.legal-eyebrow > i {
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+}
+
+.legal-title {
+  max-width: 22ch;
+  margin: 0;
+  font-size: clamp(2.6rem, 6vw, 4.4rem);
+  font-weight: 490;
+  letter-spacing: -0.05em;
+  line-height: 1;
+}
+
+.legal-lede {
+  max-width: 62ch;
+  margin: 1.6rem 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.75;
+}
+
+.legal-lede a,
+.legal-meta a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.legal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  margin: 2.25rem 0 0;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.legal-meta > div {
+  flex: 1 1 190px;
+  padding: 0.95rem 1.1rem;
+  border-right: 1px solid var(--line);
+}
+
+.legal-meta > div:last-child {
+  border-right: 0;
+}
+
+.legal-meta dt {
+  margin: 0;
+  color: var(--muted-dim);
+  font-size: 0.54rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.legal-meta dd {
+  margin: 0.45rem 0 0;
+  color: var(--fg);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+/* ── Body: sticky index + document ────────────────────────────────────── */
+
+.legal-body {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  gap: clamp(2rem, 5vw, 4.5rem);
+  align-items: start;
+  padding-block: clamp(2.5rem, 5vw, 4rem) clamp(4rem, 8vw, 7rem);
+}
+
+.legal-toc {
+  position: sticky;
+  top: 92px;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+.legal-toc > p {
+  margin: 0 0 0.7rem;
+  color: var(--muted-dim);
+  font-size: 0.54rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.legal-toc ol {
+  display: grid;
+  gap: 0.1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: legal-toc;
+}
+
+.legal-toc a {
+  display: grid;
+  grid-template-columns: 1.9rem 1fr;
+  align-items: baseline;
+  padding: 0.35rem 0.5rem 0.35rem 0;
+  color: var(--muted);
+  font-size: 0.73rem;
+  line-height: 1.45;
+  text-decoration: none;
+  transition: color 140ms ease;
+}
+
+.legal-toc li {
+  counter-increment: legal-toc;
+}
+
+.legal-toc a::before {
+  content: counter(legal-toc, decimal-leading-zero);
+  color: var(--muted-dim);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.6rem;
+}
+
+.legal-toc a:hover,
+.legal-toc a:hover::before {
+  color: var(--accent);
+}
+
+.legal-doc {
+  max-width: 74ch;
+}
+
+/* ── Document typography ──────────────────────────────────────────────── */
+
+.legal-section {
+  padding-block: 2.4rem;
+  border-bottom: 1px solid var(--legal-line-soft);
+  scroll-margin-top: 96px;
+}
+
+.legal-section:first-child {
+  padding-top: 0;
+}
+
+.legal-section:last-child {
+  border-bottom: 0;
+}
+
+.legal-section > h2 {
+  display: grid;
+  grid-template-columns: 2.6rem 1fr;
+  align-items: baseline;
+  margin: 0 0 1.1rem;
+  font-size: 1.12rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+}
+
+.legal-section > h2 > span {
+  color: var(--accent);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.legal-section h3 {
+  margin: 1.9rem 0 0.7rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.legal-section p {
+  margin: 0 0 1rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.8;
+}
+
+.legal-section p:last-child,
+.legal-section ul:last-child,
+.legal-section ol:last-child {
+  margin-bottom: 0;
+}
+
+/* Tailwind's preflight strips list markers, so restore them explicitly. */
+.legal-section :is(ul, ol) {
+  margin: 0 0 1rem;
+  padding-left: 1.15rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.8;
+}
+
+.legal-section ul {
+  list-style: disc outside;
+}
+
+.legal-section ol {
+  list-style: decimal outside;
+}
+
+.legal-section li {
+  margin-bottom: 0.5rem;
+  padding-left: 0.25rem;
+}
+
+.legal-section li::marker {
+  color: var(--muted-dim);
+}
+
+.legal-section :is(strong, b) {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.legal-section code {
+  padding: 0.1em 0.35em;
+  border: 1px solid var(--line);
+  background: var(--surface-raised);
+  color: var(--fg);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.78em;
+}
+
+.legal-section a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.legal-section a:hover {
+  text-decoration-thickness: 2px;
+}
+
+/* Plain-language summary that opens a long section. */
+.legal-note {
+  margin: 0 0 1.4rem;
+  padding: 0.9rem 1.1rem;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  background: var(--legal-accent-soft);
+}
+
+.legal-note p {
+  margin: 0;
+  color: var(--fg);
+  font-size: 0.79rem;
+  line-height: 1.7;
+}
+
+/* ── Data tables (subprocessors, retention, cookies) ──────────────────── */
+
+.legal-table {
+  width: 100%;
+  margin: 0 0 1.2rem;
+  border: 1px solid var(--line);
+  border-collapse: collapse;
+  background: var(--surface);
+  font-size: 0.76rem;
+  text-align: left;
+}
+
+.legal-table :is(th, td) {
+  padding: 0.7rem 0.85rem;
+  border-bottom: 1px solid var(--legal-line-soft);
+  border-right: 1px solid var(--legal-line-soft);
+  vertical-align: top;
+  line-height: 1.6;
+}
+
+.legal-table :is(th, td):last-child,
+.legal-table tr:last-child td {
+  border-right: 0;
+}
+
+.legal-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.legal-table th {
+  color: var(--muted-dim);
+  font-size: 0.55rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.legal-table td {
+  color: var(--muted);
+}
+
+.legal-table td:first-child {
+  color: var(--fg);
+  font-weight: 550;
+}
+
+.legal-table-scroll {
+  margin: 0 0 1.2rem;
+  overflow-x: auto;
+}
+
+.legal-table-scroll > .legal-table {
+  margin: 0;
+  min-width: 540px;
+}
+
+/* ── Unresolved business/legal facts ──────────────────────────────────── */
+
+.legal-placeholder {
+  padding: 0.05em 0.4em;
+  border: 1px dashed var(--legal-todo-line);
+  background: var(--legal-todo-bg);
+  color: var(--legal-todo-fg);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.78em;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ── Footer navigation between the legal documents ────────────────────── */
+
+.legal-end {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 2.5rem;
+  padding-top: 1.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.legal-end p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.legal-end nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+}
+
+.legal-end a {
+  color: var(--accent);
+  font-size: 0.76rem;
+  text-decoration: none;
+}
+
+.legal-end a:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+/* ── Inline consent lines used by forms across the app ────────────────── */
+
+.legal-consent {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.6;
+}
+
+.legal-consent a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.legal-consent a:hover {
+  color: var(--accent);
+}
+
+@media (max-width: 900px) {
+  .legal-body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2rem;
+  }
+
+  .legal-toc {
+    position: static;
+    max-height: none;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--line);
+    background: var(--surface);
+  }
+
+  .legal-toc ol {
+    columns: 2;
+    column-gap: 1.25rem;
+  }
+}
+
+@media (max-width: 560px) {
+  .legal-meta > div {
+    flex-basis: 100%;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .legal-meta > div:last-child {
+    border-bottom: 0;
+  }
+
+  .legal-toc ol {
+    columns: 1;
+  }
+
+  .legal-section > h2 {
+    grid-template-columns: 2.1rem 1fr;
+  }
+}

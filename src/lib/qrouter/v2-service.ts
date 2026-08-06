@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { analyzeCircuit, CircuitValidationError } from "./analyze";
 import { deleteJobArtifacts, storeArtifact, loadArtifact } from "./artifacts";
+import { mapWithConcurrency } from "./concurrency";
 import { demoJobs, type StoredJob } from "./demo-store";
 import { submitToProvider } from "./execution";
 import { cancelProviderJob } from "./execution";
@@ -11,11 +12,44 @@ import { normalizeProviderResult } from "./results";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Principal } from "./auth";
 import { V2ApiError } from "./v2-http";
-import { demoV2Circuits, demoV2Groups, type DemoCircuit } from "./v2-demo-store";
-import { hashRequest, newV2Id, type CircuitResource, type CreateCircuitInput, type CreateExecutionGroupInput, type ExecutionGroup } from "./v2";
+import { demoV2Circuits, demoV2Groups, type DemoCircuit, type DemoGroup } from "./v2-demo-store";
+import { hashRequest, newV2Id, type CircuitResource, type CreateCircuitInput, type CreateExecutionGroupInput, type ExecutionGroup, type V2GroupStatus } from "./v2";
 
 type DbRow = Record<string, unknown>;
 type PreparedExecution = Awaited<ReturnType<typeof prepareExecution>> & CreateExecutionGroupInput["executions"][number];
+
+const ACTIVE_EXECUTION_STATUSES = ["created", "analyzing", "quoted", "funds_reserved", "queued", "dispatching", "submitted", "processing", "cancellation_requested"];
+
+/** Simultaneous remote transpiles / artifact uploads per execution group. */
+const EXECUTION_FANOUT_LIMIT = Number(process.env.QROUTER_EXECUTION_CONCURRENCY ?? 4);
+
+/** Mirrors the group rollup in finalize_qrouter_job so demo and SQL agree. */
+function groupStatusFrom(statuses: string[]): V2GroupStatus {
+  if (statuses.some((status) => ACTIVE_EXECUTION_STATUSES.includes(status))) return "running";
+  if (statuses.includes("awaiting_payment")) return "awaiting_payment";
+  if (statuses.includes("completed")) return "completed";
+  if (statuses.includes("failed")) return "failed";
+  return "cancelled";
+}
+
+function groupResource(group: DemoGroup): ExecutionGroup {
+  return {
+    id: group.id, circuit_id: group.circuit_id, organization_id: group.organization_id, status: group.status,
+    metadata: group.metadata, executions: group.executions, created_at: group.created_at,
+    updated_at: group.updated_at, completed_at: group.completed_at, error: group.error,
+  };
+}
+
+/**
+ * Keeps the derived metrics (qubits, depth, gate counts) and drops the two keys
+ * that are the circuit itself. Mirrors the jsonb subtraction in
+ * purge_circuit_data so demo and SQL purge to the same shape.
+ */
+function releasedAnalysis(analysis: unknown): Record<string, unknown> {
+  const source = (analysis ?? {}) as Record<string, unknown>;
+  const kept = Object.fromEntries(Object.entries(source).filter(([key]) => key !== "normalizedQasm2" && key !== "transpilation"));
+  return { ...kept, released: true };
+}
 
 function circuitResource(row: DbRow): CircuitResource {
   return {
@@ -67,7 +101,7 @@ export async function createCircuitResource(principal: Principal, input: CreateC
     const existing = [...demoV2Circuits.values()].find((circuit) => circuit.organization_id === principal.organizationId && circuit.idempotency_key === idempotencyKey);
     if (existing) {
       if (existing.request_hash !== requestHash) throw new V2ApiError(409, "idempotency_conflict", "Idempotency key was already used for a different circuit.");
-      return { circuit: existing, replayed: true };
+      return { circuit: circuitResource(existing as unknown as DbRow), replayed: true };
     }
     const now = new Date().toISOString();
     const circuit: DemoCircuit = {
@@ -76,7 +110,7 @@ export async function createCircuitResource(principal: Principal, input: CreateC
       created_at: now, expires_at: null, released_at: null, idempotency_key: idempotencyKey, request_hash: requestHash,
     };
     demoV2Circuits.set(circuit.id, circuit);
-    return { circuit, replayed: false };
+    return { circuit: circuitResource(circuit as unknown as DbRow), replayed: false };
   }
 
   const replay = await existingCircuit(principal, idempotencyKey, requestHash);
@@ -128,14 +162,21 @@ export async function releaseCircuitResource(principal: Principal, circuitId: st
       if (group.circuit_id !== circuitId) continue;
       for (const execution of group.executions) {
         const job = demoJobs.get(String(execution.id));
-        if (!job) continue;
-        job.source = "";
-        job.result = null;
-        job.analysis = { ...job.analysis, normalizedQasm2: "", transpilation: undefined };
+        if (job) {
+          job.source = "";
+          job.result = null;
+          job.analysis = { ...job.analysis, normalizedQasm2: "", transpilation: undefined };
+        }
+        // The execution summary holds its own copy of the analysis, so the
+        // transpiled QASM survives here even after the job row is cleared.
+        execution.analysis = releasedAnalysis(execution.analysis);
         execution.result_available = false;
       }
     }
     circuit.source = "";
+    // analysis.normalizedQasm2 is the whole circuit again, and analysis is part
+    // of the public circuit resource.
+    circuit.analysis = { ...releasedAnalysis(circuit.analysis) };
     circuit.released_at ??= new Date().toISOString();
     return circuitResource(circuit as unknown as DbRow);
   }
@@ -146,17 +187,40 @@ export async function releaseCircuitResource(principal: Principal, circuitId: st
   const { count, error: countError } = await admin.from("execution_groups").select("id", { count: "exact", head: true }).eq("circuit_id", circuitId).in("status", ["queued", "running", "awaiting_payment"]);
   if (countError) throw countError;
   if ((count ?? 0) > 0) throw new V2ApiError(409, "circuit_active", "Every job for this circuit must be terminal before release.");
-  const { data: jobs, error: jobsError } = await admin.from("jobs").select("id").eq("circuit_id", circuitId).not("group_id", "is", null);
-  if (jobsError) throw jobsError;
-  const jobIds = (jobs ?? []).map((job) => job.id);
-  await deleteJobArtifacts(jobIds);
-  if (jobIds.length) {
-    const { error: clearError } = await admin.from("jobs").update({ source: "", result: null, analysis: { released: true }, updated_at: new Date().toISOString() }).in("id", jobIds);
-    if (clearError) throw clearError;
-  }
-  const { data: released, error: updateError } = await admin.from("circuits").update({ source: "", released_at: circuit.released_at ?? new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", circuitId).select("*").single();
-  if (updateError) throw updateError;
+  await purgeCircuitData(admin, principal, circuitId, "release");
+  const { data: released, error: refetchError } = await admin.from("circuits").select("*").eq("id", circuitId).eq("organization_id", principal.organizationId).single();
+  if (refetchError) throw refetchError;
   return circuitResource(released as DbRow);
+}
+
+/**
+ * Runs the transactional scrub and then removes the encrypted artifact objects.
+ *
+ * Clearing jobs.source/result/analysis was never enough — the full QASM and the
+ * full result also lived in job_attempts.request/response, webhook_deliveries
+ * .payload and job_events.payload, all of which an org member can read over
+ * PostgREST. purge_circuit_data covers every one of those in one transaction
+ * and stamps released_at first, so a concurrent job creation cannot copy the
+ * source into fresh rows behind the purge.
+ *
+ * Artifact objects live in Supabase Storage / Vultr object storage and cannot
+ * be deleted from SQL, so the RPC hands back the job ids and deleteJobArtifacts
+ * removes the objects before their metadata rows.
+ */
+async function purgeCircuitData(admin: ReturnType<typeof createAdminClient>, principal: Principal, circuitId: string, action: "release" | "deletion") {
+  const { data, error } = await admin.rpc("purge_circuit_data", { p_circuit_id: circuitId, p_organization_id: principal.organizationId });
+  if (error) {
+    // 55006 (object_in_use) is raised when a group is still live. The pre-check
+    // above usually catches it; this is the race-safe backstop.
+    if (error.code === "55006" || /circuit_active/.test(error.message ?? "")) {
+      throw new V2ApiError(409, "circuit_active", `Every job for this circuit must be terminal before ${action}.`);
+    }
+    throw error;
+  }
+  if (!data) throw new V2ApiError(404, "circuit_not_found", "Circuit not found.");
+  const jobIds = ((data as { job_ids?: unknown }).job_ids ?? []) as string[];
+  await deleteJobArtifacts(jobIds);
+  return jobIds;
 }
 
 export async function deleteCircuitResource(principal: Principal, circuitId: string) {
@@ -179,9 +243,14 @@ export async function deleteCircuitResource(principal: Principal, circuitId: str
   const { count, error: countError } = await admin.from("execution_groups").select("id", { count: "exact", head: true }).eq("circuit_id", circuitId).in("status", ["queued", "running", "awaiting_payment"]);
   if (countError) throw countError;
   if ((count ?? 0) > 0) throw new V2ApiError(409, "circuit_active", "Every job for this circuit must be terminal before deletion.");
-  const { data: jobs, error: jobsError } = await admin.from("jobs").select("id").eq("circuit_id", circuitId).not("group_id", "is", null);
-  if (jobsError) throw jobsError;
-  await deleteJobArtifacts((jobs ?? []).map((job) => job.id));
+  // Scrub before deleting rows. jobs.circuit_id is ON DELETE SET NULL, so
+  // dropping the circuit first used to orphan job rows that still held the
+  // complete source with no link back to the circuit that was "deleted".
+  await purgeCircuitData(admin, principal, circuitId, "deletion");
+  // execution_groups.circuit_id is ON DELETE RESTRICT, so terminal groups (and
+  // their jobs, which cascade from group_id) have to go before the circuit row.
+  const { error: groupsError } = await admin.from("execution_groups").delete().eq("circuit_id", circuitId).eq("organization_id", principal.organizationId);
+  if (groupsError) throw groupsError;
   const { error: deleteError } = await admin.from("circuits").delete().eq("id", circuitId).eq("organization_id", principal.organizationId);
   if (deleteError) throw deleteError;
 }
@@ -191,17 +260,29 @@ async function prepareGroupExecutions(circuit: DbRow & { source: string }, input
     loadRoutingContext(demo),
     Promise.resolve(circuit.analysis),
   ]);
-  return Promise.all(input.executions.map(async (execution) => {
+  // Each prepareExecution is a full remote transpile; a 25-execution group must
+  // not fire 25 of them at the Qiskit worker from one request.
+  return mapWithConcurrency(input.executions, EXECUTION_FANOUT_LIMIT, async (execution) => {
     const prepared = await prepareExecution({
       backends: context.backends, analysis: analysis as never, shots: execution.shots,
       target: execution.target, mode: execution.routing_mode, constraints: execution.constraints,
       qciSnapshotId: context.snapshot.id, qciTimestamp: context.snapshot.ts, optimizationLevel: execution.optimization_level,
     });
     return { ...execution, ...prepared };
-  }));
+  });
 }
 
-function groupFromDemo(id: string): ExecutionGroup {
+/**
+ * Drops a half-built group (its jobs cascade) so the failure is retriable.
+ * Otherwise the idempotency key replays a group whose executions are stuck in
+ * `quoted`, a status the orchestrator never claims.
+ */
+async function discardGroup(admin: ReturnType<typeof createAdminClient>, groupId: string) {
+  const { error } = await admin.from("execution_groups").delete().eq("id", groupId);
+  if (error) console.error(`Failed to discard incomplete execution group ${groupId}`, error);
+}
+
+function groupFromDemo(id: string): DemoGroup {
   const group = demoV2Groups.get(id);
   if (!group) throw new V2ApiError(404, "job_not_found", "Job not found.");
   return group;
@@ -211,7 +292,7 @@ export async function getExecutionGroup(principal: Principal, groupId: string): 
   if (principal.demo) {
     const group = groupFromDemo(groupId);
     if (group.organization_id !== principal.organizationId) throw new V2ApiError(404, "job_not_found", "Job not found.");
-    return group;
+    return groupResource(group);
   }
   const admin = createAdminClient();
   const { data: group, error } = await admin.from("execution_groups").select("*").eq("id", groupId).eq("organization_id", principal.organizationId).maybeSingle();
@@ -234,7 +315,7 @@ async function createDemoGroup(principal: Principal, circuit: DemoCircuit, input
   const now = new Date().toISOString();
   const prepared = await prepareGroupExecutions(circuit as unknown as DbRow & { source: string }, input, true);
   const groupId = newV2Id();
-  const executions = await Promise.all(prepared.map(async (item, position) => {
+  const executions = await mapWithConcurrency(prepared, EXECUTION_FANOUT_LIMIT, async (item) => {
     const id = newV2Id();
     const analysis = { ...(circuit.analysis as object), transpilation: publicTranspilation(item.transpilation) };
     const job: StoredJob = {
@@ -255,16 +336,17 @@ async function createDemoGroup(principal: Principal, circuit: DemoCircuit, input
       job.error = { message: error instanceof Error ? error.message : "Execution failed." };
       job.completed_at = new Date().toISOString();
     }
-    return { ...executionSummary(job as unknown as DbRow), key: item.key, position };
-  }));
-  const status = executions.some((execution) => execution.status === "completed") ? "completed" : executions.every((execution) => execution.status === "failed") ? "failed" : "running";
-  const group: ExecutionGroup & { idempotency_key: string; request_hash: string } = {
+    return { ...executionSummary(job as unknown as DbRow), key: item.key };
+  });
+  const status = groupStatusFrom(executions.map((execution) => String(execution.status)));
+  const pending = status === "running" || status === "awaiting_payment";
+  const group: DemoGroup = {
     id: groupId, circuit_id: circuit.id, organization_id: principal.organizationId, status, metadata: input.metadata,
-    executions, created_at: now, updated_at: new Date().toISOString(), completed_at: status === "running" ? null : new Date().toISOString(),
+    executions, created_at: now, updated_at: new Date().toISOString(), completed_at: pending ? null : new Date().toISOString(),
     error: status === "failed" ? { message: "All execution targets failed." } : null, idempotency_key: idempotencyKey, request_hash: requestHash,
   };
   demoV2Groups.set(groupId, group);
-  return { group, replayed: false, outcome: status === "running" ? "queued" : status };
+  return { group: groupResource(group), replayed: false, outcome: status === "running" ? "queued" : status };
 }
 
 export async function createExecutionGroup(principal: Principal, input: CreateExecutionGroupInput, idempotencyKey: string, requestId: string) {
@@ -273,7 +355,7 @@ export async function createExecutionGroup(principal: Principal, input: CreateEx
     const existing = [...demoV2Groups.values()].find((group) => group.organization_id === principal.organizationId && group.idempotency_key === idempotencyKey);
     if (existing) {
       if (existing.request_hash !== requestHash) throw new V2ApiError(409, "idempotency_conflict", "Idempotency key was already used for a different job.");
-      return { group: existing, replayed: true, outcome: existing.status };
+      return { group: groupResource(existing), replayed: true, outcome: existing.status };
     }
     const circuit = await readCircuit(principal, input.circuit_id) as unknown as DemoCircuit;
     return createDemoGroup(principal, circuit, input, idempotencyKey, requestHash);
@@ -304,18 +386,18 @@ export async function createExecutionGroup(principal: Principal, input: CreateEx
     execution_timeout_seconds: item.timeout_seconds, next_attempt_at: now, request_id: requestId, created_at: now, updated_at: now,
   }));
   const { error: jobsError } = await admin.from("jobs").insert(jobs);
-  if (jobsError) throw jobsError;
-  await Promise.all(jobs.map((job, index) => storeArtifact({
+  if (jobsError) { await discardGroup(admin, groupId); throw jobsError; }
+  await mapWithConcurrency(jobs, EXECUTION_FANOUT_LIMIT, (job, index) => storeArtifact({
     jobId: job.id, organizationId: principal.organizationId, kind: "transpiled",
     content: prepared[index].transpilation.artifactQasm ?? prepared[index].transpilation.qasm,
-  }).catch((error) => console.error(`Failed to store v2 transpilation artifact for ${job.id}`, error))));
+  }).catch((error) => console.error(`Failed to store v2 transpilation artifact for ${job.id}`, error)));
   const quotes = jobs.map((job, index) => ({
     job_id: job.id, provider_cost: prepared[index].quote.providerCost, transpiler_fee: prepared[index].quote.transpilerFee,
     platform_fee: prepared[index].quote.platformFee, total: prepared[index].quote.total,
     rate_snapshot: prepared[index].quote.rateSnapshot, expires_at: prepared[index].quote.expiresAt,
   }));
   const { data: outcome, error: queueError } = await admin.rpc("queue_execution_group_with_quotes", { p_group_id: groupId, p_quotes: quotes });
-  if (queueError) throw queueError;
+  if (queueError) { await discardGroup(admin, groupId); throw queueError; }
   return { group: await getExecutionGroup(principal, groupId), replayed: false, outcome: String(outcome) };
 }
 
@@ -350,9 +432,9 @@ export async function cancelExecution(principal: Principal, executionId: string)
       const execution = group.executions.find((candidate) => candidate.id === executionId);
       if (execution) {
         execution.status = "cancelled";
-        const values = group.executions.map((candidate) => String(candidate.status));
-        group.status = values.some((status) => status === "completed") ? "completed" : values.some((status) => status === "failed") ? "failed" : "cancelled";
-        group.completed_at = new Date().toISOString();
+        group.status = groupStatusFrom(group.executions.map((candidate) => String(candidate.status)));
+        group.updated_at = new Date().toISOString();
+        group.completed_at = group.status === "running" || group.status === "awaiting_payment" ? null : new Date().toISOString();
       }
     }
     return { id: job.id, status: job.status };
