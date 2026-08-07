@@ -207,12 +207,16 @@ export async function GET(request: Request) {
     const threadId = new URL(request.url).searchParams.get("thread");
     try {
       if (threadId) {
-        const { data: thread } = await admin
+        // supabase-js reports PostgREST failures on `error` rather than
+        // throwing, so an unmigrated database would otherwise look like a
+        // missing thread instead of a missing table.
+        const { data: thread, error: threadError } = await admin
           .from("chat_threads")
           .select("id")
           .eq("id", threadId)
           .eq("organization_id", principal.organizationId)
           .maybeSingle();
+        if (threadError) throw threadError;
         if (!thread) return NextResponse.json({ error: { message: "Thread not found." } }, { status: 404 });
         const { data, error } = await admin
           .from("chat_messages")
@@ -240,6 +244,47 @@ export async function GET(request: Request) {
   }
 }
 
+// ── PATCH: rename a thread ──────────────────────────────────────────────────
+//
+// chat_threads.title is otherwise written once, at creation, from the truncated
+// first user message. This is the only way to change it.
+
+const patchSchema = z.object({ title: z.string().trim().min(1).max(120) });
+
+export async function PATCH(request: Request) {
+  try {
+    const principal = await resolvePrincipal(request);
+    const threadId = new URL(request.url).searchParams.get("thread");
+    if (!threadId) return NextResponse.json({ error: { message: "thread is required." } }, { status: 400 });
+
+    const parsed = patchSchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json({ error: { message: "A title between 1 and 120 characters is required." } }, { status: 400 });
+    }
+    if (principal.demo) return NextResponse.json({ id: threadId, title: parsed.data.title });
+
+    try {
+      // RLS on chat_threads has no policies (service-role only), so the
+      // organization scope below is the entire authorization check.
+      const { data, error } = await createAdminClient()
+        .from("chat_threads")
+        .update({ title: parsed.data.title })
+        .eq("id", threadId)
+        .eq("organization_id", principal.organizationId)
+        .select("id,title,updated_at")
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return NextResponse.json({ error: { message: "Thread not found." } }, { status: 404 });
+      return NextResponse.json(data);
+    } catch (error) {
+      if (isMissingTable(error)) return NextResponse.json({ migrationNeeded: true }, { status: 503 });
+      throw error;
+    }
+  } catch (error) {
+    return apiError(error);
+  }
+}
+
 // ── DELETE: remove a thread ─────────────────────────────────────────────────
 
 export async function DELETE(request: Request) {
@@ -248,15 +293,14 @@ export async function DELETE(request: Request) {
     const threadId = new URL(request.url).searchParams.get("thread");
     if (!threadId) return NextResponse.json({ error: { message: "thread is required." } }, { status: 400 });
     if (!principal.demo) {
-      try {
-        await createAdminClient()
-          .from("chat_threads")
-          .delete()
-          .eq("id", threadId)
-          .eq("organization_id", principal.organizationId);
-      } catch (error) {
-        if (!isMissingTable(error)) throw error;
-      }
+      // The delete result carries failures on `error`; without destructuring it
+      // an unmigrated database would report a successful delete.
+      const { error } = await createAdminClient()
+        .from("chat_threads")
+        .delete()
+        .eq("id", threadId)
+        .eq("organization_id", principal.organizationId);
+      if (error && !isMissingTable(error)) throw error;
     }
     return NextResponse.json({ ok: true });
   } catch (error) {

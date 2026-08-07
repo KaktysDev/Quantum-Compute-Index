@@ -21,6 +21,21 @@
       ],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "qrouter-console-preview",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "NEXT_PUBLIC_SUPABASE_URL=",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY=",
+        "QROUTER_DEMO_MODE=true",
+        "QROUTER_DEV_AUTH_BYPASS=true",
+        "npm",
+        "run",
+        "dev"
+      ],
+      "port": 3000,
+      "autoPort": true
     }
   ]
 }

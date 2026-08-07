@@ -1,12 +1,8 @@
-import type { Metadata } from "next";
-import AssistantPage from "@/components/chat/AssistantPage";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
-export const metadata: Metadata = { title: "QRouter Console — Submit a task" };
-
-// "Submit a task" is the conversational surface now: the assistant prepares
-// the job and the user confirms quote + billing before anything runs.
+// The assistant IS the Deploy tab now, so this route would be a second copy of
+// the same surface with its own chat state. Kept as a redirect because it is
+// linked from older docs, emails, and bookmarks.
 export default function SubmitTaskPage() {
-  return <AssistantPage />;
+  redirect("/dashboard");
 }

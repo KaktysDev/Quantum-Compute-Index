@@ -28,17 +28,18 @@ import {
   ArrowUp,
   Check,
   CircleStop,
-  History,
   Loader2,
+  PanelLeft,
+  Pencil,
   Plus,
   Sparkles,
   Trash2,
-  Wallet,
   X,
 } from "lucide-react";
-import QuantumParticles from "@/components/landing/QuantumParticles";
 import LogoMark from "@/components/LogoMark";
+import GetStartedPanel from "@/components/chat/GetStartedPanel";
 import { getBackend } from "@/lib/qrouter/catalog";
+import { formatDuration } from "@/lib/qrouter/duration";
 
 /** Backend ids are stable storage keys; show the human name where one exists. */
 const backendLabel = (id: string) => getBackend(id)?.displayName ?? id;
@@ -306,8 +307,23 @@ function JobProposalCard({ proposal, balance }: { proposal: Proposal; balance: n
   const [phase, setPhase] = useState<"review" | "running" | "done" | "failed" | "dismissed">("review");
   const [result, setResult] = useState<{ id: string; status: string; backend: string; counts?: Record<string, number>; total?: number } | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  // Wall-clock for this run: `runStartedAt` is stamped on confirm, `runMs` is
+  // frozen when the job settles so the card keeps reporting the real duration.
+  const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
+  const [runMs, setRunMs] = useState<number | null>(null);
+  const [tick, setTick] = useState(0);
 
   const shots = proposal.shots ?? 1024;
+
+  // Ticks only while a job is in flight.
+  useEffect(() => {
+    if (phase !== "running") return;
+    const timer = window.setInterval(() => setTick((value) => value + 1), 250);
+    return () => window.clearInterval(timer);
+  }, [phase]);
+
+  const liveMs = runMs ?? (runStartedAt === null ? null : Date.now() - runStartedAt);
+  void tick; // the interval above is what re-renders the elapsed readout
 
   useEffect(() => {
     let cancelled = false;
@@ -366,6 +382,9 @@ function JobProposalCard({ proposal, balance }: { proposal: Proposal; balance: n
 
   async function run() {
     if (quote.status !== "ready" || !quote.circuit) return;
+    const startedAt = Date.now();
+    setRunStartedAt(startedAt);
+    setRunMs(null);
     setPhase("running");
     setRunError(null);
     try {
@@ -391,9 +410,11 @@ function JobProposalCard({ proposal, balance }: { proposal: Proposal; balance: n
         counts: data.result?.counts,
         total: data.quote?.total,
       });
+      setRunMs(Date.now() - startedAt);
       setPhase("done");
     } catch (error) {
       setRunError(error instanceof Error ? error.message : "Job submission failed.");
+      setRunMs(Date.now() - startedAt);
       setPhase("failed");
     }
   }
@@ -465,9 +486,27 @@ function JobProposalCard({ proposal, balance }: { proposal: Proposal; balance: n
         <p className="qc-proposal-error"><AlertCircle size={13} /> {runError}</p>
       )}
 
+      {/* Live processing readout — the only thing on this card that moves. */}
+      {phase === "running" && (
+        <div className="qc-progress">
+          <span className="qc-elapsed running"><Loader2 size={12} className="spin" /> {formatDuration(liveMs)}</span>
+          <span className="qc-progress-bar" role="progressbar" aria-label="Routing and executing" />
+          <span className="qc-progress-stage">routing → transpiling → executing</span>
+        </div>
+      )}
+      {phase === "failed" && runMs !== null && (
+        <div className="qc-progress">
+          <span className="qc-elapsed failed">failed after {formatDuration(runMs)}</span>
+        </div>
+      )}
+
       {phase === "done" && result ? (
         <div className="qc-run-result">
-          <p><Check size={14} /> Task <b>{result.status}</b> on <b>{result.backend}</b>{typeof result.total === "number" && <> · settled <b>${result.total.toFixed(4)}</b></>}</p>
+          <p>
+            <Check size={14} /> Task <b>{result.status}</b> on <b>{backendLabel(result.backend)}</b>
+            {typeof result.total === "number" && <> · settled <b>${result.total.toFixed(4)}</b></>}
+            {runMs !== null && <> · <span className="qc-elapsed done">{formatDuration(runMs)}</span></>}
+          </p>
           {result.counts && (
             <div className="qc-counts">
               {Object.entries(result.counts)
@@ -535,14 +574,18 @@ function ThinkingBlock({ msg }: { msg: ChatMsg }) {
 export default function QuantumChat({
   userName,
   balance,
+  showGetStarted = false,
 }: {
   userName: string;
   balance: number | null;
+  showGetStarted?: boolean;
 }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [threads, setThreads] = useState<ThreadRow[]>([]);
   const [threadId, setThreadId] = useState<string | null>(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(true);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
   const [migrationNeeded, setMigrationNeeded] = useState(false);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -550,10 +593,10 @@ export default function QuantumChat({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const welcome = useMemo(() => {
-    const first = userName.split(/[\s._-]/)[0] ?? userName;
-    const safe = first.replace(/[^a-z0-9]/gi, "").toUpperCase().slice(0, 10);
-    return safe.length >= 2 ? `HELLO, ${safe}` : "QROUTER AI";
+  const greeting = useMemo(() => {
+    const first = (userName.split(/[\s._-]/)[0] ?? userName).replace(/[^a-z0-9]/gi, "");
+    if (first.length < 2) return "What would you like to run?";
+    return `Hello, ${first.charAt(0).toUpperCase()}${first.slice(1)}`;
   }, [userName]);
 
   const loadThreads = useCallback(async () => {
@@ -572,12 +615,31 @@ export default function QuantumChat({
     loadThreads();
   }, [loadThreads]);
 
+  // Below 900px the rail is an overlay (see chat.css), so leaving it open would
+  // bury the conversation under it on every mobile load. It stays open by
+  // default on desktop, where it is a real column.
   useEffect(() => {
+    const narrow = window.matchMedia("(max-width: 900px)");
+    if (narrow.matches) setHistoryOpen(false);
+    const onChange = (event: MediaQueryListEvent) => setHistoryOpen(!event.matches);
+    narrow.addEventListener("change", onChange);
+    return () => narrow.removeEventListener("change", onChange);
+  }, []);
+
+  useEffect(() => {
+    // Only follow an actual conversation. On an empty thread this would scroll
+    // straight past the Get started panel that sits above the welcome block.
+    if (messages.length === 0) return;
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages]);
 
+  /** On mobile the rail covers the thread it just opened, so get it out of the way. */
+  function closeRailOnMobile() {
+    if (window.matchMedia("(max-width: 900px)").matches) setHistoryOpen(false);
+  }
+
   async function openThread(id: string) {
-    setHistoryOpen(false);
+    closeRailOnMobile();
     try {
       const res = await fetch(`/api/chat?thread=${encodeURIComponent(id)}`, { cache: "no-store" });
       const data = await res.json();
@@ -600,24 +662,57 @@ export default function QuantumChat({
   }
 
   async function deleteThread(id: string) {
+    const previous = threads;
     setThreads((rows) => rows.filter((row) => row.id !== id));
     if (threadId === id) {
       setThreadId(null);
       setMessages([]);
     }
     try {
-      await fetch(`/api/chat?thread=${encodeURIComponent(id)}`, { method: "DELETE" });
+      const res = await fetch(`/api/chat?thread=${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!res.ok) setThreads(previous);
     } catch {
-      /* ignore */
+      setThreads(previous);
     }
+  }
+
+  function startRename(thread: ThreadRow) {
+    setRenaming(thread.id);
+    setRenameDraft(thread.title);
+  }
+
+  /** Optimistic rename; the row snaps back if the write is rejected. */
+  async function commitRename(id: string) {
+    const title = renameDraft.trim().slice(0, 120);
+    const previous = threads;
+    setRenaming(null);
+    if (!title || title === previous.find((row) => row.id === id)?.title) return;
+    setThreads((rows) => rows.map((row) => (row.id === id ? { ...row, title } : row)));
+    try {
+      const res = await fetch(`/api/chat?thread=${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+      if (!res.ok) setThreads(previous);
+    } catch {
+      setThreads(previous);
+    }
+  }
+
+  /** The composer grows itself via an inline style, so clearing the value is
+   *  not enough — the box would stay at whatever height the last message had. */
+  function resetComposerHeight() {
+    if (inputRef.current) inputRef.current.style.height = "";
   }
 
   function newChat() {
     abortRef.current?.abort();
     setThreadId(null);
     setMessages([]);
-    setHistoryOpen(false);
     setInput("");
+    resetComposerHeight();
+    closeRailOnMobile();
     inputRef.current?.focus();
   }
 
@@ -626,6 +721,7 @@ export default function QuantumChat({
     if (!message || busy) return;
     setBusy(true);
     setInput("");
+    resetComposerHeight();
 
     const userKey = `u-${Date.now()}`;
     const assistantKey = `a-${Date.now()}`;
@@ -730,60 +826,89 @@ export default function QuantumChat({
   const empty = messages.length === 0;
 
   return (
-    <div className="qc-shell">
-      {/* header row */}
-      <div className="qc-topline">
-        <div>
-          <p className="qc-eyebrow"><Sparkles size={12} /> QRouter Assistant</p>
-          <span>Ask about hardware, pricing, repos — or hand it a job to prepare.</span>
-        </div>
-        <div className="qc-topline-actions">
-          <span className="qc-balance"><Wallet size={12} /> ${balance === null ? "—" : balance.toFixed(2)}</span>
-          <button type="button" onClick={() => setHistoryOpen((v) => !v)} className={historyOpen ? "active" : ""}>
-            <History size={14} /> History
-          </button>
-          <button type="button" onClick={newChat}>
-            <Plus size={14} /> New chat
-          </button>
-        </div>
-      </div>
-
+    <div className={`qc-shell ${historyOpen ? "" : "rail-collapsed"}`}>
       <div className="qc-body">
-        {/* history rail */}
-        {historyOpen && (
-          <aside className="qc-history">
-            <p>Recent chats</p>
+        {/* Only rendered under 900px, where the rail floats over the thread. */}
+        <div className="qc-rail-scrim" onClick={() => setHistoryOpen(false)} aria-hidden="true" />
+        {/* thread rail — persistent, collapsible */}
+        <aside className="qc-history" aria-label="Chat history">
+          <div className="qc-history-head">
+            <button type="button" className="qc-new-chat" onClick={newChat}>
+              <Plus size={14} /> New chat
+            </button>
+          </div>
+          <p className="qc-history-label">Recent</p>
+          <div className="qc-history-list">
             {migrationNeeded && (
               <small className="qc-history-hint">
                 Run <code>supabase/chat.sql</code> to enable saved history.
               </small>
             )}
-            {threads.length === 0 && !migrationNeeded && <small className="qc-history-hint">No saved chats yet.</small>}
+            {threads.length === 0 && !migrationNeeded && (
+              <small className="qc-history-hint">No saved chats yet.</small>
+            )}
             {threads.map((thread) => (
               <div key={thread.id} className={`qc-history-row ${thread.id === threadId ? "active" : ""}`}>
-                <button type="button" onClick={() => openThread(thread.id)} title={thread.title}>
-                  {thread.title}
-                </button>
-                <button type="button" aria-label="Delete chat" onClick={() => deleteThread(thread.id)}>
-                  <Trash2 size={12} />
-                </button>
+                {renaming === thread.id ? (
+                  <input
+                    className="qc-rename-input"
+                    value={renameDraft}
+                    autoFocus
+                    maxLength={120}
+                    onChange={(event) => setRenameDraft(event.target.value)}
+                    onBlur={() => commitRename(thread.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        commitRename(thread.id);
+                      }
+                      if (event.key === "Escape") setRenaming(null);
+                    }}
+                    aria-label="Chat title"
+                  />
+                ) : (
+                  <>
+                    <button type="button" className="qc-history-open" onClick={() => openThread(thread.id)} title={thread.title}>
+                      {thread.title}
+                    </button>
+                    <span className="qc-history-actions">
+                      <button type="button" aria-label="Rename chat" title="Rename" onClick={() => startRename(thread)}>
+                        <Pencil size={12} />
+                      </button>
+                      <button type="button" aria-label="Delete chat" title="Delete" onClick={() => deleteThread(thread.id)}>
+                        <Trash2 size={12} />
+                      </button>
+                    </span>
+                  </>
+                )}
               </div>
             ))}
-          </aside>
-        )}
+          </div>
+        </aside>
 
         {/* conversation */}
         <div className="qc-main">
+          <div className="qc-mainbar">
+            <button
+              type="button"
+              className="qc-rail-toggle"
+              onClick={() => setHistoryOpen((open) => !open)}
+              aria-label={historyOpen ? "Hide chat history" : "Show chat history"}
+              aria-expanded={historyOpen}
+            >
+              <PanelLeft size={15} />
+            </button>
+            <span className="qc-eyebrow"><Sparkles size={12} /> QRouter Assistant</span>
+          </div>
+
           <div className="qc-scroll" ref={scrollRef}>
+            {showGetStarted && <GetStartedPanel />}
             {empty ? (
               <div className="qc-welcome">
-                <div className="qc-welcome-particles">
-                  <QuantumParticles label={welcome} className="qc-particle-canvas" />
-                </div>
-                <h1>What quantum job would you like to run?</h1>
+                <h1>{greeting}</h1>
                 <p>
-                  Compare providers, size a workload, inspect a GitHub repo, or ask me to prepare a run —
-                  you approve every job before it executes.
+                  Describe a quantum job, paste a GitHub repository, or ask about hardware and pricing.
+                  You approve every run before it executes.
                 </p>
                 <GhostSuggestion items={SUGGESTIONS} onPick={send} disabled={busy} />
               </div>
@@ -800,7 +925,7 @@ export default function QuantumChat({
                   const { body, proposal } = splitProposal(msg.content);
                   return (
                     <div key={msg.key} className="qc-msg assistant">
-                      <span className="qc-avatar"><LogoMark size={18} /></span>
+                      <span className="qc-avatar"><LogoMark size={18} glow={false} /></span>
                       <div className="qc-assistant-col">
                         <ThinkingBlock msg={msg} />
                         {msg.status === "streaming" && !msg.content && !msg.thoughts && (

@@ -37,6 +37,22 @@ html {
   scroll-behavior: smooth;
 }
 
+/* The console owns its own two-theme token set (dashboard/console.css). All it
+   needs from here is that the document itself stops asserting "dark" — native
+   scrollbars, form chrome and the overscroll gutter read from these. */
+html:has(.console-shell) {
+  color-scheme: light;
+  --bg: #ffffff;
+  --fg: #0a0a0a;
+}
+html[data-theme="dark"]:has(.console-shell) {
+  color-scheme: dark;
+  --bg: #000000;
+  --fg: #ededed;
+}
+/* The atmospheric backdrop is a landing-page device; the console is flat. */
+html:has(.console-shell) .curtain { display: none; }
+
 html,
 body {
   margin: 0;

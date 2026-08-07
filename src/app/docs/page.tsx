@@ -131,6 +131,7 @@ export default function DocsPage() {
           </div>
           <div>
             <p>Deploy</p>
+            <a href="#github">Connecting GitHub</a>
             <a href="#repositories">Repositories</a>
             <a href="#jobs">Jobs</a>
             <a href="#endpoints">v1 endpoints</a>
@@ -176,7 +177,7 @@ export default function DocsPage() {
           <p className="docs-eyebrow"><span /> QRouter / API v1 · v2</p>
           <h1>One contract for quantum compute.</h1>
           <p>Submit OpenQASM once. The QCI Engine analyzes the workload, selects an eligible configured backend, transpiles against its native target, creates a quote, and normalizes the result. One workspace key authenticates both the single-request <code>/api/v1</code> surface and the circuit-and-execution resource model in <code>/api/v2</code>.</p>
-          <div className="docs-actions"><Link href="/dashboard/playground">Open deployments <ArrowRight size={14} /></Link><a href="/openapi.json">Download specification <FileJson size={14} /></a></div>
+          <div className="docs-actions"><Link href="/dashboard/github/deploy">Open deployments <ArrowRight size={14} /></Link><a href="/openapi.json">Download specification <FileJson size={14} /></a></div>
         </section>
 
         <section className="docs-section" id="cli">
@@ -253,6 +254,32 @@ export default function DocsPage() {
           </div>
           <p className="docs-copy-text">Both surfaces share one base URL, <code>{PUBLIC_CONFIG.apiBaseUrl}</code>, and the version is carried in the path. Analysis, transpilation, routing policy, quoting, and credit settlement are the same engine underneath, so <a href="#routing">routing modes</a> and <a href="#pricing">pricing</a> behave identically in both.</p>
           <div className="docs-callout"><Boxes size={16} /><p>Reach for v2 when you want to compare backends for one circuit, re-run stored work without re-uploading it, cancel or fetch artifacts per execution, or purge circuit source on a schedule. Stay on v1 for repository-sourced deployments, signed webhooks, and the transpile-only preview.</p></div>
+        </section>
+
+        <section className="docs-section" id="github">
+          <div className="docs-section-title"><Route size={17} /><div><h2>Connecting GitHub</h2><p>Public repositories need no setup at all. A connection is only required to list your own repositories and to read private ones.</p></div></div>
+          <p className="docs-copy-text"><b>Public repositories work immediately.</b> In <Link href="/dashboard/github">Console → Repositories</Link>, paste any GitHub URL (<code>https://github.com/owner/name</code> or just <code>owner/name</code>), click <b>Inspect repository</b>, pick the <code>.qasm</code> entrypoint, and import. QRouter reads the repository through the anonymous GitHub API, which is rate-limited to <b>60 requests per hour per IP</b> — if inspection starts failing with a rate-limit error, that is the cause, and either option below removes the cap.</p>
+          <h3 className="docs-subhead">Option A — GitHub App (production, per-organization)</h3>
+          <p className="docs-copy-text">This is the path that supports private repositories and scopes access to each workspace separately. Register an App at <a href="https://github.com/settings/apps/new" target="_blank" rel="noreferrer">github.com/settings/apps/new <ExternalLink size={11} /></a> with:</p>
+          <div className="docs-schema">
+            <div><code>Repository permissions</code><b>Contents: Read-only, Metadata: Read-only</b><p>Enough to list repositories, walk the git tree, and read <code>.qasm</code> and <code>qrouter.json</code> blobs.</p></div>
+            <div><code>Callback URL</code><b>https://your-domain/api/integrations/github/callback</b><p>Where GitHub returns after an installation.</p></div>
+            <div><code>Request user authorization (OAuth) during installation</code><b>enabled</b><p>Required — the callback verifies that the person completing the install actually owns it.</p></div>
+            <div><code>Webhook</code><b>optional</b><p>Not needed for import or deploy.</p></div>
+          </div>
+          <p className="docs-copy-text">Then set these environment variables and redeploy. <code>GITHUB_APP_PRIVATE_KEY</code> is the downloaded <code>.pem</code>; keep it on one line with literal <code>\n</code> escapes, which the server converts back to newlines.</p>
+          <pre className="docs-inline-code"><code>{`GITHUB_APP_ID=123456
+GITHUB_APP_SLUG=your-app-slug          # the URL name, github.com/apps/<slug>
+GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\\n...\\n-----END RSA PRIVATE KEY-----"
+GITHUB_APP_CLIENT_ID=Iv1.xxxxxxxxxxxx
+GITHUB_APP_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+GITHUB_OAUTH_STATE_SECRET=$(openssl rand -base64 32)`}</code></pre>
+          <p className="docs-copy-text">All three of <code>GITHUB_APP_ID</code>, <code>GITHUB_APP_SLUG</code> and <code>GITHUB_APP_PRIVATE_KEY</code> must be present or the console reports the App as not configured and hides the <b>Connect GitHub</b> button. Once they are set, click <b>Connect GitHub</b> in Repositories, install the App on the accounts and repositories you want QRouter to see, and your repositories appear in the picker.</p>
+          <h3 className="docs-subhead">Option B — personal token (local development only)</h3>
+          <p className="docs-copy-text">For running the console on your own machine, a classic or fine-grained personal access token with <code>repo</code> read access is enough:</p>
+          <pre className="docs-inline-code"><code>{`# .env.local\nGITHUB_TOKEN=github_pat_xxxxxxxxxxxxxxxxxxxx`}</code></pre>
+          <p className="docs-copy-text">This token is process-wide, so it deliberately does <b>not</b> serve tenants in production — a request from any workspace would otherwise read the server account&apos;s private repositories. In a production deployment, tenants without an App connection fall back to public, unauthenticated access.</p>
+          <div className="docs-callout"><ShieldCheck size={16} /><p>Private repositories are only ever read through an installation token scoped to that workspace&apos;s own connection. There is no configuration in which one workspace can read another&apos;s private source.</p></div>
         </section>
 
         <section className="docs-section" id="repositories">
@@ -497,7 +524,7 @@ export default function DocsPage() {
           <ol className="docs-checklist"><li>Apply the Supabase schema and QRouter migrations.</li><li>Configure Supabase, Stripe, artifact encryption, and provider credentials.</li><li>Create the GitHub App, set its callback URL, and configure the matching app credentials from <code>.env.local.example</code>.</li><li>Deploy the authenticated Qiskit compiler/worker and point the app at its URL.</li><li>Configure authenticated external schedulers for job polling, provider health checks, the daily index refresh, and the Stripe webhook.</li><li>Run credentialed smoke jobs against every enabled paid provider.</li><li>Run lint, typecheck, Node tests, Python worker tests, SDK builds, and the production web build.</li></ol>
         </section>
 
-        <section className="docs-end"><p>Ready to deploy a repository circuit?</p><Link href="/dashboard/playground">Open deployments <ArrowRight size={14} /></Link></section>
+        <section className="docs-end"><p>Ready to deploy a repository circuit?</p><Link href="/dashboard/github/deploy">Open deployments <ArrowRight size={14} /></Link></section>
       </main>
     </div>
   );
