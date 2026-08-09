@@ -37,7 +37,14 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { capability, effectiveWidth, type HedonicConfig, DEFAULT_HEDONIC } from "./quality";
-import type { DeviceObservation, ExclusionReason, Modality, PriceBasis } from "./types";
+import {
+  TIER_RANK,
+  type DeviceObservation,
+  type ExclusionReason,
+  type Modality,
+  type PriceBasis,
+  type SourceTier,
+} from "./types";
 
 export type DeviceState =
   | "active"
@@ -72,6 +79,20 @@ export interface LedgerEntry {
   errorHistory: number[];
   qubitHistory: number[];
   layerRate: number;
+
+  /**
+   * Weakest tier among the fields feeding this device's quality, so the UI can
+   * say which constituents are running on a provider-typical default rather
+   * than a measurement. `layerRate` is excluded: it is an `assumed` per-modality
+   * constant by design and cancels exactly in the index ratio, so counting it
+   * would mark every device in the basket as assumed and say nothing.
+   *
+   * Optional because ledgers persisted before this field existed deserialise
+   * without it; readers treat a missing value as unknown rather than as primary.
+   */
+  qualityTier?: SourceTier;
+  /** Feeds that reported this device, when more than one did. */
+  sources?: string[];
 
   /** ISO date (ET) of the most recent fresh observation. */
   lastObservedOn: string | null;
@@ -156,6 +177,11 @@ function validError(v: number | undefined, cfg: LedgerConfig): boolean {
 
 function validPrice(v: number | undefined): boolean {
   return typeof v === "number" && Number.isFinite(v) && v > 0;
+}
+
+/** Least authoritative of a set of tiers — the honest label for a composite. */
+function weakestTier(tiers: SourceTier[]): SourceTier {
+  return tiers.reduce((worst, t) => (TIER_RANK[t] > TIER_RANK[worst] ? t : worst), "primary");
 }
 
 export interface ReconcileInput {
@@ -265,6 +291,8 @@ export function reconcileLedger(input: ReconcileInput): ReconcileOutput {
       errorHistory: errHistory,
       qubitHistory,
       layerRate,
+      qualityTier: weakestTier([obs.qubits.tier, obs.twoQubitError.tier]),
+      sources: obs.mergedFrom,
       lastObservedOn: today,
       acceptedOn: today,
       consecutiveMissingDays: 0,

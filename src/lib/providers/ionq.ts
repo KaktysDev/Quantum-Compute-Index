@@ -195,6 +195,12 @@ async function backendToMetrics(token: string, b: IonqBackend): Promise<RawQpuMe
     clops: IONQ_DEFAULT_CLOPS,
     fid2q: char.fid2q ?? IONQ_DEFAULT_FID2Q,
     capacity,
+    estimated: {
+      fid2q: char.fid2q == null,
+      capacity: char.qubits == null && !(typeof b.qubits === "number" && b.qubits > 0),
+      qv: char.qubits == null && !(typeof b.qubits === "number" && b.qubits > 0),
+      clops: true,
+    },
   };
 }
 

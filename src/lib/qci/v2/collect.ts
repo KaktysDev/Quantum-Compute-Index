@@ -23,6 +23,7 @@
 
 import { fetchAllMetrics } from "@/lib/providers";
 import type { RawQpuMetrics } from "@/lib/qci/types";
+import { TIER_RANK } from "./types";
 import {
   fetchBraketPriceCard,
   priceFor,
@@ -84,6 +85,81 @@ function errorFromFidelity(fid2q: number): number {
 interface Matched {
   entry: RegistryEntry;
   metric: RawQpuMetrics;
+}
+
+/**
+ * Merge two observations of the same device from different feeds, field by
+ * field, keeping whichever source is higher in the tier hierarchy.
+ *
+ * WHY THIS IS NEEDED AT ALL
+ * Some hardware is sold through more than one door. IQM's Garnet and Emerald are
+ * listed by AWS Braket *and* by IQM's own Resonance cloud, so both adapters
+ * return them and `matchRegistry` resolves both to the same registry id. That
+ * produced two bugs at once:
+ *
+ *   1. The archive write is an upsert on (index_date, device_id). Postgres
+ *      refuses an ON CONFLICT that would touch the same row twice in one
+ *      statement, so the whole batch failed — `qci_observations` had been empty
+ *      since the table was created, and the failure was only ever console-logged.
+ *   2. The ledger silently kept whichever copy happened to arrive last, so the
+ *      index's view of a device depended on adapter completion order.
+ *
+ * FIELD-BY-FIELD, NOT WHOLE-RECORD
+ * Neither feed dominates the other. Braket publishes the real qubit count from
+ * deviceCapabilities but no calibration data at all — its fidelity is a
+ * provider-typical constant. Resonance publishes a measured two-qubit fidelity
+ * but has been observed returning the same 20-qubit lattice for several aliases.
+ * Picking one feed wholesale would throw away a genuine measurement either way,
+ * so each field is resolved on its own tier and `mergedFrom` records the feeds
+ * that contributed. Ties keep the incumbent, which makes the merge deterministic
+ * regardless of which adapter finishes first.
+ */
+function better(a: Observation, b: Observation): Observation {
+  return TIER_RANK[b.tier] < TIER_RANK[a.tier] ? b : a;
+}
+
+function mergeObservation(a: DeviceObservation, b: DeviceObservation): DeviceObservation {
+  const price = better(a.pricePerHour, b.pricePerHour);
+  return {
+    ...a,
+    pricePerHour: price,
+    priceBasis: price === a.pricePerHour ? a.priceBasis : b.priceBasis,
+    qubits: better(a.qubits, b.qubits),
+    twoQubitError: better(a.twoQubitError, b.twoQubitError),
+    layerRate: better(a.layerRate, b.layerRate),
+    // A device is only online if every feed that can see it says so — one
+    // control plane reporting a machine down is enough to keep it out.
+    online: a.online.value === false ? a.online : b.online.value === false ? b.online : a.online,
+    queueSeconds: a.queueSeconds ?? b.queueSeconds,
+    pricePerShot: a.pricePerShot ?? b.pricePerShot,
+    pricePerTask: a.pricePerTask ?? b.pricePerTask,
+    mergedFrom: [...new Set([...(a.mergedFrom ?? []), ...(b.mergedFrom ?? [])])],
+  };
+}
+
+/** Collapse duplicate device ids, reporting which ones were merged. */
+export function dedupeObservations(list: DeviceObservation[]): {
+  observations: DeviceObservation[];
+  merged: Array<{ id: string; sources: string[] }>;
+} {
+  const byId = new Map<string, DeviceObservation>();
+  const mergedIds = new Set<string>();
+  for (const o of list) {
+    const existing = byId.get(o.id);
+    if (!existing) {
+      byId.set(o.id, o);
+      continue;
+    }
+    mergedIds.add(o.id);
+    byId.set(o.id, mergeObservation(existing, o));
+  }
+  return {
+    observations: [...byId.values()],
+    merged: [...mergedIds].map((id) => ({
+      id,
+      sources: byId.get(id)?.mergedFrom ?? [],
+    })),
+  };
 }
 
 /**
@@ -185,6 +261,8 @@ export interface CollectResult {
   unregistered: string[];
   /** Devices reported live but with no published hourly price. */
   unpriced: string[];
+  /** Devices two feeds both reported, collapsed field-by-field on source tier. */
+  merged: Array<{ id: string; sources: string[] }>;
   priceCardVersion: string | null;
   priceCardDate: string | null;
   /** Non-fatal problems worth surfacing in the refresh result. */
@@ -233,6 +311,17 @@ export async function collectDeviceObservations(
     const error = errorFromFidelity(metric.fid2q);
     const priceCard = entry.braket && card ? priceFor(card, entry.braket.providerName, entry.braket.deviceName) : undefined;
 
+    // The feed that produced this record. When two adapters cover the same
+    // hardware this is what distinguishes them in the merge and in the audit
+    // trail — `provider` is the manufacturer, `feed` is the door we came in by.
+    const feed = norm(metric.feed || metric.provider || entry.provider);
+    // Adapters fail open and substitute documented constants when a sub-call
+    // does not answer. A substituted value is `assumed`, never `primary` — that
+    // distinction is the whole reason the merge above can pick correctly, and
+    // it is what stops a hard-coded fidelity being displayed as a measurement.
+    const qubitsMeasured = !metric.estimated?.capacity;
+    const errorMeasured = !metric.estimated?.fid2q;
+
     observations.push({
       id: entry.id,
       provider: entry.provider,
@@ -244,17 +333,21 @@ export async function collectDeviceObservations(
       pricePerHour: resolved.price,
       priceBasis: resolved.basis,
       qubits: obs(qubits, {
-        tier: "primary",
-        source: `provider.${norm(entry.provider)}`,
-        citation: `${entry.provider} control plane, device ${entry.device}`,
+        tier: qubitsMeasured ? "primary" : "assumed",
+        source: `provider.${feed}`,
+        citation: qubitsMeasured
+          ? `${metric.provider} control plane, device ${entry.device}`
+          : `${metric.provider} did not return a qubit count for ${entry.device}; provider-typical default used`,
         observedAt: fetchedAt,
         fetchedAt,
         maxAgeDays: 7,
       }),
       twoQubitError: obs(error, {
-        tier: "primary",
-        source: `provider.${norm(entry.provider)}.calibration`,
-        citation: `${entry.provider} published calibration for ${entry.device}`,
+        tier: errorMeasured ? "primary" : "assumed",
+        source: `provider.${feed}.calibration`,
+        citation: errorMeasured
+          ? `${metric.provider} published calibration for ${entry.device}`
+          : `${metric.provider} exposes no calibration for ${entry.device}; provider-typical default used`,
         observedAt: fetchedAt,
         fetchedAt,
         maxAgeDays: 7,
@@ -273,8 +366,8 @@ export async function collectDeviceObservations(
       online: {
         value: true,
         tier: "primary",
-        source: `provider.${norm(entry.provider)}`,
-        citation: `${entry.provider} reported ${entry.device} available`,
+        source: `provider.${feed}`,
+        citation: `${metric.provider} reported ${entry.device} available`,
         observedAt: fetchedAt,
         fetchedAt,
         maxAgeDays: 2,
@@ -283,7 +376,7 @@ export async function collectDeviceObservations(
         typeof metric.queueSeconds === "number"
           ? obs(metric.queueSeconds, {
               tier: "primary",
-              source: `provider.${norm(entry.provider)}`,
+              source: `provider.${feed}`,
               observedAt: fetchedAt,
               fetchedAt,
               maxAgeDays: 2,
@@ -297,10 +390,15 @@ export async function collectDeviceObservations(
         priceCard?.perTask != null && card
           ? priceObservation(card, priceCard.perTask, fetchedAt)
           : undefined,
+      mergedFrom: [feed],
     });
   }
 
-  const seen = new Set(observations.map((o) => o.id));
+  // Collapse hardware that two feeds both reported, BEFORE anything downstream
+  // sees the list. Everything after this point may assume ids are unique.
+  const { observations: deduped, merged } = dedupeObservations(observations);
+
+  const seen = new Set(deduped.map((o) => o.id));
   const missing = REGISTRY.filter((r) => r.inBasket && !seen.has(r.id)).map((r) => r.id);
 
   if (unpriced.length > 0) {
@@ -313,9 +411,17 @@ export async function collectDeviceObservations(
       `Live devices not in the registry: ${[...new Set(unregistered.map((m) => `${m.provider}/${m.qpu}`))].join(", ")}`,
     );
   }
+  if (merged.length > 0) {
+    warnings.push(
+      `Reported by more than one feed, merged field-by-field on source tier: ${merged
+        .map((m) => `${m.id} (${m.sources.join(" + ")})`)
+        .join(", ")}`,
+    );
+  }
 
   return {
-    observations,
+    observations: deduped,
+    merged,
     missing,
     unregistered: [...new Set(unregistered.map((m) => `${m.provider}/${m.qpu}`))],
     unpriced,
@@ -415,6 +521,8 @@ export async function collectDryRun(now: Date = new Date()): Promise<CollectResu
     missing: [],
     unregistered: [],
     unpriced,
+    // The dry run walks the registry directly, so an id cannot appear twice.
+    merged: [],
     priceCardVersion: card?.version ?? null,
     priceCardDate: card?.publicationDate ?? null,
     warnings,

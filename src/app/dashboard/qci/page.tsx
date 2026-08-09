@@ -1,9 +1,24 @@
 import Link from "next/link";
-import { ArrowRight, Cpu, Network, Play, Route, ShieldCheck, Terminal, Zap } from "lucide-react";
+import { ArrowRight, Cpu, Route, Terminal } from "lucide-react";
 import QciMap from "@/components/QciMap";
 import QciSeriesPanel from "@/components/QciSeriesPanel";
 import { getQciView } from "@/lib/qci/v2/store";
-import { BACKENDS } from "@/lib/qrouter/catalog";
+
+export const dynamic = "force-dynamic";
+
+const money = (v: number, dp = 0) =>
+  v.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
+
+/** "3 hours ago" / "today" — relative, because the reader cares about staleness. */
+function since(ts: string): string {
+  const ms = Date.now() - Date.parse(ts);
+  if (!Number.isFinite(ms)) return "—";
+  const hours = Math.floor(ms / 3_600_000);
+  if (hours < 1) return "just now";
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
 
 export default async function QciPage() {
   // This tab is pure v2. The legacy market panel used to sit below the map, but
@@ -11,84 +26,95 @@ export default async function QciPage() {
   // it as history — the exact behaviour this rewrite exists to remove. It is
   // still used by the landing and pricing pages, which have not been migrated.
   const v2 = await getQciView(365);
+  const latest = v2.latest;
 
-  const providers = new Set(BACKENDS.map((backend) => backend.provider)).size;
-  const connected = BACKENDS.filter((backend) => backend.available).length;
-  const qpus = BACKENDS.filter((backend) => backend.kind === "qpu").length;
+  const providers = latest ? new Set(latest.devices.map((d) => d.provider)).size : 0;
+  const up = (latest?.changePct ?? 0) >= 0;
+  const flat = Math.abs(latest?.changePct ?? 0) < 0.00005;
 
   return (
-    <div className="console-page overview-page">
-      <div className="console-page-heading overview-heading">
-        <div>
-          <p className="qr-eyebrow">
-            <span /> QCI / USD PER QPU-HOUR
-          </p>
-          <h1>Quantum Compute Index</h1>
-          <p>
-            Quality-adjusted price of one hour of quantum compute, chain-linked daily across the
-            provider market.
-          </p>
-        </div>
-        <Link href="/dashboard/github/deploy" className="console-primary">
-          <Play size={14} fill="currentColor" /> New deployment
-        </Link>
-      </div>
-
-      <section className="console-status-strip" aria-label="Index status">
-        <div>
-          <span>
-            <Network size={15} /> Constituents
-          </span>
-          <strong>{v2.latest ? v2.latest.devices.length : providers}</strong>
-          <small>{v2.latest ? `${v2.latest.matched} matched today` : "configured adapters"}</small>
-        </div>
-        <div>
-          <span>
-            <Cpu size={15} /> Catalog targets
-          </span>
-          <strong>{BACKENDS.length}</strong>
-          <small>{qpus} physical QPU records</small>
-        </div>
-        <div>
-          <span>
-            <Zap size={15} /> Routable now
-          </span>
-          <strong>{connected}</strong>
-          <small>configured targets</small>
-        </div>
-        <div>
-          <span>
-            <ShieldCheck size={15} /> Index status
-          </span>
-          <strong>
-            {v2.latest ? (v2.latest.status === "final" ? "Final" : "Provisional") : "Awaiting data"}
-          </strong>
-          <small>
-            {v2.latest
-              ? `${Math.round(v2.latest.coverage * 100)}% basket coverage`
-              : "no points recorded yet"}
-          </small>
-        </div>
-      </section>
-
-      {v2.latest ? (
-        <QciMap point={v2.latest} />
-      ) : (
-        <section className="console-panel qci-map-panel">
-          <div className="panel-title">
-            <Network size={16} />
-            <div>
-              <h2>Index attribution map</h2>
-              <small>What the QCI is made of, and where every number comes from</small>
-            </div>
+    <div className="console-page qci-page">
+      {latest ? (
+        <header className="qci-hero">
+          <div className="qci-hero-main">
+            <p className="qci-hero-eyebrow">Quantum Compute Index</p>
+            <h1>
+              <span className="qci-hero-currency">$</span>
+              {money(latest.usdPerQpuHour)}
+              <small>per QPU-hour</small>
+            </h1>
+            <p
+              className="qci-hero-change"
+              data-dir={latest.inception ? "new" : flat ? "flat" : up ? "up" : "down"}
+            >
+              {latest.inception
+                ? "Baseline set today"
+                : flat
+                  ? "Unchanged today"
+                  : `${up ? "▲" : "▼"} ${Math.abs(latest.changePct).toFixed(2)}% today`}
+            </p>
+            <p className="qci-hero-blurb">
+              What an hour of quantum computing costs across every machine on the market with a
+              published hourly rate. Measured daily from the sellers&rsquo; own rate cards and the
+              operators&rsquo; own calibration data.
+            </p>
           </div>
+
+          <dl className="qci-hero-stats">
+            <div>
+              <dt>Index level</dt>
+              <dd>{money(latest.level, 2)}</dd>
+              <small>1,000 at inception</small>
+            </div>
+            <div>
+              <dt>Machines priced</dt>
+              <dd>{latest.devices.length}</dd>
+              <small>across {providers} providers</small>
+            </div>
+            {latest.costBasisPerHour ? (
+              <div>
+                <dt>Costs to produce</dt>
+                <dd>${money(latest.costBasisPerHour)}</dd>
+                <small>
+                  {latest.costCoverageRatio
+                    ? `price is ${latest.costCoverageRatio.toFixed(1)}× that`
+                    : "modelled, per hour"}
+                </small>
+              </div>
+            ) : null}
+            <div>
+              <dt>Last measured</dt>
+              <dd className="qci-hero-time">{since(latest.ts)}</dd>
+              <small>{new Date(latest.ts).toLocaleDateString()}</small>
+            </div>
+          </dl>
+        </header>
+      ) : (
+        <header className="qci-hero">
+          <div className="qci-hero-main">
+            <p className="qci-hero-eyebrow">Quantum Compute Index</p>
+            <h1 className="qci-hero-empty">Awaiting the first measurement</h1>
+            <p className="qci-hero-blurb">{v2.emptyReason}</p>
+          </div>
+        </header>
+      )}
+
+      {latest ? (
+        <QciMap point={latest} />
+      ) : (
+        <section className="qci-map-panel">
+          <header className="qci-map-head">
+            <div>
+              <h2>What the index is made of</h2>
+              <p>Nothing is drawn here until real observations exist.</p>
+            </div>
+          </header>
           <div className="qci-empty">
             <h3>No index points yet</h3>
             <p>{v2.emptyReason}</p>
             <p>
-              Apply <code>supabase/qci-v2.sql</code>, then trigger a refresh from Settings or{" "}
-              <code>POST /api/cron/refresh</code>. Nothing is shown here until real observations
-              exist — the index never renders synthetic history.
+              Trigger a refresh from Admin → Health. The index never renders synthetic history — a
+              blank panel means nothing has been measured, not that the chart failed.
             </p>
           </div>
         </section>
@@ -101,7 +127,7 @@ export default async function QciPage() {
           <Route size={15} />
           <span>
             <b>Routing fabric</b>
-            <small>Policy, constraints, and candidate scoring</small>
+            <small>Where your job actually runs, and why</small>
           </span>
           <ArrowRight size={13} />
         </Link>
@@ -109,7 +135,7 @@ export default async function QciPage() {
           <Terminal size={15} />
           <span>
             <b>API endpoint</b>
-            <small>Authentication and request contracts</small>
+            <small>Keys and request contracts</small>
           </span>
           <ArrowRight size={13} />
         </Link>
@@ -117,7 +143,7 @@ export default async function QciPage() {
           <Cpu size={15} />
           <span>
             <b>Compute network</b>
-            <small>Providers, queues, fidelity, and rates</small>
+            <small>Providers, queues, fidelity and rates</small>
           </span>
           <ArrowRight size={13} />
         </Link>

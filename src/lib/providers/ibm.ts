@@ -168,6 +168,12 @@ export function mapBackendToMetrics(b: IbmBackend): RawQpuMetrics {
     fid2q,
     capacity,
     queueSeconds: typeof wait === "number" ? wait : undefined,
+    estimated: {
+      fid2q: typeof twoQErr !== "number",
+      capacity: qubits === 0,
+      qv: qubits === 0,
+      clops: true,
+    },
   };
 }
 

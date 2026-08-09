@@ -55,7 +55,13 @@ export async function fetchAllMetrics(
       const key = keys[p.id];
       if (!key) return [];
       try {
-        return await p.fetchMetrics(key, date);
+        const metrics = await p.fetchMetrics(key, date);
+        // Stamp the ADAPTER that produced each record. `provider` names the
+        // hardware vendor, which is not the same thing: Braket reports IQM
+        // machines as provider "IQM", so without this the two feeds covering
+        // that hardware are indistinguishable downstream and the merge cannot
+        // say which door a number came in by.
+        return metrics.map((m) => ({ ...m, feed: p.id }));
       } catch (err) {
         console.error(`[providers] ${p.id} fetch failed:`, err);
         return [];

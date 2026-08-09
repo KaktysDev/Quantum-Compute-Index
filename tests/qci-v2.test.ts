@@ -466,3 +466,108 @@ describe("index disclosures", () => {
     expect(points.at(-1)!.level).toBeCloseTo(points[1].level, 6);
   });
 });
+
+// ── the cross-section vs the chain ────────────────────────────────────────────
+// The published level may only move on the matched sample. The headline price,
+// the cost basis and the map's node sizes describe TODAY'S basket instead, so
+// they must be computable on a day when nothing is matched — which is every
+// first day, every full-basket outage, and every forced re-run of day one.
+
+describe("headline price on a day with no matched sample", () => {
+  const basket = [
+    device("a:one", "A", 7000),
+    device("b:two", "B", 3000),
+    device("c:three", "C", 2500),
+  ];
+
+  it("publishes a real price on the very first point", () => {
+    const [first] = runDays([basket]);
+    expect(first.matched).toBe(0);
+    expect(first.coverage).toBe(0);
+    expect(first.level).toBe(1000);
+    // The whole defect: this used to be 0, so the tab rendered a $0 index.
+    expect(first.usdPerQpuHour).toBeGreaterThan(2500);
+    expect(first.usdPerQpuHour).toBeLessThan(7000);
+    expect(first.usdPerQcu).toBeGreaterThan(0);
+    expect(first.priced).toBe(3);
+  });
+
+  it("flags the first point as inception rather than as a coverage failure", () => {
+    const points = runDays([basket, basket]);
+    expect(points[0].inception).toBe(true);
+    expect(points[1].inception).toBe(false);
+  });
+
+  it("sizes every device on day one, so the map is not a ring of zeroes", () => {
+    const [first] = runDays([basket]);
+    expect(first.devices.every((d) => d.weight > 0)).toBe(true);
+    // ...while contributing nothing to the move.
+    expect(first.devices.every((d) => d.linkWeight === 0)).toBe(true);
+  });
+
+  it("counts a device measured today as fresh even before it can be linked", () => {
+    const [first] = runDays([basket]);
+    expect(first.devices.every((d) => d.fresh)).toBe(true);
+    expect(first.devices.every((d) => !d.inMatchedSample)).toBe(true);
+  });
+
+  it("produces a cost basis and its components on day one", () => {
+    const [first] = runDays([basket]);
+    expect(first.costBasisPerHour).toBeGreaterThan(0);
+    expect(first.costComponents?.capital).toBeGreaterThan(0);
+    expect(first.costCoverageRatio).toBeGreaterThan(0);
+  });
+
+  it("still refuses to let a new constituent move the LEVEL", () => {
+    // The guarantee the cross-section must not weaken: adding a cheap device
+    // drags the headline cross-section down, and leaves the tracked series
+    // untouched.
+    const points = runDays([basket, basket, [...basket, device("d:four", "D", 500)]]);
+    expect(points[2].level).toBeCloseTo(points[1].level, 12);
+    expect(points[2].changePct).toBeCloseTo(0, 12);
+    expect(points[2].usdPerQpuHour).toBeLessThan(points[1].usdPerQpuHour);
+  });
+});
+
+describe("one device reported by two feeds", () => {
+  it("merges field-by-field, keeping whichever source measured each field", async () => {
+    const { dedupeObservations } = await import("@/lib/qci/v2/collect");
+
+    // Braket knows the real qubit count but publishes no calibration; the
+    // vendor's own cloud measures the error but mis-reports the lattice size.
+    const viaBraket = device("iqm:emerald", "IQM", 4000, 54, 0.012);
+    viaBraket.qubits = o(54, { source: "provider.braket" });
+    viaBraket.twoQubitError = o(0.012, { tier: "assumed", source: "provider.braket.calibration" });
+    viaBraket.mergedFrom = ["braket"];
+
+    const viaVendor = device("iqm:emerald", "IQM", 4000, 20, 0.0016);
+    viaVendor.qubits = o(20, { tier: "assumed", source: "provider.iqm" });
+    viaVendor.twoQubitError = o(0.0016, { source: "provider.iqm.calibration" });
+    viaVendor.mergedFrom = ["iqm"];
+
+    const { observations, merged } = dedupeObservations([viaBraket, viaVendor]);
+
+    expect(observations).toHaveLength(1);
+    expect(observations[0].qubits.value).toBe(54); // measured, from Braket
+    expect(observations[0].twoQubitError.value).toBe(0.0016); // measured, from IQM
+    expect(observations[0].mergedFrom).toEqual(["braket", "iqm"]);
+    expect(merged).toEqual([{ id: "iqm:emerald", sources: ["braket", "iqm"] }]);
+  });
+
+  it("leaves a single-feed device untouched and reports no merge", async () => {
+    const { dedupeObservations } = await import("@/lib/qci/v2/collect");
+    const only = device("a:one", "A", 7000);
+    const { observations, merged } = dedupeObservations([only]);
+    expect(observations).toEqual([only]);
+    expect(merged).toEqual([]);
+  });
+
+  it("treats a device as down when any feed reports it down", async () => {
+    const { dedupeObservations } = await import("@/lib/qci/v2/collect");
+    const up = device("a:one", "A", 7000);
+    const down = device("a:one", "A", 7000);
+    down.online = { ...down.online, value: false };
+    expect(dedupeObservations([up, down]).observations[0].online.value).toBe(false);
+    expect(dedupeObservations([down, up]).observations[0].online.value).toBe(false);
+  });
+});

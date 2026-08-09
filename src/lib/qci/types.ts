@@ -10,7 +10,14 @@ export type PricingUnit = "per_minute" | "per_shot" | "per_task" | "per_nqh";
  * (or seeded from the benchmark table). This is the input to normalization.
  */
 export interface RawQpuMetrics {
+  /** The hardware vendor, e.g. "IQM". */
   provider: string;
+  /**
+   * The adapter this record came from, e.g. "braket" or "iqm". Stamped centrally
+   * by `fetchAllMetrics`, never by an adapter itself. Distinct from `provider`
+   * because one vendor's hardware can be reachable through several feeds.
+   */
+  feed?: string;
   qpu: string;
   /** The quoted price in `unit` terms (e.g. 96 means $96/min when unit = per_minute). */
   rawPrice: number;
@@ -23,6 +30,23 @@ export interface RawQpuMetrics {
   fid2q: number;
   /** Qubit count / available capacity — drives the volume proxy. */
   capacity: number;
+  /**
+   * Which of the fields above are provider-typical DEFAULTS rather than values
+   * the operator actually reported this run.
+   *
+   * Every adapter fails open: when a sub-endpoint is unreachable or returns an
+   * unexpected shape it substitutes a documented constant so one bad call cannot
+   * zero out a whole provider. That is the right behaviour, but until now the
+   * substitution was invisible downstream — a hard-coded fidelity arrived at the
+   * index labelled `primary`, indistinguishable from a live calibration reading.
+   *
+   * Marking it here lets v2 tier the field honestly (`assumed` instead of
+   * `primary`) and lets two adapters covering the same hardware be merged
+   * field-by-field, keeping whichever source actually measured each number.
+   *
+   * Absent or `false` means "measured this run".
+   */
+  estimated?: Partial<Record<"fid2q" | "capacity" | "clops" | "qv", boolean>>;
   /** Optional live signals (used by the optional market-adjustment layer). */
   queueSeconds?: number;
   demandSignal?: number; // 1.0 = neutral

@@ -100,7 +100,8 @@ export function mapDeviceToMetrics(
 ): RawQpuMetrics {
   const providerName = summary.providerName ?? "Unknown";
   const info = infoFor(providerName);
-  const qubitCount = extractQubitCount(caps) || 8;
+  const measuredQubits = extractQubitCount(caps);
+  const qubitCount = measuredQubits || 8;
   return {
     provider: providerName,
     qpu: summary.deviceName ?? "QPU",
@@ -112,6 +113,16 @@ export function mapDeviceToMetrics(
     clops: info.clops,
     fid2q: info.fid2q,
     capacity: qubitCount,
+    // The qubit count is real — Braket publishes it in deviceCapabilities. The
+    // fidelity is NOT: Braket exposes no calibration data, so `info.fid2q` is a
+    // provider-typical constant. Saying so is what lets the index prefer a direct
+    // vendor feed's measured calibration for the same machine (see collect.ts).
+    estimated: {
+      fid2q: true,
+      clops: true,
+      capacity: measuredQubits === 0,
+      qv: measuredQubits === 0,
+    },
   };
 }
 

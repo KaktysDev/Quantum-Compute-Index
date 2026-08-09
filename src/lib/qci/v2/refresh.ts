@@ -30,6 +30,12 @@ export interface RefreshV2Result {
   coverage?: number;
   matched?: number;
   observed?: number;
+  /** Devices carrying a price in today's cross-section. */
+  priced?: number;
+  /** Rows written to the raw observation archive. */
+  archived?: number;
+  /** True on the very first point of the series. */
+  inception?: boolean;
   status?: "final" | "provisional";
   costBasisPerHour?: number;
   costCoverageRatio?: number;
@@ -167,9 +173,18 @@ export async function refreshIndex(
     });
 
     // ── Persist ────────────────────────────────────────────────────────────
+    const warnings = [...collected.warnings];
     await writePoint(supabase, indexDate, point, ledger);
-    await writeObservations(supabase, indexDate, collected.observations);
+    const archived = await writeObservations(supabase, indexDate, collected.observations);
     await writeFactors(supabase, indexDate, factors);
+    // The archive is not on the critical path, but a silent failure there means
+    // the audit trail quietly stops existing — which is how this ran for weeks
+    // with an empty qci_observations table. Report it with the run.
+    if (archived < collected.observations.length) {
+      warnings.push(
+        `Observation archive incomplete: ${archived}/${collected.observations.length} rows written.`,
+      );
+    }
 
     const result: RefreshV2Result = {
       ok: true,
@@ -182,13 +197,16 @@ export async function refreshIndex(
       coverage: point.coverage,
       matched: point.matched,
       observed: collected.observations.length,
+      priced: point.priced,
+      archived,
+      inception: point.inception,
       status: point.status,
       costBasisPerHour: point.costBasisPerHour,
       costCoverageRatio: point.costCoverageRatio,
       priceCardVersion: collected.priceCardVersion,
       held,
       retired,
-      warnings: collected.warnings,
+      warnings,
     };
 
     await log({
@@ -197,7 +215,7 @@ export async function refreshIndex(
       coverage: point.coverage,
       matched: point.matched,
       observed: collected.observations.length,
-      warnings: collected.warnings,
+      warnings,
       held,
       retired,
       price_card_version: collected.priceCardVersion,
@@ -242,12 +260,13 @@ async function writePoint(
   if (error) throw new Error(`qci_index_points upsert failed: ${error.message}`);
 }
 
+/** Archive the day's raw observations. Returns how many rows landed. */
 async function writeObservations(
   supabase: Admin,
   indexDate: string,
   observations: Awaited<ReturnType<typeof collectDeviceObservations>>["observations"],
-): Promise<void> {
-  if (observations.length === 0) return;
+): Promise<number> {
+  if (observations.length === 0) return 0;
   const rows = observations.map((o) => ({
     index_date: indexDate,
     device_id: o.id,
@@ -273,8 +292,12 @@ async function writeObservations(
     .from("qci_observations")
     .upsert(rows, { onConflict: "index_date,device_id" });
   // The archive is for auditability, not for the computation — a failure here
-  // is logged loudly but must not discard an otherwise valid index point.
-  if (error) console.error("[qci/v2] observation archive write failed", error.message);
+  // is reported but must not discard an otherwise valid index point.
+  if (error) {
+    console.error("[qci/v2] observation archive write failed", error.message);
+    return 0;
+  }
+  return rows.length;
 }
 
 async function writeFactors(

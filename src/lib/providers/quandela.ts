@@ -165,8 +165,10 @@ function extractHomFidelity(perfs?: Record<string, number>): number | null {
 
 function mapPlatformToMetrics(p: QuandelaPlatform): RawQpuMetrics {
   const c = p.specs?.constraints;
-  const capacity = Number(c?.max_mode_count ?? c?.max_photon_count ?? 12) || 12;
-  const fid2q = extractHomFidelity(p.perfs) ?? QUANDELA_DEFAULT_FID2Q;
+  const declaredModes = Number(c?.max_mode_count ?? c?.max_photon_count ?? 0) || 0;
+  const capacity = declaredModes || 12;
+  const measuredFid = extractHomFidelity(p.perfs);
+  const fid2q = measuredFid ?? QUANDELA_DEFAULT_FID2Q;
   return {
     provider: "Quandela",
     qpu: displayName(p.name),
@@ -176,6 +178,12 @@ function mapPlatformToMetrics(p: QuandelaPlatform): RawQpuMetrics {
     clops: QUANDELA_CLOPS,
     fid2q,
     capacity,
+    estimated: {
+      fid2q: measuredFid == null,
+      capacity: declaredModes === 0,
+      qv: true,
+      clops: true,
+    },
   };
 }
 

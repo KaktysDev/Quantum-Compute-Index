@@ -1730,94 +1730,302 @@
 .theme-switch { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .theme-switch button { display: inline-flex; align-items: center; gap: 0.4rem; }
 
-/* ── QCI attribution map ──────────────────────────────────────────────── */
-/* The map needs two readable hues to separate the price side from the cost
-   side. The console is otherwise monochrome, so these are the only chromatic
-   tokens it introduces, and both are tuned for contrast on white and on black. */
+/* ═════════════════════════════════════════════════════════════════════════
+   QCI — index tab, attribution map, and the admin diagnostic view.
+
+   Design intent, in the console's own terms: no boxes around things that are
+   already visually grouped. The old version drew a ruled panel around the map,
+   a ruled divider down the middle, and a ruled circle behind the nodes — three
+   borders doing the work of one piece of whitespace. Here the grouping comes
+   from spacing and from a very soft field behind the graph, and the only rules
+   left are the ones separating rows of data.
+
+   The two chromatic tokens stay: the map needs to separate the price side from
+   the cost side, and hue is the only encoding that survives at node-dot size.
+   ═════════════════════════════════════════════════════════════════════════ */
+
 .console-shell {
   --qci-price: #24406e;
   --qci-cost: #7a5512;
-  --qci-hub-glow: rgba(10, 10, 10, 0.14);
+  --qci-hub-glow: rgba(10, 10, 10, 0.16);
+  --qci-field: rgba(10, 10, 10, 0.035);
   --qci-node-fill: #ffffff;
 }
 html[data-theme="dark"] .console-shell {
   --qci-price: #8fb3f5;
   --qci-cost: #dfae5b;
-  --qci-hub-glow: rgba(255, 255, 255, 0.16);
+  --qci-hub-glow: rgba(255, 255, 255, 0.18);
+  --qci-field: rgba(255, 255, 255, 0.045);
   --qci-node-fill: #0d0d0d;
 }
 
-.qci-map-panel { margin-top: 1rem; }
-.qci-map-glyph { color: var(--qr-emerald); fill: currentColor; stroke: currentColor; stroke-width: 0.9; }
-.qci-map-glyph path { fill: none; opacity: 0.5; }
-.qci-map-status { margin-left: auto; padding: 0.24rem 0.6rem; border: 1px solid var(--qr-line); border-radius: 999px; color: var(--qr-muted) !important; font: 600 0.56rem var(--qr-mono) !important; letter-spacing: 0.06em; text-transform: uppercase; }
-.qci-map-status[data-status="provisional"] { border-color: var(--qr-warning-line); background: var(--qr-warning-dim); color: var(--qr-warning) !important; }
-.qci-map-status[data-status="final"] { border-color: var(--qr-success-line); color: var(--qr-success) !important; }
+.qci-page { gap: 2.25rem; }
 
-.qci-map-body { display: grid; grid-template-columns: minmax(0, 1fr) 336px; }
-.qci-map-canvas { min-width: 0; padding: 0.5rem; border-right: 1px solid var(--qr-line); }
+/* ── Hero ─────────────────────────────────────────────────────────────────
+   Borderless on purpose. The price is the largest thing on the page and does
+   not need a frame to be found. */
+.qci-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 2rem 3rem;
+  padding: 0.5rem 0 1.75rem;
+  border-bottom: 1px solid var(--qr-line);
+  animation: qciRise 520ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.qci-hero-eyebrow {
+  margin: 0;
+  color: var(--qr-dim);
+  font: 600 0.58rem var(--qr-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.qci-hero h1 {
+  display: flex;
+  align-items: baseline;
+  margin: 0.6rem 0 0;
+  color: var(--qr-text);
+  font-size: clamp(2.6rem, 6vw, 4rem);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.qci-hero h1.qci-hero-empty { font-size: clamp(1.4rem, 3vw, 1.9rem); letter-spacing: -0.02em; }
+.qci-hero-currency { margin-right: 0.06em; color: var(--qr-dim); font-size: 0.46em; font-weight: 500; }
+.qci-hero h1 small {
+  margin-left: 0.75rem;
+  color: var(--qr-dim);
+  font-size: 0.2em;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.qci-hero-change {
+  display: inline-flex;
+  align-items: center;
+  margin: 0.85rem 0 0;
+  padding: 0.26rem 0.62rem;
+  border-radius: 999px;
+  font: 600 0.66rem var(--qr-mono);
+  letter-spacing: 0.02em;
+}
+.qci-hero-change[data-dir="up"] { background: var(--qr-success-dim); color: var(--qr-success); }
+.qci-hero-change[data-dir="down"] { background: var(--qr-danger-dim); color: var(--qr-danger); }
+.qci-hero-change[data-dir="flat"],
+.qci-hero-change[data-dir="new"] { background: var(--qr-accent-dim); color: var(--qr-muted); }
+.qci-hero-blurb {
+  max-width: 54ch;
+  margin: 1rem 0 0;
+  color: var(--qr-muted);
+  font-size: 0.78rem;
+  line-height: 1.65;
+}
+
+.qci-hero-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, max-content));
+  margin: 0;
+  gap: 1.6rem 2.4rem;
+}
+.qci-hero-stats dt {
+  color: var(--qr-dim);
+  font: 600 0.55rem var(--qr-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.qci-hero-stats dd {
+  margin: 0.4rem 0 0;
+  color: var(--qr-text);
+  font-size: 1.15rem;
+  font-weight: 560;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.qci-hero-stats small { display: block; margin-top: 0.22rem; color: var(--qr-dim); font-size: 0.62rem; }
+
+/* ── Map shell ──────────────────────────────────────────────────────────── */
+.qci-map-panel { display: grid; gap: 1.1rem; }
+.qci-map-head { display: flex; align-items: flex-start; gap: 1rem; }
+.qci-map-head h2 { margin: 0; color: var(--qr-text); font-size: 0.92rem; font-weight: 620; }
+.qci-map-head p { max-width: 62ch; margin: 0.3rem 0 0; color: var(--qr-muted); font-size: 0.72rem; line-height: 1.55; }
+.qci-map-status {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 0.26rem 0.62rem;
+  border: 1px solid var(--qr-line);
+  border-radius: 999px;
+  color: var(--qr-muted);
+  font: 600 0.56rem var(--qr-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.qci-map-status[data-status="provisional"] { border-color: var(--qr-warning-line); background: var(--qr-warning-dim); color: var(--qr-warning); }
+.qci-map-status[data-status="final"] { border-color: var(--qr-success-line); color: var(--qr-success); }
+.qci-map-status[data-status="inception"] { border-color: var(--qr-line-strong); color: var(--qr-muted); }
+
+.qci-map-body { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 1.5rem; align-items: start; }
+.qci-map-canvas { min-width: 0; }
 .qci-map-canvas svg { display: block; width: 100%; height: auto; overflow: visible; }
 
-.qci-map-axis { fill: var(--qr-dim); font: 600 10.5px var(--qr-mono); letter-spacing: 0.1em; }
-.qci-map-halo { fill: none; stroke: var(--qr-line); stroke-dasharray: 2 6; }
+/* ENTRY ANIMATIONS USE fill-mode: backwards, NEVER both.
+   `both` holds the final keyframe indefinitely, and an animated property beats
+   a normal declaration in the cascade — so a keyframe ending at `opacity: 1`
+   permanently overrides `[data-dim] { opacity: 0.26 }` and the dimming of
+   unselected clusters silently stops working. `backwards` applies the opening
+   keyframe during the delay and then hands the element back to its own rules,
+   which is what an entry animation actually wants. Every keyframe set below is
+   therefore written `from`-only, with the resting state living in the rule. */
+.qci-map-axis {
+  fill: var(--qr-dim);
+  font: 600 10px var(--qr-mono);
+  letter-spacing: 0.12em;
+  animation: qciFade 700ms ease 260ms backwards;
+}
 
-.qci-edge { stroke: var(--qr-line-strong); stroke-width: 1; opacity: 0.55; transition: opacity 160ms ease, stroke 160ms ease; }
+/* ── Orbit rings ──────────────────────────────────────────────────────────
+   Two counter-rotating dashed circles. They carry no data — they exist so a
+   static daily snapshot still reads as a live instrument rather than a
+   screenshot. Slow enough (60s/90s) to register only peripherally. */
+.qci-map-orbit {
+  fill: none;
+  stroke: var(--qr-line);
+  stroke-dasharray: 2 10;
+  transform-box: view-box;
+  transform-origin: 500px 360px;
+  animation: qciOrbit 90s linear infinite, qciFade 900ms ease backwards;
+  opacity: 0.9;
+}
+.qci-map-orbit.reverse { animation: qciOrbitReverse 130s linear infinite, qciFade 900ms ease 120ms backwards; stroke-dasharray: 1 14; }
+
+/* ── Edges ────────────────────────────────────────────────────────────────
+   pathLength="1" on the element normalises every edge, so a single dash
+   animation draws long and short edges at the same speed. */
+.qci-edge {
+  stroke: var(--qr-line-strong);
+  stroke-width: 1;
+  opacity: 0.5;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  animation: qciDraw 620ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  transition: opacity 180ms ease, stroke-width 180ms ease;
+}
 .qci-edge.price { stroke: var(--qci-price); }
 .qci-edge.cost { stroke: var(--qci-cost); }
-.qci-edge[data-dim="true"] { opacity: 0.12; }
+.qci-edge[data-dim="true"] { opacity: 0.1; }
 .qci-edge[data-active="true"] { opacity: 1; stroke-width: 1.8; }
 
-.qci-node { cursor: pointer; transition: opacity 160ms ease; }
+/* ── Nodes ────────────────────────────────────────────────────────────────
+   The positioning translate lives on an OUTER <g> as an SVG attribute; this
+   inner group owns the CSS transform. Mixing the two on one element loses the
+   position, because a CSS transform replaces the attribute entirely. */
+.qci-node {
+  cursor: pointer;
+  transform-box: view-box;
+  transform-origin: 0 0;
+  animation: qciPop 560ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  transition: opacity 180ms ease;
+}
 .qci-node:focus { outline: none; }
-.qci-node:focus-visible > circle { stroke: var(--qr-accent); stroke-width: 2.5; }
-.qci-node > circle { fill: var(--qci-node-fill); stroke: var(--qr-line-strong); stroke-width: 1.4; transition: stroke-width 160ms ease, fill 160ms ease; }
+.qci-node:focus-visible > circle:not(.qci-node-halo) { stroke: var(--qr-accent); stroke-width: 2.5; }
+.qci-node > circle {
+  fill: var(--qci-node-fill);
+  stroke: var(--qr-line-strong);
+  stroke-width: 1.4;
+  transition: stroke-width 200ms ease, fill 200ms ease, r 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
 .qci-node.price > circle { stroke: var(--qci-price); }
 .qci-node.cost > circle { stroke: var(--qci-cost); }
-.qci-node:hover > circle { stroke-width: 2.4; }
-.qci-node[data-active="true"] > circle { stroke-width: 3; }
+.qci-node:hover > circle:not(.qci-node-halo) { stroke-width: 2.4; }
+.qci-node[data-active="true"] > circle:not(.qci-node-halo) { stroke-width: 3; }
 .qci-node.price[data-active="true"] > circle { fill: color-mix(in srgb, var(--qci-price) 14%, var(--qci-node-fill)); }
 .qci-node.cost[data-active="true"] > circle { fill: color-mix(in srgb, var(--qci-cost) 16%, var(--qci-node-fill)); }
-.qci-node[data-dim="true"] { opacity: 0.28; }
+.qci-node[data-dim="true"] { opacity: 0.26; }
 /* A dashed ring means the datum was not re-measured today. Reading the map
    should make staleness obvious without opening anything. */
-.qci-node[data-stale="true"] > circle { stroke-dasharray: 3 3; }
+.qci-node[data-stale="true"] > circle:not(.qci-node-halo) { stroke-dasharray: 3 3; }
 
-.qci-node-label { fill: var(--qr-text); font: 620 12.5px var(--font-sans); }
-.qci-node-sub { fill: var(--qr-dim); font: 500 10.5px var(--qr-mono); }
+/* A halo that expands and fades on hover — the ripple that tells you the node
+   is live under the cursor without moving anything around it. */
+.qci-node-halo { fill: none; stroke-width: 1; opacity: 0; pointer-events: none; }
+.qci-node.price .qci-node-halo { stroke: var(--qci-price); }
+.qci-node.cost .qci-node-halo { stroke: var(--qci-cost); }
+.qci-node:hover .qci-node-halo,
+.qci-node[data-active="true"] .qci-node-halo { animation: qciRipple 1.6s ease-out infinite; }
 
+.qci-node-label { fill: var(--qr-text); font: 620 12.5px var(--font-sans); pointer-events: none; }
+.qci-node-sub { fill: var(--qr-dim); font: 500 10.5px var(--qr-mono); pointer-events: none; }
+
+/* ── Hub ──────────────────────────────────────────────────────────────────
+   Two stacked circles: a pulse ring that breathes outward, and the solid face
+   over the top of it. */
+.qci-node.hub { animation: qciPop 700ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
 .qci-node.hub > circle { fill: var(--qr-panel-raised); stroke: var(--qr-accent); stroke-width: 1.6; }
-.qci-hub-eyebrow { fill: var(--qr-dim); font: 600 8.5px var(--qr-mono); letter-spacing: 0.1em; }
-.qci-hub-value { fill: var(--qr-text); font: 560 28px var(--qr-mono); }
-.qci-hub-change { font: 600 10px var(--qr-mono); }
+.qci-hub-pulse { fill: none !important; stroke: var(--qr-accent) !important; opacity: 0.35; transform-box: view-box; transform-origin: 0 0; animation: qciPulse 4.5s ease-out infinite; }
+.qci-hub-glow { animation: qciBreathe 6s ease-in-out infinite; transform-box: view-box; transform-origin: 500px 360px; }
+.qci-hub-eyebrow { fill: var(--qr-dim); font: 600 8.5px var(--qr-mono); letter-spacing: 0.12em; pointer-events: none; }
+.qci-hub-value { fill: var(--qr-text); font: 560 30px var(--qr-mono); font-variant-numeric: tabular-nums; pointer-events: none; }
+.qci-hub-change { font: 600 10px var(--qr-mono); pointer-events: none; }
 .qci-hub-change.up { fill: var(--qr-success); }
 .qci-hub-change.down { fill: var(--qr-danger); }
+.qci-hub-change.flat { fill: var(--qr-dim); }
 
-/* ── Detail panel ─────────────────────────────────────────────────────── */
-.qci-map-detail { display: flex; min-width: 0; flex-direction: column; overflow-y: auto; max-height: 660px; padding: 1.05rem; background: var(--qr-panel-raised); }
-.qci-map-detail header { padding-bottom: 0.8rem; border-bottom: 1px solid var(--qr-line); }
-.qci-detail-eyebrow { margin: 0; color: var(--qr-dim); font: 600 0.56rem var(--qr-mono); letter-spacing: 0.1em; text-transform: uppercase; }
-.qci-map-detail h3 { margin: 0.35rem 0 0; color: var(--qr-text); font-size: 0.92rem; font-weight: 650; }
-.qci-map-detail dl { display: grid; margin: 0.8rem 0 0; gap: 0; }
-.qci-detail-row { display: grid; grid-template-columns: 1fr auto; gap: 0.7rem; padding: 0.42rem 0; border-bottom: 1px solid var(--qr-line); }
-.qci-detail-row dt { color: var(--qr-dim); font-size: 0.66rem; }
-.qci-detail-row dd { margin: 0; color: var(--qr-text); font-size: 0.68rem; text-align: right; }
-.qci-detail-row dd.mono { font-family: var(--qr-mono); font-size: 0.64rem; }
+/* ── Detail panel ─────────────────────────────────────────────────────────
+   A raised surface rather than a bordered box, and it re-enters on every
+   selection change (React `key`), so drilling into a provider reads as
+   navigation rather than as text swapping in place. */
+.qci-map-detail {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow-y: auto;
+  max-height: 640px;
+  padding: 1.15rem 1.2rem;
+  border-radius: var(--qr-radius);
+  background: var(--qr-panel-raised);
+  animation: qciSlide 380ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.qci-map-detail header { padding-bottom: 0.85rem; border-bottom: 1px solid var(--qr-line); }
+.qci-detail-eyebrow { margin: 0; color: var(--qr-dim); font: 600 0.55rem var(--qr-mono); letter-spacing: 0.1em; text-transform: uppercase; }
+.qci-map-detail h3 { margin: 0.35rem 0 0; color: var(--qr-text); font-size: 0.95rem; font-weight: 650; }
+.qci-map-detail dl { display: grid; margin: 0.85rem 0 0; gap: 0; }
+.qci-detail-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.7rem; align-items: baseline; padding: 0.5rem 0; border-bottom: 1px solid var(--qr-line); }
+.qci-detail-row:last-child { border-bottom: 0; }
+.qci-detail-row dt { color: var(--qr-muted); font-size: 0.68rem; }
+.qci-detail-row dt small { display: block; margin-top: 0.15rem; color: var(--qr-dim); font-size: 0.58rem; line-height: 1.4; }
+.qci-detail-row dd { margin: 0; color: var(--qr-text); font-size: 0.7rem; font-weight: 520; text-align: right; }
+.qci-detail-row dd.mono { font-family: var(--qr-mono); font-size: 0.66rem; font-variant-numeric: tabular-nums; }
+.qci-detail-row dd code { font-size: 0.6rem; color: var(--qr-muted); }
 .qci-detail-row dd .ok { color: var(--qr-success); }
 .qci-detail-row dd .warn { color: var(--qr-warning); }
 
 .qci-pill { display: inline-block; padding: 0.14rem 0.44rem; border-radius: 999px; font: 600 0.56rem var(--qr-mono); }
-.qci-pill.ok { border: 1px solid var(--qr-success-line); background: var(--qr-success-dim); color: var(--qr-success); }
-.qci-pill.warn { border: 1px solid var(--qr-warning-line); background: var(--qr-warning-dim); color: var(--qr-warning); }
+.qci-pill.ok { background: var(--qr-success-dim); color: var(--qr-success); }
+.qci-pill.warn { background: var(--qr-warning-dim); color: var(--qr-warning); }
 
-.qci-detail-note { margin: 0.85rem 0 0; color: var(--qr-muted); font-size: 0.66rem; line-height: 1.6; }
-.qci-detail-note.strong { padding: 0.65rem 0.75rem; border: 1px solid var(--qr-line); border-radius: var(--qr-radius-sm); background: var(--qr-panel); }
+.qci-detail-note { margin: 0.9rem 0 0; color: var(--qr-muted); font-size: 0.68rem; line-height: 1.65; }
+.qci-detail-note.strong { padding: 0.7rem 0.8rem; border-radius: var(--qr-radius-sm); background: var(--qr-panel); }
 .qci-detail-note b { color: var(--qr-text); }
 
-.qci-detail-list { display: grid; margin: 0.5rem 0 0; padding: 0; gap: 0.3rem; list-style: none; }
-.qci-detail-list button { display: grid; width: 100%; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.6rem; padding: 0.55rem 0.6rem; border: 1px solid var(--qr-line); border-radius: var(--qr-radius-sm); background: var(--qr-panel); color: var(--qr-muted); text-align: left; cursor: pointer; transition: border-color 140ms ease, background-color 140ms ease; }
-.qci-detail-list button:hover { border-color: var(--qr-line-strong); background: var(--qr-hover); }
+.qci-detail-list { display: grid; margin: 0.55rem 0 0; padding: 0; gap: 0.3rem; list-style: none; }
+.qci-detail-list button {
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.58rem 0.65rem;
+  border: 0;
+  border-radius: var(--qr-radius-sm);
+  background: var(--qr-panel);
+  color: var(--qr-muted);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 160ms ease, transform 160ms ease;
+}
+.qci-detail-list button:hover { background: var(--qr-hover); transform: translateX(2px); }
 .qci-detail-list b, .qci-detail-list small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.qci-detail-list b { color: var(--qr-text); font-size: 0.68rem; }
+.qci-detail-list b { color: var(--qr-text); font-size: 0.7rem; }
 .qci-detail-list small { margin-top: 0.2rem; color: var(--qr-dim); font: 0.56rem var(--qr-mono); }
 .qci-detail-value { text-align: right; }
 .qci-detail-value b { font-family: var(--qr-mono); }
@@ -1829,33 +2037,161 @@ html[data-theme="dark"] .console-shell {
 .qci-detail-excluded code { color: var(--qr-muted); font-size: 0.58rem; }
 .qci-detail-excluded span { color: var(--qr-dim); font-size: 0.56rem; }
 
-.qci-provenance { margin-top: 0.9rem; padding: 0.7rem 0.75rem; border: 1px solid var(--qr-line); border-left: 2px solid var(--qr-line-strong); border-radius: var(--qr-radius-sm); background: var(--qr-panel); }
+.qci-provenance { margin-top: 0.9rem; padding: 0.72rem 0.8rem; border-left: 2px solid var(--qr-line-strong); border-radius: 0 var(--qr-radius-sm) var(--qr-radius-sm) 0; background: var(--qr-panel); }
 .qci-provenance[data-tier="primary"] { border-left-color: var(--qr-success); }
 .qci-provenance[data-tier="official"] { border-left-color: var(--qci-price); }
 .qci-provenance[data-tier="published"] { border-left-color: var(--qci-cost); }
 .qci-provenance[data-tier="assumed"] { border-left-color: var(--qr-warning); }
-.qci-tier { display: block; color: var(--qr-text); font: 600 0.6rem var(--font-sans); }
+.qci-tier { display: block; color: var(--qr-text); font: 600 0.62rem var(--font-sans); }
 .qci-provenance code { display: block; margin-top: 0.25rem; color: var(--qr-dim); font-size: 0.56rem; }
-.qci-provenance p { margin: 0.45rem 0 0; color: var(--qr-muted); font-size: 0.62rem; line-height: 1.55; }
+.qci-provenance p { margin: 0.45rem 0 0; color: var(--qr-muted); font-size: 0.63rem; line-height: 1.55; }
 .qci-provenance small { display: block; margin-top: 0.4rem; color: var(--qr-dim); font: 0.56rem var(--qr-mono); }
 
-.qci-detail-back { margin-top: auto; padding-top: 0.9rem; border: 0; background: transparent; color: var(--qr-muted); font-size: 0.64rem; text-align: left; cursor: pointer; }
+.qci-detail-back { margin-top: auto; padding-top: 1rem; border: 0; background: transparent; color: var(--qr-muted); font-size: 0.66rem; text-align: left; cursor: pointer; transition: color 140ms ease; }
 .qci-detail-back:hover { color: var(--qr-text); }
 
-/* ── Empty state ──────────────────────────────────────────────────────── */
-.qci-empty { display: grid; min-height: 300px; place-items: center; align-content: center; gap: 0.5rem; padding: 2rem; text-align: center; }
+/* ── Empty state ──────────────────────────────────────────────────────────── */
+.qci-empty { display: grid; min-height: 280px; place-items: center; align-content: center; gap: 0.5rem; padding: 2rem; border-radius: var(--qr-radius); background: var(--qr-panel-raised); text-align: center; }
 .qci-empty h3 { margin: 0; color: var(--qr-text); font-size: 0.88rem; }
-.qci-empty p { max-width: 46ch; margin: 0; color: var(--qr-muted); font-size: 0.7rem; line-height: 1.6; }
+.qci-empty p { max-width: 48ch; margin: 0; color: var(--qr-muted); font-size: 0.71rem; line-height: 1.6; }
 .qci-empty code { padding: 0.12rem 0.35rem; border-radius: 4px; background: var(--qr-code-bg); font-size: 0.64rem; }
 
+/* ── History panel ────────────────────────────────────────────────────────── */
+.qci-series-panel { display: grid; gap: 1rem; }
+.qci-series-body { display: flex; flex-direction: column; border-radius: var(--qr-radius); background: var(--qr-panel-raised); }
+.qci-series-chart { width: 100%; height: 290px; padding: 0 0.5rem; }
+.qci-series-panel .market-quote { border-bottom: 0; }
+.qci-series-panel .market-quote dd.warn { color: var(--qr-warning); }
+.qci-series-panel .market-ranges { flex-wrap: wrap; gap: 0.25rem; border-top: 1px solid var(--qr-line); }
+.qci-series-panel .market-ranges button { width: auto; padding: 0 0.7rem; }
+.qci-series-panel .market-ranges .qci-range-group { margin-left: auto; display: flex; gap: 0.25rem; }
+.qci-series-panel .market-ranges .qci-range-group button { width: 46px; padding: 0; }
+
+/* ── Console links ────────────────────────────────────────────────────────── */
+.qci-console-links a { transition: transform 160ms ease, background-color 160ms ease; }
+.qci-console-links a:hover { transform: translateY(-1px); }
+
+/* ── Admin: index health ──────────────────────────────────────────────────── */
+.admin-health-actions { display: grid; justify-items: end; gap: 0.6rem; }
+.admin-health-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; }
+.admin-refresh-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid var(--qr-line-strong);
+  border-radius: var(--qr-radius-sm);
+  background: transparent;
+  color: var(--qr-text);
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+.admin-refresh-button:hover:not(:disabled) { background: var(--qr-hover); }
+.admin-refresh-button:disabled { opacity: 0.5; cursor: default; }
+.admin-health-result { max-width: 62ch; margin: 0; color: var(--qr-muted); font: 0.68rem var(--qr-mono); text-align: right; line-height: 1.5; }
+.admin-health-result[data-failed="true"] { color: var(--qr-warning); }
+.admin-health-warnings { display: grid; max-width: 62ch; margin: 0; padding: 0; gap: 0.25rem; list-style: none; text-align: right; }
+.admin-health-warnings li { color: var(--qr-dim); font-size: 0.62rem; line-height: 1.5; }
+
+.admin-index-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1.2rem; }
+.admin-index-grid dt { color: var(--qr-dim); font: 600 0.55rem var(--qr-mono); letter-spacing: 0.1em; text-transform: uppercase; }
+.admin-index-grid dd { margin: 0.35rem 0 0; color: var(--qr-text); font-size: 0.92rem; font-weight: 560; font-variant-numeric: tabular-nums; }
+.admin-index-grid dd.warn { color: var(--qr-warning); }
+.admin-index-grid dd.bad { color: var(--qr-danger); }
+.admin-index-grid dd.good { color: var(--qr-success); }
+.admin-index-grid small { display: block; margin-top: 0.2rem; color: var(--qr-dim); font-size: 0.62rem; line-height: 1.45; }
+
+.admin-run-log { display: grid; margin: 0; padding: 0; gap: 0.3rem; list-style: none; }
+.admin-run-log li { display: grid; grid-template-columns: 150px 92px minmax(0, 1fr); gap: 0.75rem; align-items: baseline; padding: 0.42rem 0.55rem; border-radius: var(--qr-radius-sm); background: var(--qr-panel); font-size: 0.64rem; }
+.admin-run-log time { color: var(--qr-muted); font-family: var(--qr-mono); }
+.admin-run-log .state { font: 600 0.58rem var(--qr-mono); letter-spacing: 0.06em; text-transform: uppercase; }
+.admin-run-log .state[data-ok="wrote"] { color: var(--qr-success); }
+.admin-run-log .state[data-ok="skipped"] { color: var(--qr-muted); }
+.admin-run-log .state[data-ok="failed"] { color: var(--qr-danger); }
+.admin-run-log .detail { color: var(--qr-dim); overflow: hidden; text-overflow: ellipsis; }
+
+.admin-feed-table { display: grid; margin: 0; padding: 0; gap: 0.3rem; list-style: none; }
+.admin-feed-row { display: grid; grid-template-columns: minmax(0, 1.4fr) auto minmax(0, 1fr) 92px; gap: 0.8rem; align-items: baseline; padding: 0.5rem 0.6rem; border-radius: var(--qr-radius-sm); background: var(--qr-panel); }
+.admin-feed-row b { color: var(--qr-text); font-size: 0.7rem; font-weight: 560; }
+.admin-feed-row .value { color: var(--qr-text); font: 0.66rem var(--qr-mono); font-variant-numeric: tabular-nums; }
+.admin-feed-row .meta { color: var(--qr-dim); font-size: 0.62rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-feed-row .tier { justify-self: end; font: 600 0.55rem var(--qr-mono); letter-spacing: 0.05em; text-transform: uppercase; }
+.admin-feed-row .tier[data-tier="official"], .admin-feed-row .tier[data-tier="primary"] { color: var(--qr-success); }
+.admin-feed-row .tier[data-tier="published"] { color: var(--qr-muted); }
+.admin-feed-row .tier[data-tier="assumed"] { color: var(--qr-warning); }
+
+.admin-note-list { display: grid; margin: 0.6rem 0 0; padding: 0; gap: 0.3rem; list-style: none; }
+.admin-note-list li { padding: 0.42rem 0.6rem; border-left: 2px solid var(--qr-warning-line); border-radius: 0 var(--qr-radius-sm) var(--qr-radius-sm) 0; background: var(--qr-panel); color: var(--qr-muted); font-size: 0.64rem; line-height: 1.5; }
+
+/* ── Responsive ───────────────────────────────────────────────────────────── */
 @media (max-width: 1100px) {
   .qci-map-body { grid-template-columns: 1fr; }
-  .qci-map-canvas { border-right: 0; border-bottom: 1px solid var(--qr-line); }
   .qci-map-detail { max-height: none; }
+  .qci-hero { grid-template-columns: 1fr; align-items: start; }
+  .qci-hero-stats { grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 1.2rem; }
+  .admin-run-log li { grid-template-columns: 1fr auto; }
+  .admin-run-log .detail { grid-column: 1 / -1; }
+  .admin-feed-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .admin-feed-row .meta { grid-column: 1 / -1; white-space: normal; }
+  .admin-health-actions { justify-items: start; }
+  .admin-health-result, .admin-health-warnings { text-align: left; }
 }
 
-.qci-series-panel { margin-top: 1rem; }
-.qci-series-body { display: flex; flex-direction: column; }
-.qci-series-chart { width: 100%; height: 300px; padding: 0 0.5rem; }
-.qci-series-panel .market-quote dd.warn { color: var(--qr-warning); }
-.qci-series-panel .market-ranges { flex-wrap: wrap; gap: 0.25rem; }
+/* ── Motion ───────────────────────────────────────────────────────────────── */
+/* `from`-only, so the closing state is whatever the element's own rules say —
+   see the fill-mode note above. Adding a `to` here would re-break dimming. */
+@keyframes qciRise {
+  from { opacity: 0; transform: translateY(10px); }
+}
+@keyframes qciFade {
+  from { opacity: 0; }
+}
+@keyframes qciSlide {
+  from { opacity: 0; transform: translateY(8px); }
+}
+@keyframes qciPop {
+  from { opacity: 0; transform: scale(0.62); }
+}
+@keyframes qciDraw {
+  from { stroke-dashoffset: 1; opacity: 0; }
+}
+@keyframes qciOrbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes qciOrbitReverse {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+@keyframes qciPulse {
+  0% { transform: scale(1); opacity: 0.32; }
+  70% { transform: scale(1.32); opacity: 0; }
+  100% { transform: scale(1.32); opacity: 0; }
+}
+@keyframes qciBreathe {
+  0%, 100% { opacity: 0.85; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+@keyframes qciRipple {
+  0% { transform: scale(1); opacity: 0.5; }
+  100% { transform: scale(1.75); opacity: 0; }
+}
+
+/* The console-wide reduced-motion rule zeroes durations, which would leave
+   every animated-in element stuck at its `from` keyframe (opacity 0). These
+   restore the resting state outright rather than animating to it. */
+@media (prefers-reduced-motion: reduce) {
+  .qci-hero,
+  .qci-map-axis,
+  .qci-map-orbit,
+  .qci-node,
+  .qci-map-detail,
+  .qci-hub-glow,
+  .qci-hub-pulse { animation: none !important; opacity: 1; transform: none; }
+  .qci-hub-pulse { opacity: 0.3; }
+  .qci-edge { animation: none !important; stroke-dashoffset: 0; opacity: 0.5; }
+  .qci-node-halo { animation: none !important; opacity: 0; }
+  .qci-detail-list button:hover { transform: none; }
+  .qci-console-links a:hover { transform: none; }
+}

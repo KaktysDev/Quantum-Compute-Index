@@ -23,7 +23,7 @@ import {
   type ISeriesApi,
   type Time,
 } from "lightweight-charts";
-import { Activity, TrendingDown, TrendingUp } from "lucide-react";
+import { TrendingDown, TrendingUp } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { QciSeries, SeriesPoint } from "@/lib/qci/v2/store";
 
@@ -36,6 +36,9 @@ const RANGES = [
 
 type MetricKey = keyof QciSeries;
 
+// Labels are words, not tickers. "QCI-Q" told a reader nothing they could act
+// on; "Quality-adjusted" at least names the idea, and the unit line carries the
+// precision underneath it.
 const METRICS: Array<{
   key: MetricKey;
   symbol: string;
@@ -43,10 +46,10 @@ const METRICS: Array<{
   unit: string;
   dp: number;
 }> = [
-  { key: "usdPerQpuHour", symbol: "QCI", label: "Price of a quantum hour", unit: "USD / QPU-hour", dp: 2 },
-  { key: "usdPerQcu", symbol: "QCI-Q", label: "Quality-adjusted", unit: "USD / QCU-hour", dp: 2 },
-  { key: "level", symbol: "QCI-L", label: "Index level", unit: "1000 at inception", dp: 2 },
-  { key: "costBasis", symbol: "QCI-C", label: "Modelled cost basis", unit: "USD / QPU-hour", dp: 2 },
+  { key: "usdPerQpuHour", symbol: "Price", label: "Price of a quantum hour", unit: "USD per QPU-hour", dp: 2 },
+  { key: "usdPerQcu", symbol: "Quality-adj.", label: "Cost per unit of capability", unit: "USD per capability-hour", dp: 2 },
+  { key: "level", symbol: "Level", label: "Index level", unit: "1,000 at inception", dp: 2 },
+  { key: "costBasis", symbol: "Cost", label: "Modelled cost to produce", unit: "USD per QPU-hour", dp: 2 },
 ];
 
 function money(v: number, dp: number) {
@@ -170,23 +173,22 @@ export default function QciSeriesPanel({
 
   if (!hasData || all.length === 0) {
     return (
-      <section className="console-panel qci-series-panel">
-        <div className="panel-title">
-          <Activity size={16} />
+      <section className="qci-series-panel">
+        <header className="qci-map-head">
           <div>
-            <h2>Index history</h2>
-            <small>Recorded daily points — no synthetic history is ever drawn</small>
+            <h2>History</h2>
+            <p>One point per day, drawn only from what was actually measured.</p>
           </div>
-        </div>
+        </header>
         <div className="qci-empty">
-          <h3>{hasData ? "Not enough points to chart yet" : "No history recorded yet"}</h3>
+          <h3>{hasData ? "Not enough points to chart yet" : "Nothing recorded yet"}</h3>
           <p>
             {emptyReason ??
               "The index needs at least one recorded point before it can be charted."}
           </p>
           <p>
-            The previous version drew a seeded random walk here whenever the database was empty.
-            This one draws nothing, because nothing has been measured.
+            A blank chart here means nothing has been measured — never that a line failed to draw.
+            No synthetic history is ever shown.
           </p>
         </div>
       </section>
@@ -194,17 +196,16 @@ export default function QciSeriesPanel({
   }
 
   return (
-    <section className="console-panel qci-series-panel">
-      <div className="panel-title">
-        <Activity size={16} />
+    <section className="qci-series-panel">
+      <header className="qci-map-head">
         <div>
-          <h2>Index history</h2>
-          <small>Recorded daily points — no synthetic history is ever drawn</small>
+          <h2>History</h2>
+          <p>One point per day, drawn only from what was actually measured.</p>
         </div>
-        <span className="market-source">
-          <i /> {all.length} recorded point{all.length === 1 ? "" : "s"}
+        <span className="qci-map-status">
+          {all.length} day{all.length === 1 ? "" : "s"} recorded
         </span>
-      </div>
+      </header>
 
       <div className="qci-series-body">
         <header className="market-quote">
@@ -253,12 +254,11 @@ export default function QciSeriesPanel({
                 setMetric(m.key);
                 setHovered(null);
               }}
-              style={{ width: "auto", padding: "0 0.6rem" }}
             >
               {m.symbol}
             </button>
           ))}
-          <span style={{ marginLeft: "auto", display: "flex", gap: "0.25rem" }}>
+          <span className="qci-range-group">
             {RANGES.map((r) => (
               <button
                 key={r.label}

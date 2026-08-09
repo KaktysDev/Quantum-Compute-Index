@@ -208,6 +208,16 @@ async function deviceToMetrics(
     clops: IQM_DEFAULT_CLOPS,
     fid2q: fid ?? IQM_DEFAULT_FID2Q,
     capacity,
+    // Both sub-calls fail open, so record which of the two actually answered.
+    // Resonance's static-architecture artifact has been observed returning the
+    // same 20-qubit lattice for several aliases, so a fallback here is real and
+    // must not be presented as a measurement.
+    estimated: {
+      capacity: !qubits,
+      qv: !qubits,
+      fid2q: fid == null,
+      clops: true,
+    },
   };
 }
 

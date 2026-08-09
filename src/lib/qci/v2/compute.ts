@@ -20,6 +20,7 @@ import {
 import { DEFAULT_HEDONIC, type HedonicConfig } from "./quality";
 import { MODALITY_POWER_KW } from "./registry";
 import {
+  capWeights,
   DEFAULT_LINK,
   linkPeriod,
   weightedGeoMean,
@@ -124,22 +125,55 @@ export function computeIndexPoint(input: ComputeInput): ComputeOutput {
   // chain, so a rounding error compounded into the series indefinitely.
   const level = previousLevel * Math.exp(linked.logChange);
 
+  // ── The basket cross-section ───────────────────────────────────────────────
+  // Every non-retired device carrying a usable price today, weighted by
+  // expenditure share under the SAME caps the link uses.
+  //
+  // This is deliberately a second, wider weight set, and the distinction is the
+  // one that makes the index publishable from day one. The chain-linked LEVEL
+  // may only ever move on the matched sample — that is the guarantee that a
+  // device joining or leaving cannot reprice the series, and nothing below
+  // touches it. But the headline "$/QPU-hour", the cost basis and the size of
+  // each node on the map are DESCRIPTIONS of today's market, not increments to a
+  // tracked series, and computing them on matched-sample weights meant they were
+  // all identically zero whenever nothing was matched.
+  //
+  // That is not a rare edge case: it is the state of the index on its first day,
+  // after any full-basket outage, and after every forced re-run of the first
+  // day — which is exactly what an operator sees when they press "refresh now"
+  // and get a $0 index back.
+  //
+  // The cost is that the cross-section is composition-sensitive, so it is
+  // labelled as such wherever it is shown and the level remains the series to
+  // track. That is the standard split between a price level and an index.
+  const basket = [...reconciled.ledger.values()].filter(
+    (e) =>
+      e.state !== "retired" &&
+      Number.isFinite(e.acceptedPricePerHour) &&
+      e.acceptedPricePerHour > 0,
+  );
+  const basketWeights = capWeights(
+    basket.map((e) => ({
+      id: e.id,
+      provider: e.provider,
+      share: expenditureShare(e.acceptedPricePerHour),
+    })),
+    link,
+  );
+
   // ── Coverage: how much of the basket actually spoke today ──────────────────
   // Published alongside the level so a thin day is visible rather than being
   // silently presented with the same confidence as a full one.
-  const basketIds = new Set<string>([
-    ...reconciled.ledger.keys(),
-  ]);
-  for (const id of basketIds) {
-    const e = reconciled.ledger.get(id);
-    if (e?.state === "retired") basketIds.delete(id);
-  }
-  const basketShare = [...basketIds].reduce((a, id) => {
-    const e = reconciled.ledger.get(id);
-    return a + (e ? expenditureShare(e.acceptedPricePerHour) : 0);
-  }, 0);
+  const basketShare = basket.reduce((a, e) => a + expenditureShare(e.acceptedPricePerHour), 0);
   const matchedShare = pairs.reduce((a, p) => a + expenditureShare(p.currHeadline), 0);
   const coverage = basketShare > 0 ? Math.min(1, matchedShare / basketShare) : 0;
+
+  // A first point has no previous period to compare against, so a zero move and
+  // zero coverage are structural rather than symptomatic. Flagged so the UI can
+  // tell "the index just started" apart from "the whole basket went dark".
+  const inception = input.previousLevel == null && input.previousLedger.size === 0;
+
+  const matchedIds = new Set(pairs.map((p) => p.id));
 
   // ── Per-device derived values, for the map and the audit trail ─────────────
   const devices: DeviceDerived[] = [];
@@ -163,30 +197,38 @@ export function computeIndexPoint(input: ComputeInput): ComputeOutput {
       effectiveWidth: entry.acceptedWidth,
       capability: entry.acceptedCapability,
       qualityAdjustedPrice: entry.acceptedQualityAdjustedPrice,
-      weight: linked.weights.get(id) ?? 0,
-      fresh: entry.state === "active",
+      weight: basketWeights.get(id) ?? 0,
+      linkWeight: linked.weights.get(id) ?? 0,
+      // "Fresh" means the operator reported the device TODAY. It is not the same
+      // as "contributed to the move": a device on its first sighting is fully
+      // measured and still contributes nothing, and showing that as stale (which
+      // is what keying off `state === "active"` did) marks a healthy inception
+      // basket as entirely out of date.
+      fresh: entry.lastObservedOn === input.today,
       staleDays: Number.isFinite(stale) ? stale : 9999,
+      inMatchedSample: matchedIds.has(id),
+      qualityTier: entry.qualityTier ?? "assumed",
       costPerHour: cost.total,
       costCoverage: cost.total > 0 ? entry.acceptedPricePerHour / cost.total : undefined,
     });
   }
 
-  // ── Headline levels, on the same weights the link used ─────────────────────
+  // ── Headline levels, over the basket cross-section ─────────────────────────
   const usdPerQpuHour = weightedGeoMean(
-    pairs.map((p) => ({ id: p.id, value: p.currHeadline })),
-    linked.weights,
+    basket.map((e) => ({ id: e.id, value: e.acceptedPricePerHour })),
+    basketWeights,
   );
   const usdPerQcu = weightedGeoMean(
-    pairs.map((p) => ({ id: p.id, value: p.currPrice })),
-    linked.weights,
+    basket.map((e) => ({ id: e.id, value: e.acceptedQualityAdjustedPrice })),
+    basketWeights,
   );
 
-  // ── Cost basis across the matched sample, on the same weights ──────────────
+  // ── Cost basis across the same cross-section, on the same weights ──────────
   const costBasis = weightedGeoMean(
     devices
-      .filter((d) => (linked.weights.get(d.id) ?? 0) > 0 && (d.costPerHour ?? 0) > 0)
+      .filter((d) => (basketWeights.get(d.id) ?? 0) > 0 && (d.costPerHour ?? 0) > 0)
       .map((d) => ({ id: d.id, value: d.costPerHour as number })),
-    linked.weights,
+    basketWeights,
   );
 
   // ── Cost decomposition, weighted on the same weights as everything else ────
@@ -199,7 +241,7 @@ export function computeIndexPoint(input: ComputeInput): ComputeOutput {
   for (const [id, entry] of reconciled.ledger) {
     if (entry.state === "retired") continue;
     powerKw += MODALITY_POWER_KW[entry.modality] ?? 0;
-    const w = linked.weights.get(id) ?? 0;
+    const w = basketWeights.get(id) ?? 0;
     if (w <= 0) continue;
     const c = deviceCost(
       { modality: entry.modality, usState: entry.usState, euCountry: entry.euCountry },
@@ -240,8 +282,10 @@ export function computeIndexPoint(input: ComputeInput): ComputeOutput {
     changePct: round((Math.exp(linked.logChange) - 1) * 100, 4),
     coverage: round(coverage, 4),
     matched: pairs.length,
+    priced: basket.length,
     excluded: reconciled.excluded,
     status: coverage >= link.provisionalBelowCoverage ? "final" : "provisional",
+    inception,
     attribution: {
       totalLogChange: linked.logChange,
       priceLogChange: linked.priceLogChange,

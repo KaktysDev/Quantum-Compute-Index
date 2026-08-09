@@ -119,6 +119,19 @@ export interface DeviceObservation {
   /** Secondary price series, kept for the shot-implied sub-index and display. */
   pricePerShot?: Observation;
   pricePerTask?: Observation;
+
+  /**
+   * Every adapter that reported this device this run, when more than one did.
+   *
+   * Some hardware is reachable through two doors — IQM's Garnet and Emerald are
+   * both listed by AWS Braket and by IQM's own Resonance cloud — and the two
+   * feeds are not equivalent: Braket publishes the real qubit count but a
+   * provider-typical fidelity constant, while Resonance publishes a measured
+   * calibration. Rather than picking one door and discarding the other, the
+   * collector merges them field-by-field on source tier and records here which
+   * feeds it drew from.
+   */
+  mergedFrom?: string[];
 }
 
 /** A non-device input that the cost model consumes (energy, cryogens, rates…). */
@@ -151,12 +164,33 @@ export interface DeviceDerived {
   /** pricePerHour / capability — USD per Quantum Capability Unit-hour. */
   qualityAdjustedPrice: number;
 
-  /** Expenditure share used to weight this device on this day, in [0,1]. */
+  /**
+   * Share of TODAY'S priced basket this device carries, in [0,1]. Drives the
+   * headline USD/QPU-hour cross-section and the size of the node on the map.
+   */
   weight: number;
-  /** True when every field feeding the price and quality was re-measured today. */
+  /**
+   * Share of the MATCHED SAMPLE this device carried, in [0,1] — the weight that
+   * actually moved the chain-linked level. Zero for a device that is in the
+   * basket but could not contribute a price relative today (newly linking in,
+   * unobserved, or held for corroboration).
+   *
+   * The two weights differ on purpose. `weight` answers "how much of the market
+   * is this?", `linkWeight` answers "how much of today's move is this?", and
+   * conflating them is what made the level composition-sensitive in v1.
+   */
+  linkWeight: number;
+  /** True when the operator reported this device today. */
   fresh: boolean;
   /** Worst staleness (days) across the fields that feed price and quality. */
   staleDays: number;
+  /**
+   * True when this device contributed a price relative to today's link. False
+   * for a basket member that was carried rather than compared.
+   */
+  inMatchedSample: boolean;
+  /** Lowest-confidence tier among the fields that fed this device's quality. */
+  qualityTier: SourceTier;
 
   /** Bottom-up marginal cost of one QPU-hour, USD (see cost.ts). */
   costPerHour?: number;
@@ -196,7 +230,17 @@ export interface IndexPoint {
   ts: string;
   /** Chain-linked index level. Anchored to 1000 at inception. */
   level: number;
-  /** Headline USD per QPU-hour: weighted mean over the matched sample. */
+  /**
+   * Headline USD per QPU-hour: expenditure-weighted geometric mean across
+   * TODAY'S priced basket.
+   *
+   * This is a cross-section, not a chain — it describes what the market is
+   * charging right now, so it does move when the basket's composition changes.
+   * The composition-immune series is `level`, which only ever advances on the
+   * matched sample. Keeping them separate is what lets the index publish a real
+   * price on its first day (when nothing is matched yet) without letting a
+   * device joining or leaving contaminate the tracked series.
+   */
   usdPerQpuHour: number;
   /** USD per Quantum Capability Unit-hour — the quality-adjusted price. */
   usdPerQcu: number;
@@ -216,6 +260,16 @@ export interface IndexPoint {
 
   /** "final" when coverage cleared the threshold, "provisional" otherwise. */
   status: "final" | "provisional";
+  /**
+   * True on the first point of the series, before any device has been observed
+   * twice. Coverage is 0 and the move is 0 by construction on that day — not
+   * because the basket went quiet, but because there is nothing yet to compare
+   * against. Without this flag the UI cannot tell the two apart and reports a
+   * healthy inception as a total data outage.
+   */
+  inception?: boolean;
+  /** Devices in the basket carrying a price today (the cross-section sample). */
+  priced: number;
   attribution: IndexAttribution;
   devices: DeviceDerived[];
   factors: FactorObservation[];
