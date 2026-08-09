@@ -1729,3 +1729,133 @@
 .theme-panel > p { margin: 0; color: var(--qr-muted); font-size: 0.78rem; }
 .theme-switch { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .theme-switch button { display: inline-flex; align-items: center; gap: 0.4rem; }
+
+/* ── QCI attribution map ──────────────────────────────────────────────── */
+/* The map needs two readable hues to separate the price side from the cost
+   side. The console is otherwise monochrome, so these are the only chromatic
+   tokens it introduces, and both are tuned for contrast on white and on black. */
+.console-shell {
+  --qci-price: #24406e;
+  --qci-cost: #7a5512;
+  --qci-hub-glow: rgba(10, 10, 10, 0.14);
+  --qci-node-fill: #ffffff;
+}
+html[data-theme="dark"] .console-shell {
+  --qci-price: #8fb3f5;
+  --qci-cost: #dfae5b;
+  --qci-hub-glow: rgba(255, 255, 255, 0.16);
+  --qci-node-fill: #0d0d0d;
+}
+
+.qci-map-panel { margin-top: 1rem; }
+.qci-map-glyph { color: var(--qr-emerald); fill: currentColor; stroke: currentColor; stroke-width: 0.9; }
+.qci-map-glyph path { fill: none; opacity: 0.5; }
+.qci-map-status { margin-left: auto; padding: 0.24rem 0.6rem; border: 1px solid var(--qr-line); border-radius: 999px; color: var(--qr-muted) !important; font: 600 0.56rem var(--qr-mono) !important; letter-spacing: 0.06em; text-transform: uppercase; }
+.qci-map-status[data-status="provisional"] { border-color: var(--qr-warning-line); background: var(--qr-warning-dim); color: var(--qr-warning) !important; }
+.qci-map-status[data-status="final"] { border-color: var(--qr-success-line); color: var(--qr-success) !important; }
+
+.qci-map-body { display: grid; grid-template-columns: minmax(0, 1fr) 336px; }
+.qci-map-canvas { min-width: 0; padding: 0.5rem; border-right: 1px solid var(--qr-line); }
+.qci-map-canvas svg { display: block; width: 100%; height: auto; overflow: visible; }
+
+.qci-map-axis { fill: var(--qr-dim); font: 600 10.5px var(--qr-mono); letter-spacing: 0.1em; }
+.qci-map-halo { fill: none; stroke: var(--qr-line); stroke-dasharray: 2 6; }
+
+.qci-edge { stroke: var(--qr-line-strong); stroke-width: 1; opacity: 0.55; transition: opacity 160ms ease, stroke 160ms ease; }
+.qci-edge.price { stroke: var(--qci-price); }
+.qci-edge.cost { stroke: var(--qci-cost); }
+.qci-edge[data-dim="true"] { opacity: 0.12; }
+.qci-edge[data-active="true"] { opacity: 1; stroke-width: 1.8; }
+
+.qci-node { cursor: pointer; transition: opacity 160ms ease; }
+.qci-node:focus { outline: none; }
+.qci-node:focus-visible > circle { stroke: var(--qr-accent); stroke-width: 2.5; }
+.qci-node > circle { fill: var(--qci-node-fill); stroke: var(--qr-line-strong); stroke-width: 1.4; transition: stroke-width 160ms ease, fill 160ms ease; }
+.qci-node.price > circle { stroke: var(--qci-price); }
+.qci-node.cost > circle { stroke: var(--qci-cost); }
+.qci-node:hover > circle { stroke-width: 2.4; }
+.qci-node[data-active="true"] > circle { stroke-width: 3; }
+.qci-node.price[data-active="true"] > circle { fill: color-mix(in srgb, var(--qci-price) 14%, var(--qci-node-fill)); }
+.qci-node.cost[data-active="true"] > circle { fill: color-mix(in srgb, var(--qci-cost) 16%, var(--qci-node-fill)); }
+.qci-node[data-dim="true"] { opacity: 0.28; }
+/* A dashed ring means the datum was not re-measured today. Reading the map
+   should make staleness obvious without opening anything. */
+.qci-node[data-stale="true"] > circle { stroke-dasharray: 3 3; }
+
+.qci-node-label { fill: var(--qr-text); font: 620 12.5px var(--font-sans); }
+.qci-node-sub { fill: var(--qr-dim); font: 500 10.5px var(--qr-mono); }
+
+.qci-node.hub > circle { fill: var(--qr-panel-raised); stroke: var(--qr-accent); stroke-width: 1.6; }
+.qci-hub-eyebrow { fill: var(--qr-dim); font: 600 8.5px var(--qr-mono); letter-spacing: 0.1em; }
+.qci-hub-value { fill: var(--qr-text); font: 560 28px var(--qr-mono); }
+.qci-hub-change { font: 600 10px var(--qr-mono); }
+.qci-hub-change.up { fill: var(--qr-success); }
+.qci-hub-change.down { fill: var(--qr-danger); }
+
+/* ── Detail panel ─────────────────────────────────────────────────────── */
+.qci-map-detail { display: flex; min-width: 0; flex-direction: column; overflow-y: auto; max-height: 660px; padding: 1.05rem; background: var(--qr-panel-raised); }
+.qci-map-detail header { padding-bottom: 0.8rem; border-bottom: 1px solid var(--qr-line); }
+.qci-detail-eyebrow { margin: 0; color: var(--qr-dim); font: 600 0.56rem var(--qr-mono); letter-spacing: 0.1em; text-transform: uppercase; }
+.qci-map-detail h3 { margin: 0.35rem 0 0; color: var(--qr-text); font-size: 0.92rem; font-weight: 650; }
+.qci-map-detail dl { display: grid; margin: 0.8rem 0 0; gap: 0; }
+.qci-detail-row { display: grid; grid-template-columns: 1fr auto; gap: 0.7rem; padding: 0.42rem 0; border-bottom: 1px solid var(--qr-line); }
+.qci-detail-row dt { color: var(--qr-dim); font-size: 0.66rem; }
+.qci-detail-row dd { margin: 0; color: var(--qr-text); font-size: 0.68rem; text-align: right; }
+.qci-detail-row dd.mono { font-family: var(--qr-mono); font-size: 0.64rem; }
+.qci-detail-row dd .ok { color: var(--qr-success); }
+.qci-detail-row dd .warn { color: var(--qr-warning); }
+
+.qci-pill { display: inline-block; padding: 0.14rem 0.44rem; border-radius: 999px; font: 600 0.56rem var(--qr-mono); }
+.qci-pill.ok { border: 1px solid var(--qr-success-line); background: var(--qr-success-dim); color: var(--qr-success); }
+.qci-pill.warn { border: 1px solid var(--qr-warning-line); background: var(--qr-warning-dim); color: var(--qr-warning); }
+
+.qci-detail-note { margin: 0.85rem 0 0; color: var(--qr-muted); font-size: 0.66rem; line-height: 1.6; }
+.qci-detail-note.strong { padding: 0.65rem 0.75rem; border: 1px solid var(--qr-line); border-radius: var(--qr-radius-sm); background: var(--qr-panel); }
+.qci-detail-note b { color: var(--qr-text); }
+
+.qci-detail-list { display: grid; margin: 0.5rem 0 0; padding: 0; gap: 0.3rem; list-style: none; }
+.qci-detail-list button { display: grid; width: 100%; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.6rem; padding: 0.55rem 0.6rem; border: 1px solid var(--qr-line); border-radius: var(--qr-radius-sm); background: var(--qr-panel); color: var(--qr-muted); text-align: left; cursor: pointer; transition: border-color 140ms ease, background-color 140ms ease; }
+.qci-detail-list button:hover { border-color: var(--qr-line-strong); background: var(--qr-hover); }
+.qci-detail-list b, .qci-detail-list small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qci-detail-list b { color: var(--qr-text); font-size: 0.68rem; }
+.qci-detail-list small { margin-top: 0.2rem; color: var(--qr-dim); font: 0.56rem var(--qr-mono); }
+.qci-detail-value { text-align: right; }
+.qci-detail-value b { font-family: var(--qr-mono); }
+.qci-detail-value small.ok { color: var(--qr-success); }
+.qci-detail-value small.warn { color: var(--qr-warning); }
+
+.qci-detail-excluded { display: grid; margin: 0.5rem 0 0; padding: 0; gap: 0.25rem; list-style: none; }
+.qci-detail-excluded li { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.35rem 0.5rem; border-radius: var(--qr-radius-sm); background: var(--qr-panel); }
+.qci-detail-excluded code { color: var(--qr-muted); font-size: 0.58rem; }
+.qci-detail-excluded span { color: var(--qr-dim); font-size: 0.56rem; }
+
+.qci-provenance { margin-top: 0.9rem; padding: 0.7rem 0.75rem; border: 1px solid var(--qr-line); border-left: 2px solid var(--qr-line-strong); border-radius: var(--qr-radius-sm); background: var(--qr-panel); }
+.qci-provenance[data-tier="primary"] { border-left-color: var(--qr-success); }
+.qci-provenance[data-tier="official"] { border-left-color: var(--qci-price); }
+.qci-provenance[data-tier="published"] { border-left-color: var(--qci-cost); }
+.qci-provenance[data-tier="assumed"] { border-left-color: var(--qr-warning); }
+.qci-tier { display: block; color: var(--qr-text); font: 600 0.6rem var(--font-sans); }
+.qci-provenance code { display: block; margin-top: 0.25rem; color: var(--qr-dim); font-size: 0.56rem; }
+.qci-provenance p { margin: 0.45rem 0 0; color: var(--qr-muted); font-size: 0.62rem; line-height: 1.55; }
+.qci-provenance small { display: block; margin-top: 0.4rem; color: var(--qr-dim); font: 0.56rem var(--qr-mono); }
+
+.qci-detail-back { margin-top: auto; padding-top: 0.9rem; border: 0; background: transparent; color: var(--qr-muted); font-size: 0.64rem; text-align: left; cursor: pointer; }
+.qci-detail-back:hover { color: var(--qr-text); }
+
+/* ── Empty state ──────────────────────────────────────────────────────── */
+.qci-empty { display: grid; min-height: 300px; place-items: center; align-content: center; gap: 0.5rem; padding: 2rem; text-align: center; }
+.qci-empty h3 { margin: 0; color: var(--qr-text); font-size: 0.88rem; }
+.qci-empty p { max-width: 46ch; margin: 0; color: var(--qr-muted); font-size: 0.7rem; line-height: 1.6; }
+.qci-empty code { padding: 0.12rem 0.35rem; border-radius: 4px; background: var(--qr-code-bg); font-size: 0.64rem; }
+
+@media (max-width: 1100px) {
+  .qci-map-body { grid-template-columns: 1fr; }
+  .qci-map-canvas { border-right: 0; border-bottom: 1px solid var(--qr-line); }
+  .qci-map-detail { max-height: none; }
+}
+
+.qci-series-panel { margin-top: 1rem; }
+.qci-series-body { display: flex; flex-direction: column; }
+.qci-series-chart { width: 100%; height: 300px; padding: 0 0.5rem; }
+.qci-series-panel .market-quote dd.warn { color: var(--qr-warning); }
+.qci-series-panel .market-ranges { flex-wrap: wrap; gap: 0.25rem; }
