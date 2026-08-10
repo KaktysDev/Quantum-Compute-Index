@@ -131,6 +131,24 @@ export const CONSUMABLES_RATE = 0.03;
 /** Annual operations and maintenance labour as a share of capex. */
 export const OPEX_LABOUR_RATE = 0.06;
 
+/**
+ * When the engineering constants above were last re-verified against public
+ * disclosures.
+ *
+ * Roughly 90% of the modelled cost basis traces back to these numbers — capital
+ * recovery alone is ~71% of it, and labour and consumables are both scaled off
+ * capex — so they are the largest pinned inputs on the platform. There is no
+ * feed for "what a QPU costs to build" and there is unlikely ever to be one, so
+ * the honest handling is not to pretend they are live but to date them and show
+ * that date next to the number. `IBM_RATE_REVIEWED_ON` does the same job for the
+ * one pinned PRICE in the basket.
+ *
+ * A constant with a visible review date is a maintained assumption. The same
+ * constant without one is indistinguishable from a number nobody has looked at
+ * since it was typed.
+ */
+export const COST_CONSTANTS_REVIEWED_ON = "2026-08-10";
+
 export const REGISTRY: RegistryEntry[] = [
   // ── IonQ — trapped ion, College Park MD; sold through Braket us-east-1 ─────
   // v1 counted ONE IonQ device. All four are separately priced, separately

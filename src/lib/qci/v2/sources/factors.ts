@@ -96,6 +96,29 @@ async function getJson<T>(url: string, init?: RequestInit & { timeoutMs?: number
 // Used when a source is unreachable or its key is not configured. These are
 // `assumed` tier and are visible as such in the UI. They exist so the cost model
 // always produces a number rather than a hole; they are never used for prices.
+/**
+ * The level of the industrial-gas PPI that `CONSUMABLES_RATE` is calibrated
+ * against — the DENOMINATOR the consumables term is rebased on.
+ *
+ * This must be a real level of the series, not a notional 100. PCU325120325120
+ * is a 1982-base index currently running near 288, so dividing by 100 would
+ * multiply the consumables term by ~2.9 the instant the feed answered — an
+ * 18% jump in the published cost basis caused by nothing but a unit mismatch,
+ * indistinguishable on the chart from a real cryogen shock. That is exactly the
+ * class of silent artefact the v2 rewrite exists to remove.
+ *
+ * Two jobs were previously collapsed into one constant: "what to use when the
+ * feed is down" and "what level the rate was calibrated at". They are separate
+ * now, and the pinned default below is deliberately set EQUAL to this base so a
+ * defaulted run yields an adjustment of exactly 1.0 rather than a silent
+ * re-levelling.
+ *
+ * Re-verify against the series when revisiting CONSUMABLES_RATE.
+ */
+export const INDUSTRIAL_GAS_PPI_BASE = 288.182;
+/** Period of the level above, so a reader can check it against the source. */
+export const INDUSTRIAL_GAS_PPI_BASE_PERIOD = "2026-06";
+
 export const DEFAULT_FACTORS = {
   /** USD/kWh, US industrial average. */
   usIndustrialElectricity: 0.0834,
@@ -105,8 +128,11 @@ export const DEFAULT_FACTORS = {
   usdPerEur: 1.08,
   /** Nominal discount rate used for capital recovery, as a decimal. */
   discountRate: 0.042,
-  /** Index level, BLS PPI industrial gas manufacturing (helium proxy). */
-  industrialGasPpi: 100,
+  /**
+   * Index level, BLS PPI industrial gas manufacturing (helium proxy). Equal to
+   * the rebase base by construction — see INDUSTRIAL_GAS_PPI_BASE.
+   */
+  industrialGasPpi: INDUSTRIAL_GAS_PPI_BASE,
 } as const;
 
 // ── FX: ECB reference rates (no auth, verified working) ──────────────────────
@@ -181,7 +207,14 @@ export async function fetchUsElectricity(states: string[]): Promise<FactorObserv
       frequency: "monthly",
       "data[0]": "price",
       "facets[sectorid][]": "IND",
-      sort: "-period",
+      // EIA's v2 API rejects the shorthand `sort=-period` with a 400 as of this
+      // writing ("Invalid format for 'sort'. Must provide a sort priority, a
+      // sort type, and a sort column") — verified live. The structured form
+      // below is what the API actually accepts today; the code below still
+      // re-derives the newest row per state itself, so this is belt-and-braces
+      // rather than load-bearing.
+      "sort[0][column]": "period",
+      "sort[0][direction]": "desc",
       length: "60",
     });
     for (const s of states) params.append("facets[stateid][]", s);

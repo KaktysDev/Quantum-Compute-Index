@@ -60,7 +60,7 @@ import {
   OPEX_LABOUR_RATE,
   type RegistryEntry,
 } from "./registry";
-import { DEFAULT_FACTORS, factorValue } from "./sources/factors";
+import { DEFAULT_FACTORS, INDUSTRIAL_GAS_PPI_BASE, factorValue } from "./sources/factors";
 import type { FactorObservation, Modality } from "./types";
 
 const HOURS_PER_YEAR = 8760;
@@ -178,10 +178,13 @@ export function deviceCost(
   const energy = power * FACILITY_PUE * elec.usdPerKwh;
 
   // Consumables are indexed to the industrial-gas PPI so helium market moves
-  // show up, rebased to 100 = the pinned reference. This is a PROXY, not a
-  // helium price: no daily helium feed exists anywhere (USGS publishes annually,
-  // and the BLM auctions that once set a public reference have ended).
-  const ppiAdjust = ppi.value > 0 ? ppi.value / DEFAULT_FACTORS.industrialGasPpi : 1;
+  // show up, rebased on the REAL level of the series at which CONSUMABLES_RATE
+  // was calibrated. Rebasing on a notional 100 instead — which this did — makes
+  // the term jump ~2.9× the moment the feed answers, because the series is a
+  // 1982-base index running near 288. This is a PROXY, not a helium price: no
+  // daily helium feed exists anywhere (USGS publishes annually, and the BLM
+  // auctions that once set a public reference have ended).
+  const ppiAdjust = ppi.value > 0 ? ppi.value / INDUSTRIAL_GAS_PPI_BASE : 1;
   const consumables = (capex * CONSUMABLES_RATE * ppiAdjust) / billableHours;
 
   const labour = (capex * OPEX_LABOUR_RATE) / billableHours;

@@ -175,6 +175,11 @@ export function computeIndexPoint(input: ComputeInput): ComputeOutput {
 
   const matchedIds = new Set(pairs.map((p) => p.id));
 
+  // Today's raw observations, for the fields the routing view needs but the
+  // index does not consume. Keyed here rather than threaded through the ledger
+  // so nothing volatile ends up in the accepted-value state machine.
+  const observedById = new Map(input.observations.map((o) => [o.id, o]));
+
   // ── Per-device derived values, for the map and the audit trail ─────────────
   const devices: DeviceDerived[] = [];
   for (const [id, entry] of reconciled.ledger) {
@@ -210,6 +215,7 @@ export function computeIndexPoint(input: ComputeInput): ComputeOutput {
       qualityTier: entry.qualityTier ?? "assumed",
       costPerHour: cost.total,
       costCoverage: cost.total > 0 ? entry.acceptedPricePerHour / cost.total : undefined,
+      queueSeconds: observedById.get(id)?.queueSeconds?.value,
     });
   }
 

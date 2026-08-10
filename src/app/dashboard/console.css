@@ -1864,7 +1864,7 @@ html[data-theme="dark"] .console-shell {
 .qci-map-status[data-status="final"] { border-color: var(--qr-success-line); color: var(--qr-success); }
 .qci-map-status[data-status="inception"] { border-color: var(--qr-line-strong); color: var(--qr-muted); }
 
-.qci-map-body { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 1.5rem; align-items: start; }
+.qci-map-body { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 1.5rem; align-items: start; }
 .qci-map-canvas { min-width: 0; }
 .qci-map-canvas svg { display: block; width: 100%; height: auto; overflow: visible; }
 
@@ -1892,7 +1892,7 @@ html[data-theme="dark"] .console-shell {
   stroke: var(--qr-line);
   stroke-dasharray: 2 10;
   transform-box: view-box;
-  transform-origin: 500px 360px;
+  transform-origin: 640px 545px;
   animation: qciOrbit 90s linear infinite, qciFade 900ms ease backwards;
   opacity: 0.9;
 }
@@ -1962,7 +1962,7 @@ html[data-theme="dark"] .console-shell {
 .qci-node.hub { animation: qciPop 700ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
 .qci-node.hub > circle { fill: var(--qr-panel-raised); stroke: var(--qr-accent); stroke-width: 1.6; }
 .qci-hub-pulse { fill: none !important; stroke: var(--qr-accent) !important; opacity: 0.35; transform-box: view-box; transform-origin: 0 0; animation: qciPulse 4.5s ease-out infinite; }
-.qci-hub-glow { animation: qciBreathe 6s ease-in-out infinite; transform-box: view-box; transform-origin: 500px 360px; }
+.qci-hub-glow { animation: qciBreathe 6s ease-in-out infinite; transform-box: view-box; transform-origin: 640px 545px; }
 .qci-hub-eyebrow { fill: var(--qr-dim); font: 600 8.5px var(--qr-mono); letter-spacing: 0.12em; pointer-events: none; }
 .qci-hub-value { fill: var(--qr-text); font: 560 30px var(--qr-mono); font-variant-numeric: tabular-nums; pointer-events: none; }
 .qci-hub-change { font: 600 10px var(--qr-mono); pointer-events: none; }
@@ -1979,7 +1979,7 @@ html[data-theme="dark"] .console-shell {
   min-width: 0;
   flex-direction: column;
   overflow-y: auto;
-  max-height: 640px;
+  max-height: 860px;
   padding: 1.15rem 1.2rem;
   border-radius: var(--qr-radius);
   background: var(--qr-panel-raised);
@@ -2049,6 +2049,151 @@ html[data-theme="dark"] .console-shell {
 
 .qci-detail-back { margin-top: auto; padding-top: 1rem; border: 0; background: transparent; color: var(--qr-muted); font-size: 0.66rem; text-align: left; cursor: pointer; transition: color 140ms ease; }
 .qci-detail-back:hover { color: var(--qr-text); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ROUTER LAYER
+   The map's centre is QRouter, not the price. Everything below draws the parts
+   of that story the attribution graph did not have: the job coming in, the
+   policy being applied, and the one path that wins.
+
+   The colour discipline from the rest of the map holds — price/target hue on
+   the left, cost hue on the right, accent reserved for the router itself. The
+   winning route is the ONLY thing on the map allowed to use the accent outside
+   the core, which is what makes it findable in one glance.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Policy switcher ──────────────────────────────────────────────────────── */
+.qci-policy-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.qci-policy-label { margin-right: 0.15rem; color: var(--qr-dim); font: 600 0.55rem var(--qr-mono); letter-spacing: 0.1em; text-transform: uppercase; }
+.qci-policy-chip {
+  padding: 0.34rem 0.72rem;
+  border: 1px solid var(--qr-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--qr-muted);
+  font-size: 0.68rem;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+.qci-policy-chip:hover { background: var(--qr-hover); color: var(--qr-text); }
+.qci-policy-chip[data-active="true"] {
+  border-color: var(--qr-accent);
+  background: var(--qr-accent-dim);
+  color: var(--qr-text);
+  font-weight: 560;
+}
+.qci-policy-note { margin-left: auto; color: var(--qr-dim); font-size: 0.62rem; }
+
+/* ── Intake column ────────────────────────────────────────────────────────
+   The conduit is two stacked lines: a static rail, and a short travelling dash
+   on top of it. pathLength="1" normalises the geometry so the dash reads at the
+   same speed no matter how the viewBox is scaled. */
+.qci-conduit { fill: none; stroke: var(--qr-line-strong); stroke-width: 1.2; opacity: 0.55; animation: qciFade 700ms ease 200ms backwards; }
+.qci-conduit-flow {
+  fill: none;
+  stroke: var(--qr-accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 0.06 0.94;
+  opacity: 0.85;
+  animation: qciFlow 2.6s linear infinite;
+}
+.qci-conduit-tip { fill: none; stroke: var(--qr-accent); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: 0.7; }
+.qci-intake-link { stroke: var(--qr-line-strong); stroke-width: 1.2; opacity: 0.5; }
+.qci-intake-cap { fill: var(--qr-accent-dim); stroke: var(--qr-accent); stroke-width: 1.2; animation: qciPop 600ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+.qci-intake-cap-text { fill: var(--qr-text); font: 600 10px var(--qr-mono); letter-spacing: 0.14em; pointer-events: none; }
+.qci-stage { fill: var(--qr-panel-raised); stroke: var(--qr-line); stroke-width: 1; animation: qciPop 560ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+.qci-stage-label { fill: var(--qr-text); font: 560 11.5px var(--font-sans); pointer-events: none; }
+.qci-stage-sub { fill: var(--qr-dim); font: 500 9px var(--qr-mono); pointer-events: none; }
+
+/* ── The winning route ────────────────────────────────────────────────────
+   A travelling segment over the existing edge. Deliberately a SEPARATE line
+   rather than a modifier on `.qci-edge`: the edge carries the dimming and
+   selection states, and layering the flow on top keeps those independent of
+   whether this happens to be the routed path. */
+.qci-route-flow {
+  stroke: var(--qr-accent);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  fill: none;
+  stroke-dasharray: 0.14 0.86;
+  opacity: 0.9;
+  animation: qciFlow 1.9s linear infinite;
+  pointer-events: none;
+}
+.qci-route-ring {
+  fill: none;
+  stroke: var(--qr-accent);
+  stroke-width: 1.4;
+  opacity: 0.6;
+  transform-box: view-box;
+  transform-origin: 0 0;
+  animation: qciRipple 2.4s ease-out infinite;
+  pointer-events: none;
+}
+.qci-node[data-route="true"] > circle:not(.qci-node-halo):not(.qci-route-ring) {
+  stroke: var(--qr-accent);
+  stroke-width: 2.6;
+}
+
+/* ── Evaluation sweep ─────────────────────────────────────────────────────
+   Rotates over the candidate side only. It is the one purely atmospheric mark
+   on the map, and confining it to the half where scoring happens keeps it from
+   reading as data. */
+.qci-sweep-wrap { transform-box: view-box; transform-origin: 640px 545px; animation: qciSweepSpin 14s linear infinite; }
+.qci-sweep { fill: url(#qciSweep); opacity: 0.16; pointer-events: none; }
+
+/* ── Hub rings ────────────────────────────────────────────────────────────
+   Two counter-rotating arcs around the core. Dashed rather than solid so the
+   rotation is legible; a solid ring rotating is a ring standing still. */
+.qci-hub-ring { fill: none; stroke: var(--qr-accent); opacity: 0.32; transform-box: view-box; transform-origin: 0 0; }
+.qci-hub-ring.outer { stroke-width: 1; stroke-dasharray: 3 13; animation: qciOrbit 26s linear infinite; }
+.qci-hub-ring.inner { stroke-width: 1.4; stroke-dasharray: 26 10; animation: qciOrbitReverse 18s linear infinite; opacity: 0.2; }
+.qci-hub-brand { fill: var(--qr-accent); font: 700 11px var(--qr-mono); letter-spacing: 0.2em; pointer-events: none; }
+
+/* ── Verdict ribbon ───────────────────────────────────────────────────────── */
+.qci-verdict { cursor: pointer; animation: qciRise 520ms cubic-bezier(0.22, 1, 0.36, 1) backwards; animation-delay: 420ms; }
+.qci-verdict rect {
+  fill: var(--qr-panel-raised);
+  stroke: var(--qr-accent);
+  stroke-width: 1.2;
+  transition: stroke-width 180ms ease;
+}
+.qci-verdict:hover rect { stroke-width: 2.2; }
+.qci-verdict:focus { outline: none; }
+.qci-verdict:focus-visible rect { stroke-width: 2.6; }
+.qci-verdict-eyebrow { fill: var(--qr-accent); font: 700 8.5px var(--qr-mono); letter-spacing: 0.18em; pointer-events: none; }
+.qci-verdict-name { fill: var(--qr-text); font: 600 13px var(--font-sans); pointer-events: none; }
+.qci-verdict-figure { fill: var(--qr-text); font: 560 13px var(--qr-mono); font-variant-numeric: tabular-nums; pointer-events: none; }
+.qci-verdict-sub { fill: var(--qr-dim); font: 500 9px var(--qr-mono); pointer-events: none; }
+
+/* ── Ranking card + axis bars ─────────────────────────────────────────────
+   The bars are the answer to "why did this win" — normalised score per axis,
+   with the policy's own weight next to it. An axis nobody reported is drawn
+   struck-through rather than empty, so "no data" cannot be misread as "zero". */
+.qci-rank-card { margin-top: 0.9rem; padding: 0.8rem 0.85rem; border-radius: var(--qr-radius-sm); background: var(--qr-panel); }
+.qci-rank-card[data-winner="true"] { border-left: 2px solid var(--qr-accent); }
+.qci-rank-card > p { margin: 0; color: var(--qr-muted); font-size: 0.68rem; line-height: 1.6; }
+.qci-rank-card > p b { color: var(--qr-text); }
+
+.qci-axis-bars { display: grid; margin: 0.7rem 0 0; padding: 0; gap: 0.4rem; list-style: none; }
+.qci-axis-bars li { display: grid; grid-template-columns: 88px minmax(0, 1fr) 30px; align-items: center; gap: 0.5rem; }
+.qci-axis-name { color: var(--qr-muted); font-size: 0.62rem; }
+.qci-axis-name small { margin-left: 0.3rem; color: var(--qr-dim); font: 0.55rem var(--qr-mono); }
+.qci-axis-track { height: 4px; border-radius: 999px; background: var(--qr-line); overflow: hidden; }
+.qci-axis-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--qr-accent);
+  transition: width 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.qci-axis-value { color: var(--qr-dim); font: 0.58rem var(--qr-mono); font-variant-numeric: tabular-nums; text-align: right; }
+.qci-axis-bars li[data-imputed="true"] .qci-axis-fill { background: var(--qr-line-strong); }
+.qci-axis-bars li[data-imputed="true"] .qci-axis-name { text-decoration: line-through; opacity: 0.6; }
+
+.qci-detail-subhead { margin: 1.2rem 0 0; color: var(--qr-dim); font: 600 0.55rem var(--qr-mono); letter-spacing: 0.1em; text-transform: uppercase; }
+.qci-detail-note.warn { color: var(--qr-warning); }
 
 /* ── Empty state ──────────────────────────────────────────────────────────── */
 .qci-empty { display: grid; min-height: 280px; place-items: center; align-content: center; gap: 0.5rem; padding: 2rem; border-radius: var(--qr-radius); background: var(--qr-panel-raised); text-align: center; }
@@ -2177,6 +2322,16 @@ html[data-theme="dark"] .console-shell {
   0% { transform: scale(1); opacity: 0.5; }
   100% { transform: scale(1.75); opacity: 0; }
 }
+/* A travelling dash. Needs an explicit `to`, unlike the entry animations: it is
+   a loop rather than an entrance, so there is no resting state to hand back. */
+@keyframes qciFlow {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes qciSweepSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
 
 /* The console-wide reduced-motion rule zeroes durations, which would leave
    every animated-in element stuck at its `from` keyframe (opacity 0). These
@@ -2188,10 +2343,24 @@ html[data-theme="dark"] .console-shell {
   .qci-node,
   .qci-map-detail,
   .qci-hub-glow,
-  .qci-hub-pulse { animation: none !important; opacity: 1; transform: none; }
+  .qci-hub-pulse,
+  .qci-intake-cap,
+  .qci-stage,
+  .qci-conduit,
+  .qci-verdict,
+  .qci-hub-ring { animation: none !important; opacity: 1; transform: none; }
   .qci-hub-pulse { opacity: 0.3; }
+  .qci-hub-ring { opacity: 0.28; }
   .qci-edge { animation: none !important; stroke-dashoffset: 0; opacity: 0.5; }
   .qci-node-halo { animation: none !important; opacity: 0; }
+  /* The travelling dashes and the sweep are motion with no static equivalent —
+     a frozen dash is just a broken line, so they are removed outright rather
+     than stopped mid-cycle. The winning route stays findable through the solid
+     ring on its node, which carries no animation of its own here. */
+  .qci-conduit-flow,
+  .qci-route-flow,
+  .qci-sweep-wrap { display: none; }
+  .qci-route-ring { animation: none !important; opacity: 0.55; }
   .qci-detail-list button:hover { transform: none; }
   .qci-console-links a:hover { transform: none; }
 }

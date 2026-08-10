@@ -196,6 +196,19 @@ export interface DeviceDerived {
   costPerHour?: number;
   /** pricePerHour / costPerHour. */
   costCoverage?: number;
+
+  /**
+   * Today's observed queue depth, seconds — carried for the routing view, NOT
+   * used by the index.
+   *
+   * Deliberately read from the day's raw observation rather than from the
+   * ledger: queue depth is volatile intraday and is not an "accepted value" the
+   * index stands behind, so persisting it in the ledger would blur what that
+   * structure means. Absent whenever the device was not observed today or the
+   * provider exposes no queue figure, and the routing view treats absence as
+   * unknown rather than as zero.
+   */
+  queueSeconds?: number;
 }
 
 /**

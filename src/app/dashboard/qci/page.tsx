@@ -105,7 +105,7 @@ export default async function QciPage() {
         <section className="qci-map-panel">
           <header className="qci-map-head">
             <div>
-              <h2>What the index is made of</h2>
+              <h2>How a job gets routed</h2>
               <p>Nothing is drawn here until real observations exist.</p>
             </div>
           </header>
