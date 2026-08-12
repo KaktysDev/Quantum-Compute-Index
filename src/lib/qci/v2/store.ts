@@ -177,6 +177,70 @@ export async function getQciView(days = 365): Promise<QciView> {
   }
 }
 
+/**
+ * The published headline, for every PUBLIC surface: landing, pricing, /api/qci.
+ *
+ * WHY THIS EXISTS
+ * Those pages read v1's `getLatestSnapshot()`, which publishes a different
+ * quantity under the same words. On 12 Aug 2026 the console said $5,317 per
+ * QPU-hour while the landing page said $2,509.81 per "QC-hour" and the pricing
+ * page repeated the second figure — two prices for one product, on one site,
+ * three clicks apart. Worse, v1 falls back to `sampleSeries()` when it has
+ * nothing, so a visitor could be shown a random walk with no way to tell.
+ *
+ * One function, one number, every surface. It returns `hasData: false` rather
+ * than inventing anything, and callers are expected to render that state.
+ */
+export interface PublicQci {
+  hasData: boolean;
+  /** Headline USD per QPU-hour, 0 when nothing is published. */
+  usdPerQpuHour: number;
+  /** Day-over-day move, in percent. */
+  changePct: number;
+  /** Chain-linked level, 1,000 at inception. */
+  level: number;
+  /** Modelled cost to produce an hour, when the cost model ran. */
+  costBasisPerHour: number | null;
+  /** ISO timestamp of the published point. */
+  ts: string | null;
+  machines: number;
+  providers: number;
+  /** USD/QPU-hour history — the series every public chart draws. */
+  series: SeriesPoint[];
+  emptyReason?: string;
+}
+
+export async function getPublicQci(days = 365): Promise<PublicQci> {
+  const view = await getQciView(days);
+  const latest = view.latest;
+  if (!latest) {
+    return {
+      hasData: false,
+      usdPerQpuHour: 0,
+      changePct: 0,
+      level: 0,
+      costBasisPerHour: null,
+      ts: null,
+      machines: 0,
+      providers: 0,
+      series: [],
+      emptyReason: view.emptyReason,
+    };
+  }
+  return {
+    hasData: true,
+    usdPerQpuHour: latest.usdPerQpuHour,
+    changePct: latest.changePct,
+    level: latest.level,
+    costBasisPerHour: latest.costBasisPerHour ?? null,
+    ts: latest.ts,
+    machines: latest.devices.length,
+    providers: new Set(latest.devices.map((d) => d.provider)).size,
+    series: view.series.usdPerQpuHour,
+    emptyReason: view.hasData ? undefined : view.emptyReason,
+  };
+}
+
 /** Just the latest point — for the landing page and the routing engine. */
 export async function getLatestPoint(): Promise<IndexPoint | null> {
   if (!isSupabaseConfigured()) return null;

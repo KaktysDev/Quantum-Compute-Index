@@ -23,8 +23,7 @@ function since(ts: string): string {
 export default async function QciPage() {
   // This tab is pure v2. The legacy market panel used to sit below the map, but
   // it falls back to a seeded pseudo-random walk when it has no data and draws
-  // it as history — the exact behaviour this rewrite exists to remove. It is
-  // still used by the landing and pricing pages, which have not been migrated.
+  // it as history — the exact behaviour this rewrite exists to remove.
   const v2 = await getQciView(365);
   const latest = v2.latest;
 
@@ -35,45 +34,45 @@ export default async function QciPage() {
   return (
     <div className="console-page qci-page">
       {latest ? (
+        /* The hero carries four facts and one number. Everything that used to
+           sit here as permanent body copy — the methodology sentence, the
+           per-stat captions — is now either a hover or a click away, because a
+           reader who returns to this page daily does not need the paragraph and
+           a reader arriving for the first time gets it from the map below. */
         <header className="qci-hero">
-          <div className="qci-hero-main">
-            <p className="qci-hero-eyebrow">Quantum Compute Index</p>
+          <p className="qci-hero-eyebrow">Quantum Compute Index</p>
+          <div className="qci-hero-line">
             <h1>
               <span className="qci-hero-currency">$</span>
               {money(latest.usdPerQpuHour)}
-              <small>per QPU-hour</small>
             </h1>
-            <p
+            <span className="qci-hero-unit">per QPU-hour</span>
+            <span
               className="qci-hero-change"
               data-dir={latest.inception ? "new" : flat ? "flat" : up ? "up" : "down"}
             >
               {latest.inception
-                ? "Baseline set today"
+                ? "baseline"
                 : flat
-                  ? "Unchanged today"
-                  : `${up ? "▲" : "▼"} ${Math.abs(latest.changePct).toFixed(2)}% today`}
-            </p>
-            <p className="qci-hero-blurb">
-              What an hour of quantum computing costs across every machine on the market with a
-              published hourly rate. Measured daily from the sellers&rsquo; own rate cards and the
-              operators&rsquo; own calibration data.
-            </p>
+                  ? "unchanged"
+                  : `${up ? "▲" : "▼"} ${Math.abs(latest.changePct).toFixed(2)}%`}
+            </span>
           </div>
 
           <dl className="qci-hero-stats">
             <div>
-              <dt>Index level</dt>
+              <dt>Level</dt>
               <dd>{money(latest.level, 2)}</dd>
               <small>1,000 at inception</small>
             </div>
             <div>
-              <dt>Machines priced</dt>
+              <dt>Machines</dt>
               <dd>{latest.devices.length}</dd>
               <small>across {providers} providers</small>
             </div>
             {latest.costBasisPerHour ? (
               <div>
-                <dt>Costs to produce</dt>
+                <dt>Cost to produce</dt>
                 <dd>${money(latest.costBasisPerHour)}</dd>
                 <small>
                   {latest.costCoverageRatio
@@ -83,19 +82,19 @@ export default async function QciPage() {
               </div>
             ) : null}
             <div>
-              <dt>Last measured</dt>
-              <dd className="qci-hero-time">{since(latest.ts)}</dd>
-              <small>{new Date(latest.ts).toLocaleDateString()}</small>
+              <dt>Measured</dt>
+              <dd>{since(latest.ts)}</dd>
+              <small>{new Date(latest.ts).toISOString().slice(0, 10)}</small>
             </div>
           </dl>
         </header>
       ) : (
         <header className="qci-hero">
-          <div className="qci-hero-main">
-            <p className="qci-hero-eyebrow">Quantum Compute Index</p>
+          <p className="qci-hero-eyebrow">Quantum Compute Index</p>
+          <div className="qci-hero-line">
             <h1 className="qci-hero-empty">Awaiting the first measurement</h1>
-            <p className="qci-hero-blurb">{v2.emptyReason}</p>
           </div>
+          <p className="qci-hero-note">{v2.emptyReason}</p>
         </header>
       )}
 
@@ -103,7 +102,7 @@ export default async function QciPage() {
         <QciMap point={latest} />
       ) : (
         <section className="qci-map-panel">
-          <header className="qci-map-head">
+          <header className="qci-sec-head">
             <div>
               <h2>How a job gets routed</h2>
               <p>Nothing is drawn here until real observations exist.</p>

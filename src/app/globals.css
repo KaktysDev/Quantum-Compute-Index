@@ -348,6 +348,14 @@ textarea:focus-visible {
 
 .qci-light .qci-site-footer { border-color: #d9ddd8; }
 
+/* The pricing page's chart. Same component, same series and same number as the
+   console tab — it just takes this page's ink instead of the console's. */
+.pricing-chart {
+  color: var(--fg);
+  --qcx-hollow: #ffffff;
+  --qcx-halo: rgba(17, 22, 18, 0.1);
+}
+
 ::selection {
   background: rgba(66, 229, 158, 0.3);
   color: #fff;
@@ -375,6 +383,171 @@ textarea:focus-visible {
   background-clip: padding-box;
 }
 
+/* ═════════════════════════════════════════════════════════════════════════
+   QciChart (.qcx) — the platform's only price chart.
+
+   Lives in globals.css rather than in landing.css or console.css because the
+   same component draws the index on the landing page, the pricing page and the
+   console, and those three had drifted onto three different renderers showing
+   three different numbers.
+
+   It has NO colours of its own. The line, the wash and every mark are
+   `currentColor`, so the chart takes the ink of whatever it is dropped into and
+   is correct in both console themes and on the dark landing page without a
+   single per-host override.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.qcx {
+  position: relative;
+  width: 100%;
+  color: var(--qcx-ink, currentColor);
+  touch-action: pan-y;
+  cursor: crosshair;
+}
+.qcx > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* The opening value. Faint at rest; it firms up while the cursor is down so the
+   thing you measure against is legible exactly when you are measuring. */
+.qcx-base {
+  stroke: currentColor;
+  stroke-width: 1;
+  stroke-dasharray: 2 5;
+  opacity: 0.16;
+  transition: opacity 220ms ease;
+}
+.qcx[data-hover="true"] .qcx-base { opacity: 0.3; }
+
+.qcx-wash { opacity: 0.9; }
+
+.qcx-line {
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  /* pathLength=1 normalises the draw regardless of how long the real path is,
+     so a 4-point line and a 400-point line take the same time to arrive. */
+  animation: qcxDraw 900ms cubic-bezier(0.33, 1, 0.68, 1) backwards;
+}
+
+.qcx-guide {
+  stroke: currentColor;
+  stroke-width: 1;
+  opacity: 0.22;
+}
+
+/* Dots are HTML, not SVG: the viewBox is stretched non-uniformly, which would
+   turn an SVG circle into an ellipse of whatever aspect the panel happens to be. */
+.qcx-dot {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border-radius: 50%;
+  background: currentColor;
+  pointer-events: none;
+}
+.qcx-dot.last::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  opacity: 0.45;
+  animation: qcxPing 3.2s ease-out infinite;
+}
+/* A provisional point is drawn hollow — thin coverage should not look settled. */
+.qcx-dot.last[data-provisional="true"] {
+  background: var(--qcx-hollow, transparent);
+  box-shadow: inset 0 0 0 1.5px currentColor;
+}
+.qcx-dot.cursor {
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  box-shadow: 0 0 0 3px var(--qcx-halo, rgba(127, 127, 127, 0.18));
+  animation: qcxPop 180ms ease-out;
+}
+
+.qcx-readout {
+  position: absolute;
+  top: 0;
+  display: grid;
+  gap: 0.12rem;
+  margin-left: 0.7rem;
+  pointer-events: none;
+  white-space: nowrap;
+  animation: qcxIn 160ms ease-out;
+}
+.qcx-readout[data-flip="true"] {
+  margin-left: 0;
+  transform: translateX(-100%);
+  padding-right: 0.7rem;
+  text-align: right;
+}
+.qcx-readout b {
+  color: currentColor;
+  font: 560 0.82rem/1 var(--font-mono), monospace;
+  font-variant-numeric: tabular-nums;
+}
+.qcx-readout small {
+  color: currentColor;
+  font: 0.58rem/1 var(--font-mono), monospace;
+  letter-spacing: 0.04em;
+  opacity: 0.55;
+  text-transform: uppercase;
+}
+
+/* The x-axis, such as it is: the two ends of the window, sitting inside the
+   plot's bottom padding so they cost the chart no height. Ghosted until the
+   chart is under the cursor, like every other label in this design. */
+.qcx-dates {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: space-between;
+  color: currentColor;
+  font: 0.55rem var(--font-mono), monospace;
+  letter-spacing: 0.06em;
+  opacity: 0.35;
+  pointer-events: none;
+  text-transform: uppercase;
+  transition: opacity 200ms ease;
+}
+.qcx:hover .qcx-dates { opacity: 0.7; }
+.qcx-dates i { font-style: normal; }
+
+.qcx-empty {
+  display: grid;
+  height: 100%;
+  margin: 0;
+  place-items: center;
+  color: currentColor;
+  font-size: 0.72rem;
+  opacity: 0.5;
+}
+
+@keyframes qcxDraw {
+  from { stroke-dasharray: 1; stroke-dashoffset: 1; }
+  to { stroke-dasharray: 1; stroke-dashoffset: 0; }
+}
+@keyframes qcxPing {
+  0% { transform: scale(1); opacity: 0.45; }
+  70%, 100% { transform: scale(2.6); opacity: 0; }
+}
+@keyframes qcxPop {
+  from { transform: scale(0.4); }
+}
+@keyframes qcxIn {
+  from { opacity: 0; transform: translateY(3px); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
@@ -387,4 +560,10 @@ textarea:focus-visible {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
+
+  /* The global rule above zeroes the draw animation, which would leave the line
+     stuck on its `from` keyframe — a fully offset dash, i.e. invisible. Drop the
+     dash entirely instead. */
+  .qcx-line { stroke-dasharray: none !important; stroke-dashoffset: 0 !important; }
+  .qcx-dot.last::after { display: none; }
 }

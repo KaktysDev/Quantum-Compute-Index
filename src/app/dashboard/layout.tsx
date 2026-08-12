@@ -18,7 +18,9 @@ export default async function DashboardLayout({
   let organization = "Local workspace";
   let balance = 10;
   let isAdmin = false;
-  if (isSupabaseConfigured()) {
+  // Mirrors middleware.ts: the local bypass short-circuits before the auth
+  // lookup so the console can be opened against a REAL database in dev.
+  if (isSupabaseConfigured() && !consoleDevBypassEnabled()) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) redirect("/signin");

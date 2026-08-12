@@ -19,7 +19,7 @@ import LandingPriceIndex, { type IndexPoint } from "@/components/LandingPriceInd
 import LogoMark from "@/components/LogoMark";
 import { PUBLIC_CONFIG } from "@/lib/publicConfig";
 import { BACKENDS } from "@/lib/qrouter/catalog";
-import { getLatestSnapshot, getSeries } from "@/lib/qci/store";
+import { getPublicQci } from "@/lib/qci/v2/store";
 
 export const dynamic = "force-dynamic";
 
@@ -80,8 +80,12 @@ const productRows = [
   },
 ] as const;
 
+const money = (v: number) => v.toLocaleString("en-US", { maximumFractionDigits: 0 });
+
 export default async function LandingPage() {
-  const [latest, series] = await Promise.all([getLatestSnapshot(), getSeries(365)]);
+  // One read, one number. The console, this page and /pricing all publish the
+  // SAME figure now — see getPublicQci() for why that needed saying out loud.
+  const qci = await getPublicQci(365);
   const routable = BACKENDS.filter((backend) => backend.available).length;
   const qpuCount = BACKENDS.filter((backend) => backend.kind === "qpu").length;
   const routingCandidates = BACKENDS.filter((backend) => ["ibm-brisbane", "ionq-aria-1", "iqm-garnet"].includes(backend.id)).map((backend) => ({
@@ -96,7 +100,9 @@ export default async function LandingPage() {
       name: b.displayName,
       detail: `${b.qubits}Q · ${b.kind.toUpperCase()}`,
     })),
-    { name: "QCI", detail: `$${latest.vwap.toFixed(2)}/QC·H` },
+    ...(qci.hasData
+      ? [{ name: "QCI", detail: `$${money(qci.usdPerQpuHour)}/QPU·H` }]
+      : []),
   ];
 
   return (
@@ -136,10 +142,10 @@ export default async function LandingPage() {
                 <dd>{qpuCount}</dd>
               </div>
               <div>
-                <dt>Index / QC-hour</dt>
+                <dt>Index / QPU-hour</dt>
                 <dd>
-                  ${latest.vwap.toFixed(2)}
-                  <small>{latest.source === "sample" ? "SAMPLE" : "SNAPSHOT"}</small>
+                  {qci.hasData ? `$${money(qci.usdPerQpuHour)}` : "—"}
+                  <small>{qci.hasData ? "PUBLISHED" : "AWAITING DATA"}</small>
                 </dd>
               </div>
             </dl>
@@ -249,9 +255,9 @@ export default async function LandingPage() {
             <Reveal variant={row.side === "right" ? "right" : "left"}>
               <ProductVisual
                 id={row.id}
-                price={latest.vwap}
-                source={latest.source}
-                series={series}
+                price={qci.usdPerQpuHour}
+                hasData={qci.hasData}
+                series={qci.series}
               />
             </Reveal>
           </article>
@@ -307,12 +313,12 @@ export default async function LandingPage() {
 function ProductVisual({
   id,
   price,
-  source,
+  hasData,
   series,
 }: {
   id: string;
   price: number;
-  source: "live" | "sample";
+  hasData: boolean;
   series: IndexPoint[];
 }) {
   if (id === "route")
@@ -339,7 +345,7 @@ function ProductVisual({
         </div>
       </div>
     );
-  if (id === "index") return <LandingPriceIndex vwap={price} source={source} series={series} />;
+  if (id === "index") return <LandingPriceIndex price={price} hasData={hasData} series={series} />;
   return (
     <div className="ql-visual">
       <div className="ql-deploy-window">

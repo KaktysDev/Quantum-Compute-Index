@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import GlassCard from "@/components/GlassCard";
 import { requireAdmin } from "@/lib/admin";
-import { getLatestSnapshot } from "@/lib/qci/store";
+import { getLatestPoint } from "@/lib/qci/v2/store";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +60,7 @@ export default async function AdminOverviewPage() {
     supabase.from("backends").select("id, provider, display_name, status, kind, queue_seconds, updated_at"),
     supabase.from("user_reports").select("id", { count: "exact", head: true }).in("status", ["open", "in_progress"]),
     supabase.from("contact_submissions").select("id", { count: "exact", head: true }).eq("read", false),
-    getLatestSnapshot(),
+    getLatestPoint(),
   ]);
 
   const jobs = jobRows ?? [];
@@ -88,8 +88,13 @@ export default async function AdminOverviewPage() {
   const degraded = (backendRows ?? []).filter((b) => b.status === "degraded").length;
   const offline = (backendRows ?? []).filter((b) => b.status === "offline").length;
 
-  const staleProviders = latest.components.filter((c) => c.status === "stale").map((c) => c.provider);
-  const snapshotAge = Math.round((Date.now() - new Date(latest.ts).getTime()) / 3_600_000);
+  // v2. This card used to read v1's snapshot table, so the admin overview showed
+  // $2,509.81 / level 1010.81 while the QCI tab three clicks away showed $5,317
+  // / level 997.62 for the same day.
+  const staleDevices = (latest?.devices ?? []).filter((d) => !d.fresh).map((d) => d.device);
+  const snapshotAge = latest
+    ? Math.round((Date.now() - new Date(latest.ts).getTime()) / 3_600_000)
+    : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -127,25 +132,31 @@ export default async function AdminOverviewPage() {
           </div>
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">$/QC-hour</p>
-              <p className="mt-1 text-xl font-semibold text-white">{usd(latest.vwap)}</p>
+              <p className="font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">$/QPU-hour</p>
+              <p className="mt-1 text-xl font-semibold text-white">{latest ? usd(latest.usdPerQpuHour) : "—"}</p>
             </div>
             <div>
               <p className="font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">Index level</p>
-              <p className="mt-1 text-xl font-semibold text-white">{latest.price.toFixed(2)}</p>
+              <p className="mt-1 text-xl font-semibold text-white">{latest ? latest.level.toFixed(2) : "—"}</p>
             </div>
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">Source</p>
-              <p className={`mt-1 text-xl font-semibold ${latest.source === "live" ? "text-[var(--qr-emerald,#34d399)]" : "text-amber-300"}`}>
-                {latest.source.toUpperCase()}
+              <p className="font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">Status</p>
+              <p className={`mt-1 text-xl font-semibold ${latest?.status === "final" ? "text-[var(--qr-emerald,#34d399)]" : "text-amber-300"}`}>
+                {latest ? (latest.inception ? "INCEPTION" : latest.status.toUpperCase()) : "NO DATA"}
               </p>
             </div>
           </div>
           <p className="mt-4 text-xs text-[var(--muted)]">
-            Last update: <b className={snapshotAge > 30 ? "text-amber-300" : "text-white"}>{new Date(latest.ts).toLocaleString()}</b>
-            {" "}({snapshotAge}h ago{snapshotAge > 30 ? " — daily cron may be failing" : ""})
-            {staleProviders.length > 0 && (
-              <> · carried forward: <b className="text-amber-300">{staleProviders.join(", ")}</b></>
+            {latest && snapshotAge != null ? (
+              <>
+                Last update: <b className={snapshotAge > 30 ? "text-amber-300" : "text-white"}>{new Date(latest.ts).toLocaleString()}</b>
+                {" "}({snapshotAge}h ago{snapshotAge > 30 ? " — daily cron may be failing" : ""})
+                {staleDevices.length > 0 && (
+                  <> · carried forward: <b className="text-amber-300">{staleDevices.join(", ")}</b></>
+                )}
+              </>
+            ) : (
+              <>No index point has been recorded yet. Run a refresh from Health.</>
             )}
           </p>
         </GlassCard>

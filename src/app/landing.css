@@ -740,11 +740,21 @@
 }
 .pl-index-ranges button:hover { color: var(--ql-text); }
 .pl-index-ranges button.active { border-color: rgba(66, 229, 158, 0.4); background: var(--ql-emerald-dim); color: var(--ql-emerald); }
-.pl-index-line { height: 180px; }
-.pl-index-line svg { width: 100%; height: 100%; }
-.pl-index-line polyline { fill: none; stroke: var(--ql-emerald); stroke-width: 2; }
-.pl-index-area { fill: rgba(66, 229, 158, 0.12); }
-.pl-index-empty { display: grid; place-items: center; height: 100%; margin: 0; color: var(--ql-dim); font: 0.62rem var(--ql-mono); }
+/* The card hosts the shared QciChart (.qcx), which takes its ink from
+   currentColor — so the line here is the card's own text colour rather than a
+   second, card-specific accent. Height comes from the component's own prop. */
+.pl-index-line {
+  min-height: 150px;
+  color: var(--ql-text);
+  --qcx-hollow: var(--ql-panel);
+  --qcx-halo: rgba(17, 22, 18, 0.1);
+}
+/* `.ql-site svg { width: 1em; height: 1em }` at the top of this file sizes every
+   icon on the landing page — and it beats `.qcx > svg` in globals.css on load
+   order at equal specificity, which collapses the chart to a 16px square. This
+   rule is what keeps the chart a chart. */
+.pl-index-line .qcx > svg { width: 100%; height: 100%; }
+.pl-index-empty { display: grid; place-items: center; height: 150px; margin: 0; color: var(--ql-dim); font: 0.62rem/1.6 var(--ql-mono); text-align: center; }
 .pl-index-card footer { display: flex; align-items: center; justify-content: space-between; margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid var(--ql-line); }
 .pl-index-card footer a { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--ql-emerald); font-size: 0.68rem; font-weight: 620; }
 .pl-index-card footer span { color: var(--ql-dim); font: 0.54rem var(--ql-mono); }

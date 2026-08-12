@@ -1,30 +1,24 @@
 "use client";
 
 // ──────────────────────────────────────────────────────────────────────────────
-// QCI v2 history chart.
+// QCI v2 history.
 //
-// Replaces the legacy market panel on the QCI tab. The difference that matters
-// is not visual: the old panel fell back to `sampleSeries()`, a seeded
-// pseudo-random walk, whenever there was no data — and drew it as a smooth,
-// entirely convincing price history. This one draws what exists and says so when
-// nothing does.
+// Two things this panel is careful about.
 //
-// Points recorded on a thin day (coverage below the threshold) are marked, so a
-// provisional value is visibly provisional on the chart rather than only in the
-// underlying row.
+// It draws only what was measured. The legacy market panel fell back to
+// `sampleSeries()` — a seeded pseudo-random walk — whenever it had no data, and
+// rendered it as a smooth, entirely convincing price history. Here an empty
+// series is an empty panel that says why.
+//
+// It is quiet until asked. At rest there is a label, a number, and a line. The
+// unit, the point count, the provisional count and the per-point values are all
+// real and all available, but none of them are worth permanent furniture around
+// a four-point series — they appear on hover, which is also when a reader is
+// actually asking for them.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import {
-  ColorType,
-  CrosshairMode,
-  createChart,
-  type AreaData,
-  type IChartApi,
-  type ISeriesApi,
-  type Time,
-} from "lightweight-charts";
-import { TrendingDown, TrendingUp } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
+import QciChart, { chartDateLong, type ChartPoint } from "@/components/QciChart";
 import type { QciSeries, SeriesPoint } from "@/lib/qci/v2/store";
 
 const RANGES = [
@@ -37,30 +31,56 @@ const RANGES = [
 type MetricKey = keyof QciSeries;
 
 // Labels are words, not tickers. "QCI-Q" told a reader nothing they could act
-// on; "Quality-adjusted" at least names the idea, and the unit line carries the
-// precision underneath it.
+// on; "Quality-adjusted" at least names the idea.
 const METRICS: Array<{
   key: MetricKey;
   symbol: string;
   label: string;
   unit: string;
   dp: number;
+  money: boolean;
 }> = [
-  { key: "usdPerQpuHour", symbol: "Price", label: "Price of a quantum hour", unit: "USD per QPU-hour", dp: 2 },
-  { key: "usdPerQcu", symbol: "Quality-adj.", label: "Cost per unit of capability", unit: "USD per capability-hour", dp: 2 },
-  { key: "level", symbol: "Level", label: "Index level", unit: "1,000 at inception", dp: 2 },
-  { key: "costBasis", symbol: "Cost", label: "Modelled cost to produce", unit: "USD per QPU-hour", dp: 2 },
+  {
+    key: "usdPerQpuHour",
+    symbol: "Price",
+    label: "Price of a quantum hour",
+    unit: "USD per QPU-hour",
+    dp: 0,
+    money: true,
+  },
+  {
+    key: "usdPerQcu",
+    symbol: "Quality-adj.",
+    label: "Cost per unit of capability",
+    unit: "USD per capability-hour",
+    dp: 0,
+    money: true,
+  },
+  {
+    key: "level",
+    symbol: "Level",
+    label: "Index level",
+    unit: "1,000 at inception",
+    dp: 2,
+    money: false,
+  },
+  {
+    key: "costBasis",
+    symbol: "Cost",
+    label: "Modelled cost to produce",
+    unit: "USD per QPU-hour",
+    dp: 0,
+    money: true,
+  },
 ];
 
-function money(v: number, dp: number) {
+function num(v: number, dp: number) {
   return v.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
 }
 
-function movement(points: SeriesPoint[]) {
-  const first = points[0]?.value ?? 0;
-  const last = points.at(-1)?.value ?? first;
-  const absolute = last - first;
-  return { absolute, percent: first > 0 ? (absolute / first) * 100 : 0 };
+/** "over all" was not a phrase. Say the window the way a person would. */
+function window_(range: string): string {
+  return range === "ALL" ? "over all time" : `over ${range.toLowerCase()}`;
 }
 
 export default function QciSeriesPanel({
@@ -73,161 +93,83 @@ export default function QciSeriesPanel({
   emptyReason?: string;
 }) {
   const [metric, setMetric] = useState<MetricKey>("usdPerQpuHour");
-  const [range, setRange] = useState<(typeof RANGES)[number]["label"]>("3M");
-  const [hovered, setHovered] = useState<{ value: number; time: number } | null>(null);
-  const element = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<ISeriesApi<"Area"> | null>(null);
+  const [range, setRange] = useState<(typeof RANGES)[number]["label"]>("ALL");
+  const [hovered, setHovered] = useState<ChartPoint | null>(null);
 
   const active = METRICS.find((m) => m.key === metric) ?? METRICS[0];
   const all = useMemo(() => series[metric] ?? [], [series, metric]);
 
   const visible = useMemo(() => {
-    const days = RANGES.find((r) => r.label === range)?.days ?? 365;
-    const end = all.at(-1)?.time ?? Date.now() / 1000;
+    const days = RANGES.find((r) => r.label === range)?.days ?? 36_500;
+    const end = all.at(-1)?.time ?? 0;
     const cut = all.filter((p) => p.time >= end - days * 86_400);
     return cut.length > 1 ? cut : all;
   }, [all, range]);
 
-  const move = movement(visible);
-  const positive = move.absolute >= 0;
-  const display = hovered?.value ?? visible.at(-1)?.value ?? 0;
+  const first = visible[0]?.value ?? 0;
+  const latest = visible.at(-1)?.value ?? 0;
+  const shown = hovered?.value ?? latest;
+  const delta = latest - first;
+  const deltaPct = first > 0 ? (delta / first) * 100 : 0;
+  const flat = Math.abs(deltaPct) < 0.005;
   const provisional = visible.filter((p) => p.status === "provisional").length;
 
-  useEffect(() => {
-    const el = element.current;
-    if (!el) return;
-    const chart = createChart(el, {
-      width: el.clientWidth,
-      height: el.clientHeight || 300,
-      layout: {
-        background: { type: ColorType.Solid, color: "transparent" },
-        // Read from the console's own tokens so the chart follows the light/dark
-        // switch instead of hard-coding a dark palette the way v1's panel did.
-        textColor: getComputedStyle(el).getPropertyValue("--qr-dim") || "#8c8c8c",
-        fontFamily: "var(--qr-mono), monospace",
-        fontSize: 10,
-        attributionLogo: false,
-      },
-      grid: {
-        vertLines: { visible: false },
-        horzLines: {
-          color: getComputedStyle(el).getPropertyValue("--qr-line") || "rgba(0,0,0,0.08)",
-          style: 1,
-        },
-      },
-      rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.12, bottom: 0.08 } },
-      timeScale: { borderVisible: false, timeVisible: false, secondsVisible: false, rightOffset: 0 },
-      crosshair: {
-        mode: CrosshairMode.Normal,
-        vertLine: { width: 1, style: 2, labelVisible: false },
-        horzLine: { visible: false, labelVisible: false },
-      },
-      handleScroll: { mouseWheel: false, pressedMouseMove: false, horzTouchDrag: true, vertTouchDrag: false },
-      handleScale: { mouseWheel: false, pinch: true, axisPressedMouseMove: false },
-    });
-    const area = chart.addAreaSeries({
-      lineWidth: 2,
-      priceLineVisible: false,
-      lastValueVisible: false,
-      priceFormat: { type: "price", precision: 2, minMove: 0.01 },
-    });
-    chartRef.current = chart;
-    seriesRef.current = area;
-    chart.subscribeCrosshairMove((p) => {
-      if (!p.time) {
-        setHovered(null);
-        return;
-      }
-      const point = p.seriesData.get(area) as AreaData | undefined;
-      setHovered(point ? { value: point.value, time: typeof p.time === "number" ? p.time : 0 } : null);
-    });
-    const ro = new ResizeObserver(() =>
-      chart.applyOptions({ width: el.clientWidth, height: el.clientHeight }),
-    );
-    ro.observe(el);
-    return () => {
-      ro.disconnect();
-      chart.remove();
-      chartRef.current = null;
-      seriesRef.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!seriesRef.current || visible.length === 0) return;
-    const el = element.current;
-    const accent =
-      (el && getComputedStyle(el).getPropertyValue("--qci-price").trim()) || "#24406e";
-    seriesRef.current.applyOptions({
-      lineColor: accent,
-      topColor: `color-mix(in srgb, ${accent} 18%, transparent)`,
-      bottomColor: "transparent",
-      crosshairMarkerBackgroundColor: accent,
-    });
-    seriesRef.current.setData(
-      visible.map((p) => ({ time: p.time as Time, value: p.value })) as AreaData[],
-    );
-    chartRef.current?.timeScale().fitContent();
-  }, [visible]);
+  const fmt = (v: number) => `${active.money ? "$" : ""}${num(v, active.dp)}`;
 
   if (!hasData || all.length === 0) {
     return (
-      <section className="qci-series-panel">
-        <header className="qci-map-head">
+      <section className="qci-series">
+        <header className="qci-sec-head">
           <div>
             <h2>History</h2>
-            <p>One point per day, drawn only from what was actually measured.</p>
+            <p>One point per day, drawn only from what was measured.</p>
           </div>
         </header>
         <div className="qci-empty">
           <h3>{hasData ? "Not enough points to chart yet" : "Nothing recorded yet"}</h3>
-          <p>
-            {emptyReason ??
-              "The index needs at least one recorded point before it can be charted."}
-          </p>
-          <p>
-            A blank chart here means nothing has been measured — never that a line failed to draw.
-            No synthetic history is ever shown.
-          </p>
+          <p>{emptyReason ?? "The index needs one recorded point before it can be charted."}</p>
+          <p>A blank chart means nothing was measured — never that a line failed to draw.</p>
         </div>
       </section>
     );
   }
 
   return (
-    <section className="qci-series-panel">
-      <header className="qci-map-head">
+    <section className="qci-series">
+      <header className="qci-sec-head">
         <div>
           <h2>History</h2>
-          <p>One point per day, drawn only from what was actually measured.</p>
+          <p>One point per day, drawn only from what was measured.</p>
         </div>
-        <span className="qci-map-status">
-          {all.length} day{all.length === 1 ? "" : "s"} recorded
-        </span>
       </header>
 
       <div className="qci-series-body">
-        <header className="market-quote">
-          <div>
-            <span>
-              {active.symbol} <small>{active.label}</small>
+        <div className="qci-series-quote">
+          <div className="qci-quote-main">
+            <span className="qci-quote-label">{active.label}</span>
+            <strong>{fmt(shown)}</strong>
+            <span className="qci-quote-move" data-dir={flat ? "flat" : delta > 0 ? "up" : "down"}>
+              {hovered ? (
+                chartDateLong(hovered.time)
+              ) : flat ? (
+                <>
+                  — unchanged <small>{window_(range)}</small>
+                </>
+              ) : (
+                <>
+                  {delta > 0 ? "▲" : "▼"} {num(Math.abs(delta), active.dp)}{" "}
+                  <small>
+                    ({deltaPct >= 0 ? "+" : "−"}
+                    {Math.abs(deltaPct).toFixed(2)}%) {window_(range)}
+                  </small>
+                </>
+              )}
             </span>
-            <strong>
-              {active.key === "level" ? null : <sup>$</sup>}
-              {money(display, active.dp)}
-            </strong>
-            <p className={positive ? "positive" : "negative"}>
-              {positive ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-              {move.absolute >= 0 ? "+" : ""}
-              {money(move.absolute, active.dp)} ({move.percent >= 0 ? "+" : ""}
-              {move.percent.toFixed(2)}%)
-              <small>
-                {hovered ? new Date(hovered.time * 1000).toLocaleDateString() : range}
-              </small>
-            </p>
           </div>
-          <dl>
+
+          {/* Everything a reader might want to check, and nothing they need at
+              rest. Revealed with the panel, not printed onto it. */}
+          <dl className="qci-quote-meta">
             <div>
               <dt>Unit</dt>
               <dd>{active.unit}</dd>
@@ -238,37 +180,51 @@ export default function QciSeriesPanel({
             </div>
             <div>
               <dt>Provisional</dt>
-              <dd className={provisional > 0 ? "warn" : undefined}>{provisional}</dd>
+              <dd data-warn={provisional > 0 ? "true" : undefined}>{provisional}</dd>
             </div>
           </dl>
-        </header>
+        </div>
 
-        <div className="qci-series-chart" ref={element} aria-label={`${active.label} history`} />
+        <QciChart
+          points={visible as SeriesPoint[]}
+          height={215}
+          format={fmt}
+          onHover={setHovered}
+          ariaLabel={active.label}
+          className="qci-series-chart"
+        />
 
-        <div className="market-ranges">
-          {METRICS.map((m) => (
-            <button
-              key={m.key}
-              className={metric === m.key ? "active" : ""}
-              onClick={() => {
-                setMetric(m.key);
-                setHovered(null);
-              }}
-            >
-              {m.symbol}
-            </button>
-          ))}
-          <span className="qci-range-group">
+        <div className="qci-series-controls">
+          <div className="qci-seg">
+            {METRICS.map((m) => (
+              <button
+                key={m.key}
+                type="button"
+                data-active={metric === m.key ? "true" : undefined}
+                onClick={() => {
+                  setMetric(m.key);
+                  setHovered(null);
+                }}
+              >
+                {m.symbol}
+              </button>
+            ))}
+          </div>
+          <div className="qci-seg">
             {RANGES.map((r) => (
               <button
                 key={r.label}
-                className={range === r.label ? "active" : ""}
-                onClick={() => setRange(r.label)}
+                type="button"
+                data-active={range === r.label ? "true" : undefined}
+                onClick={() => {
+                  setRange(r.label);
+                  setHovered(null);
+                }}
               >
                 {r.label}
               </button>
             ))}
-          </span>
+          </div>
         </div>
       </div>
     </section>

@@ -5,33 +5,48 @@
 //
 // One picture of the whole system: the ROUTER in the middle, the machines it can
 // route to fanning left, and what an hour on them costs to produce fanning
-// right. A job descends the intake column into the router, the router scores
-// today's basket under the selected policy, and the winning path lights up.
+// right. The router scores today's basket under the selected policy, and the
+// winning path lights up.
 //
 // WHY THE ROUTER IS THE CENTRE AND NOT THE PRICE
 // The index and the router are not two products. The index is the price signal
-// the router routes on — that is the entire reason it exists. Drawing the price
-// alone in the middle showed a number with no consumer; drawing the router in
-// the middle with the price inside it shows what the number is FOR. The QCI has
-// not moved to the side, it has moved into the core, where the router reads it.
+// the router routes on. Drawing the price alone in the middle showed a number
+// with no consumer; drawing the router with the price inside it shows what the
+// number is FOR.
 //
 // THE RANKING IS REAL, THE TRAFFIC IS NOT
-// The winning machine is computed from the published point by routing.ts, under
+// The winning machine is computed from the published point by routing.ts under
 // QRouter's own published policy weights. It is a real answer to "where would a
-// job land right now". It is NOT a replay of live jobs, and the map says so
-// rather than letting the animation imply otherwise.
+// job land right now". It is NOT a replay of live jobs, and the map says so.
+//
+// ── WHY THIS VERSION IS SO MUCH QUIETER THAN THE LAST ────────────────────────
+// The previous map drew everything it knew, all the time: a four-chip intake
+// pipeline across the top, three counter-rotating orbit rings, a rotating radar
+// sweep, a hub glow, a verdict ribbon, and two labels under every node — inside
+// a 1280×980 viewBox that rendered ~0.77× the panel width tall. Every one of
+// those marks was defensible on its own and together they buried the finding.
+//
+// So the resting state now carries only what cannot be recovered by pointing at
+// something: the core price, the shape of the two fans, and which node won.
+// Everything else — names, rates, weights, shares — is one hover away. Node area
+// is still strictly proportional to real contribution, so the energy node is
+// genuinely a dot next to capital; the picture still states that finding, it
+// just no longer shouts the rest.
+//
+// COLOUR
+// There is none, and that is the console's own house rule (see the header of
+// console.css): neutral surfaces, hue reserved for status. This map used to
+// break it with a blue "price" token and an amber "cost" token. The two sides
+// are now told apart by FORM instead — targets are rings, cost drivers are
+// filled discs — which survives at dot size the way the console's greys do and
+// does not fight the rest of the shell.
 //
 // TWO AUDIENCES, ONE LAYOUT
 //   "public"     — what it costs, where a job lands, what it is made of.
-//   "diagnostic" — everything the public view hides: per-field provenance and
-//                  tier, staleness, merges, exclusions, matched sample.
+//   "diagnostic" — per-field provenance and tier, staleness, merges, exclusions.
 // Keeping them one component is deliberate: the diagnostic view has to be
 // looking at exactly the same numbers the public view shows, or it is not a
 // check on anything.
-//
-// Node area is proportional to real contribution throughout, so the energy node
-// is genuinely tiny next to capital — the picture states the finding rather than
-// decorating it.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -47,85 +62,39 @@ import {
 import type { DeviceDerived, FactorObservation, IndexPoint } from "@/lib/qci/v2/types";
 
 // Geometry is sized so the OUTERMOST ring — a selected cluster's expanded
-// children, plus their two lines of label — still fits inside the viewBox.
-// Getting this wrong does not clip (the SVG deliberately allows overflow so
-// labels can breathe); it spills children over the panel edge instead, which is
-// worse. Budget: CY + DEVICE_RING + LABEL_ROOM ≤ H.
-const W = 1280;
-const H = 980;
+// children plus their label line — still fits inside the viewBox. Getting this
+// wrong does not clip (the SVG allows overflow so labels can breathe); it spills
+// children over the panel edge instead, which is worse.
+//
+// Budget, with SIDE_SPREAD at ±60°:
+//   top    CY − DEVICE_RING·sin60 − r_max  = 218 − 177.5 − 14 = 26  (> axis row)
+//   bottom CY + DEVICE_RING·sin60 + r_max + LABEL_ROOM = 431  (< H)
+const W = 720;
+const H = 460;
 const CX = W / 2;
-const CY = 545;
+const CY = 218;
 
-const HUB_R = 94;
-const PROVIDER_RING = 258;
-const DEVICE_RING = 396;
-const FACTOR_RING = 258;
-const FACTOR_DETAIL_RING = 396;
-/** Vertical room a node's two label lines need below its circle. */
-const LABEL_ROOM = 34;
-/**
- * Baseline of the verdict ribbon. Below the lowest a node's second label line
- * can reach (CY + DEVICE_RING·sin 66° + r + LABEL_ROOM), so the ribbon never has
- * to compete with the graph for space.
- */
-const VERDICT_Y = 918;
+const HUB_R = 50;
+const PROVIDER_RING = 138;
+const DEVICE_RING = 205;
+const FACTOR_RING = 138;
+const FACTOR_DETAIL_RING = 205;
+/** Vertical room a node's label line needs below its circle. */
+const LABEL_ROOM = 22;
 
 /**
  * Total arc each side occupies, in degrees. Kept well under 180 so the target
  * cluster and the cost cluster never bleed into each other's half — the
  * left/right split is the first thing the map has to communicate — and so an
  * expanded cluster at the extreme of the arc still lands inside the viewBox.
- *
- * It also leaves the top and bottom centre columns empty, which is what makes
- * room for the intake column above the hub and the verdict ribbon below it.
+ * It also leaves the top and bottom centre columns clear for the intake conduit.
  */
-const SIDE_SPREAD = 132;
+const SIDE_SPREAD = 120;
 /** Arc an expanded cluster's children occupy around their parent. */
-const CHILD_SPREAD = 58;
+const CHILD_SPREAD = 50;
 
-/**
- * The intake pipeline — a job being parsed, filtered and scored on its way into
- * the router.
- *
- * It runs HORIZONTALLY across the top and then elbows down the centre column,
- * and both of those are forced by the arcs rather than chosen for looks. A
- * vertical stack of stage chips down the middle is the obvious first attempt and
- * it does not fit: with four providers the topmost target node sits at roughly
- * (CX−105, CY−236) and the topmost cost node mirrors it, leaving a gap of about
- * 120px between them — narrower than any chip wide enough to hold a label. Only
- * the bare conduit is thin enough to thread that gap, so the chips live above
- * the whole graph and the conduit does the descending.
- */
-const INTAKE_Y = 68;
-const INTAKE_CAP_W = 150;
-const INTAKE_CHIP_W = 186;
-const INTAKE_GAP = 14;
-/** y of the horizontal leg of the elbow that carries the flow back to centre. */
-const INTAKE_ELBOW_Y = 152;
-const INTAKE_STAGES = [
-  { label: "Parse & analyze", sub: "width · depth · gates" },
-  { label: "Filter targets", sub: "capacity · credentials" },
-  { label: "Score candidates", sub: "policy weights" },
-];
-
-/** Left-to-right centres for the intake row, centred as a whole on CX. */
-function intakeLayout(): { capX: number; stageX: number[]; lastX: number } {
-  const total =
-    INTAKE_CAP_W + INTAKE_STAGES.length * INTAKE_CHIP_W + INTAKE_STAGES.length * INTAKE_GAP;
-  let cursor = CX - total / 2;
-  const capX = cursor + INTAKE_CAP_W / 2;
-  cursor += INTAKE_CAP_W + INTAKE_GAP;
-  const stageX = INTAKE_STAGES.map(() => {
-    const x = cursor + INTAKE_CHIP_W / 2;
-    cursor += INTAKE_CHIP_W + INTAKE_GAP;
-    return x;
-  });
-  return { capX, stageX, lastX: stageX[stageX.length - 1] };
-}
-
-const intake = intakeLayout();
-/** Down out of the last stage, back to centre, then down into the router. */
-const INTAKE_PATH = `M ${intake.lastX} ${INTAKE_Y + 21} V ${INTAKE_ELBOW_Y} H ${CX} V ${CY - HUB_R - 4}`;
+/** Where the intake conduit starts its run down into the core. */
+const INTAKE_Y = 46;
 
 export type MapMode = "public" | "diagnostic";
 
@@ -160,9 +129,8 @@ interface Node {
  * The rounding is not cosmetic. Math.cos/Math.sin are not required to be
  * correctly rounded, so Node and Chrome can disagree in the last bit for the
  * same input — which React sees as a server/client attribute mismatch and
- * reports as a hydration error on every load ("535.0619460864435" vs
- * ...436). Two decimals is far finer than a pixel at this viewBox scale, makes
- * the geometry bit-identical on both sides, and shrinks the serialised markup.
+ * reports as a hydration error on every load. Two decimals is far finer than a
+ * pixel at this viewBox scale and makes the geometry bit-identical on both sides.
  */
 function polar(angleDeg: number, radius: number): { x: number; y: number } {
   const a = (angleDeg * Math.PI) / 180;
@@ -246,8 +214,8 @@ const MODALITY_LABEL: Record<string, string> = {
 /**
  * A number that counts up to its value on mount and on every change.
  *
- * Purely presentational, and deliberately short: the headline is the one thing
- * on the page a reader looks at first, and a value that resolves rather than
+ * Purely presentational, and deliberately short: the price is the one thing in
+ * the core a reader looks at first, and a value that resolves rather than
  * simply appearing makes it read as live. Skipped entirely under
  * prefers-reduced-motion, where it renders the final value immediately.
  */
@@ -365,7 +333,7 @@ export default function QciMap({
     const out: Node[] = [];
 
     // Providers fan across the left semicircle — these are the routing targets.
-    const pAngles = fan(providers.length, 180, Math.min(SIDE_SPREAD, providers.length * 34));
+    const pAngles = fan(providers.length, 180, Math.min(SIDE_SPREAD, providers.length * 30));
     const maxW = Math.max(...providers.map((p) => p.weight), 0.0001);
     providers.forEach((p, i) => {
       const { x, y } = polar(pAngles[i], PROVIDER_RING);
@@ -376,7 +344,7 @@ export default function QciMap({
         x,
         y,
         // Area ∝ weight, so visual size reads as real influence.
-        r: 22 + 24 * Math.sqrt(p.weight / maxW),
+        r: 11 + 13 * Math.sqrt(p.weight / maxW),
         side: "price",
         selection: { kind: "provider", provider: p.provider },
         freshness: p.devices.length > 0 ? p.fresh / p.devices.length : 0,
@@ -395,7 +363,7 @@ export default function QciMap({
         const dAngles = fan(
           cluster.devices.length,
           centre,
-          Math.min(CHILD_SPREAD, cluster.devices.length * 16),
+          Math.min(CHILD_SPREAD, cluster.devices.length * 14),
         );
         cluster.devices.forEach((d, i) => {
           const { x, y } = polar(dAngles[i], DEVICE_RING);
@@ -405,7 +373,7 @@ export default function QciMap({
             sub: `$${money(d.pricePerHour)}/hr`,
             x,
             y,
-            r: 17,
+            r: 9,
             side: "price",
             selection: { kind: "device", id: d.id },
             freshness: d.fresh ? 1 : Math.max(0, 1 - d.staleDays / 45),
@@ -417,7 +385,7 @@ export default function QciMap({
     }
 
     // Cost groups fan across the right semicircle.
-    const cAngles = fan(costGroups.length, 0, Math.min(SIDE_SPREAD, costGroups.length * 40));
+    const cAngles = fan(costGroups.length, 0, Math.min(SIDE_SPREAD, costGroups.length * 34));
     const maxShare = Math.max(...costGroups.map((c) => c.share), 0.0001);
     costGroups.forEach((c, i) => {
       const { x, y } = polar(cAngles[i], FACTOR_RING);
@@ -429,7 +397,7 @@ export default function QciMap({
         y,
         // Genuinely proportional: energy at 0.2% renders as a dot, and that is
         // the point being made.
-        r: 15 + 29 * Math.sqrt(c.share / maxShare),
+        r: 6 + 18 * Math.sqrt(c.share / maxShare),
         side: "cost",
         selection: { kind: "factor", group: c.group },
         freshness: 1,
@@ -444,7 +412,7 @@ export default function QciMap({
       const idx = costGroups.findIndex((c) => c.group === activeGroup);
       if (items.length > 0 && idx >= 0) {
         const centre = cAngles[idx];
-        const fAngles = fan(items.length, centre, Math.min(CHILD_SPREAD, items.length * 16));
+        const fAngles = fan(items.length, centre, Math.min(CHILD_SPREAD, items.length * 14));
         items.forEach((f, i) => {
           const { x, y } = polar(fAngles[i], FACTOR_DETAIL_RING);
           out.push({
@@ -453,7 +421,7 @@ export default function QciMap({
             sub: `${f.observation.value.toPrecision(4)} ${f.unit}`,
             x,
             y,
-            r: 14,
+            r: 8,
             side: "cost",
             selection: { kind: "factorItem", id: f.id },
             freshness: f.observation.tier === "assumed" ? 0.25 : 1,
@@ -483,23 +451,20 @@ export default function QciMap({
 
   return (
     <section className="qci-map-panel" data-mode={mode}>
-      <header className="qci-map-head">
+      <header className="qci-sec-head">
         <div>
-          <h2>{diagnostic ? "Router attribution — full detail" : "How a job gets routed"}</h2>
+          <h2>{diagnostic ? "Router attribution" : "How a job gets routed"}</h2>
           <p>
             {diagnostic
               ? "Every constituent with its source tier, staleness and exclusion state, under the live routing policy."
-              : "QRouter sits in the middle. On the left are the machines it can send a job to, on the right is what an hour on them costs to produce, and in the core is the price it decides on."}
+              : "QRouter in the middle. Targets left, what an hour costs to produce right, the price it decides on in the core. Point at anything to read it."}
           </p>
         </div>
         {diagnostic ? (
           <span className="qci-map-status" data-status={point.inception ? "inception" : point.status}>
-            {point.inception
-              ? "Inception"
-              : point.status === "final"
-                ? "Final"
-                : "Provisional"}{" "}
-            · {pct(point.coverage, 0)} coverage · {point.matched}/{point.priced ?? point.devices.length} matched
+            {point.inception ? "Inception" : point.status === "final" ? "Final" : "Provisional"} ·{" "}
+            {pct(point.coverage, 0)} coverage · {point.matched}/
+            {point.priced ?? point.devices.length} matched
           </span>
         ) : null}
       </header>
@@ -510,142 +475,72 @@ export default function QciMap({
           than be told about it. */}
       <div className="qci-policy-bar" role="group" aria-label="Routing policy">
         <span className="qci-policy-label">Policy</span>
-        {POLICIES.map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            className="qci-policy-chip"
-            data-active={p.id === policyId ? "true" : undefined}
-            onClick={() => setPolicyId(p.id)}
-            title={p.blurb}
-          >
-            {p.label}
-          </button>
-        ))}
+        <div className="qci-seg">
+          {POLICIES.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              data-active={p.id === policyId ? "true" : undefined}
+              onClick={() => setPolicyId(p.id)}
+              title={p.blurb}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
         <span className="qci-policy-note">
           {ranking.missingAxes.length > 0
-            ? `No queue data reported today — its weight is redistributed, not scored as zero.`
-            : `Ranked from today's published point. Not a replay of live traffic.`}
+            ? "No queue data today — its weight is redistributed, not scored as zero."
+            : "Ranked from today's published point. Not a replay of live traffic."}
         </span>
       </div>
 
       <div className="qci-map-body">
         <div className="qci-map-canvas">
           <svg
+            className="qci-graph"
             viewBox={`0 0 ${W} ${H}`}
             role="img"
             aria-label="QRouter routing map over the Quantum Compute Index"
             preserveAspectRatio="xMidYMid meet"
           >
-            <defs>
-              <radialGradient id="qciHubGlow">
-                <stop offset="0%" stopColor="var(--qci-hub-glow)" stopOpacity="0.55" />
-                <stop offset="70%" stopColor="var(--qci-hub-glow)" stopOpacity="0.12" />
-                <stop offset="100%" stopColor="var(--qci-hub-glow)" stopOpacity="0" />
-              </radialGradient>
-              <radialGradient id="qciFieldGlow">
-                <stop offset="0%" stopColor="var(--qci-field)" stopOpacity="0.5" />
-                <stop offset="100%" stopColor="var(--qci-field)" stopOpacity="0" />
-              </radialGradient>
-              {/* The sweep that rotates over the candidate arc: opaque at its
-                  leading edge, gone by its tail, so it reads as a scan rather
-                  than as a wedge of colour. */}
-              <linearGradient id="qciSweep" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stopColor="var(--qci-price)" stopOpacity="0" />
-                <stop offset="100%" stopColor="var(--qci-price)" stopOpacity="0.5" />
-              </linearGradient>
-            </defs>
-
-            {/* A soft field behind everything, replacing the old hard ruled
-                circle. It reads as depth rather than as a border. */}
-            <circle cx={CX} cy={CY} r={DEVICE_RING} fill="url(#qciFieldGlow)" />
-
-            <text className="qci-map-axis" x={CX - 372} y={CY - 330} textAnchor="middle">
-              TARGETS — where the job can land
+            <text className="qci-axis" x={CX - 268} y={26} textAnchor="middle">
+              TARGETS
             </text>
-            <text className="qci-map-axis" x={CX + 372} y={CY - 330} textAnchor="middle">
-              COST — what an hour takes to produce
+            <text className="qci-axis" x={CX + 268} y={26} textAnchor="middle">
+              COST TO PRODUCE
             </text>
 
-            {/* Three slowly counter-rotating dashed rings. The only motion on
-                the map that is not driven by interaction; it keeps the picture
-                feeling live without implying that anything is changing. */}
-            <circle cx={CX} cy={CY} r={PROVIDER_RING} className="qci-map-orbit" />
-            <circle cx={CX} cy={CY} r={PROVIDER_RING - 52} className="qci-map-orbit reverse" />
-            <circle cx={CX} cy={CY} r={DEVICE_RING - 24} className="qci-map-orbit wide" />
-
-            {/* ── Intake column ────────────────────────────────────────────
-                A job descending into the router. The conduit runs behind the
-                stage chips, and the flowing dash on it is the only thing on the
-                map that depicts movement — because it is the only thing that
-                actually moves. */}
+            {/* ── Intake ────────────────────────────────────────────────────
+                A job descending into the router. The travelling dash is the
+                only thing on the map that depicts movement, because it is the
+                only thing that actually moves. The four-chip pipeline that used
+                to run across the top said the same thing in 200px of vertical
+                space; its stage names live in the copy instead. */}
             <g className="qci-intake">
-              {/* One path for the whole elbow, so a single normalised dash
-                  travels the corner instead of two segments animating out of
-                  step with each other. */}
-              <path className="qci-conduit" pathLength={1} d={INTAKE_PATH} />
-              <path className="qci-conduit-flow" pathLength={1} d={INTAKE_PATH} />
-              {/* Arrowhead at the router end — the flow has a direction and the
-                  dash alone does not state which way. */}
-              <path
-                className="qci-conduit-tip"
-                d={`M ${CX - 6} ${CY - HUB_R - 14} L ${CX} ${CY - HUB_R - 4} L ${CX + 6} ${CY - HUB_R - 14}`}
+              <line
+                className="qci-conduit"
+                x1={CX}
+                y1={INTAKE_Y}
+                x2={CX}
+                y2={CY - HUB_R - 3}
+                pathLength={1}
               />
-
-              {/* Connectors between the row's chips. */}
-              {[intake.capX, ...intake.stageX].slice(0, -1).map((x, i) => {
-                const next = [intake.capX, ...intake.stageX][i + 1];
-                const from = x + (i === 0 ? INTAKE_CAP_W : INTAKE_CHIP_W) / 2;
-                const to = next - INTAKE_CHIP_W / 2;
-                return (
-                  <line
-                    key={`ic:${i}`}
-                    className="qci-intake-link"
-                    x1={from}
-                    y1={INTAKE_Y}
-                    x2={to}
-                    y2={INTAKE_Y}
-                  />
-                );
-              })}
-
-              <g transform={`translate(${intake.capX} ${INTAKE_Y})`}>
-                <rect
-                  className="qci-intake-cap"
-                  x={-INTAKE_CAP_W / 2}
-                  y={-20}
-                  width={INTAKE_CAP_W}
-                  height={40}
-                  rx={20}
-                />
-                <text className="qci-intake-cap-text" y={4} textAnchor="middle">
-                  OPENQASM JOB
-                </text>
-              </g>
-
-              {INTAKE_STAGES.map((s, i) => (
-                <g key={s.label} transform={`translate(${intake.stageX[i]} ${INTAKE_Y})`}>
-                  <rect
-                    className="qci-stage"
-                    x={-INTAKE_CHIP_W / 2}
-                    y={-21}
-                    width={INTAKE_CHIP_W}
-                    height={42}
-                    rx={10}
-                    style={{ animationDelay: `${240 + i * 110}ms` }}
-                  />
-                  <text className="qci-stage-label" y={-3} textAnchor="middle">
-                    {s.label}
-                  </text>
-                  <text className="qci-stage-sub" y={12} textAnchor="middle">
-                    {s.sub}
-                  </text>
-                </g>
-              ))}
+              <line
+                className="qci-conduit-flow"
+                x1={CX}
+                y1={INTAKE_Y}
+                x2={CX}
+                y2={CY - HUB_R - 3}
+                pathLength={1}
+              />
+              <text className="qci-axis" x={CX} y={INTAKE_Y - 10} textAnchor="middle">
+                JOB IN
+              </text>
             </g>
 
             {/* Edges */}
-            <g className="qci-map-edges">
+            <g className="qci-edges">
               {nodes.map((n, i) => {
                 const isChild = n.depth > 0;
                 let ax = CX;
@@ -672,15 +567,13 @@ export default function QciMap({
                       // regardless of their real length.
                       pathLength={1}
                       className={`qci-edge ${n.side}`}
-                      style={{ animationDelay: `${(isChild ? 40 : 0) + i * 45}ms` }}
+                      style={{ animationDelay: `${(isChild ? 40 : 0) + i * 40}ms` }}
                       data-dim={n.dim ? "true" : undefined}
-                      data-active={
-                        selectedKey === n.key || hovered === n.key ? "true" : undefined
-                      }
+                      data-active={selectedKey === n.key || hovered === n.key ? "true" : undefined}
                     />
                     {/* The winning route, drawn as a second line with a running
-                        dash. One segment travelling outward from the core to the
-                        machine the policy picked. */}
+                        dash: one segment travelling from the core to the machine
+                        the policy picked. */}
                     {n.onRoute ? (
                       <line
                         x1={ax}
@@ -697,25 +590,12 @@ export default function QciMap({
               })}
             </g>
 
-            {/* A sweep rotating over the candidate arc — the router looking at
-                its options. Carries no datum; it is the one purely atmospheric
-                element and it is confined to the side where evaluation happens. */}
-            <g className="qci-sweep-wrap">
-              <path
-                className="qci-sweep"
-                d={`M ${CX} ${CY} L ${CX - PROVIDER_RING - 60} ${CY - 44} A ${PROVIDER_RING + 60} ${PROVIDER_RING + 60} 0 0 1 ${CX - PROVIDER_RING - 60} ${CY + 44} Z`}
-              />
-            </g>
-
-            {/* Centre hub — the router */}
-            <circle cx={CX} cy={CY} r={HUB_R + 60} fill="url(#qciHubGlow)" className="qci-hub-glow" />
-            {/* Position on the OUTER group as an attribute, animation on the
-                inner one. A CSS transform replaces the attribute outright, so
-                animating a node that carries its own translate throws it to the
-                viewBox origin. */}
+            {/* Centre hub — the router. Position on the OUTER group as an
+                attribute, animation on the inner one: a CSS transform replaces
+                the attribute outright, so animating a node that carries its own
+                translate throws it to the viewBox origin. */}
             <g transform={`translate(${CX} ${CY})`}>
-              <circle className="qci-hub-ring outer" r={HUB_R + 26} />
-              <circle className="qci-hub-ring inner" r={HUB_R + 12} />
+              <circle className="qci-hub-ring" r={HUB_R + 13} />
               <g
                 className="qci-node hub"
                 data-active={selected.kind === "root" ? "true" : undefined}
@@ -729,43 +609,41 @@ export default function QciMap({
               >
                 <circle className="qci-hub-pulse" r={HUB_R} />
                 <circle r={HUB_R} />
-                <text y={-42} textAnchor="middle" className="qci-hub-brand">
+                <text y={-17} textAnchor="middle" className="qci-hub-brand">
                   QROUTER
                 </text>
-                <text y={-22} textAnchor="middle" className="qci-hub-eyebrow">
-                  ROUTING ON
-                </text>
-                <text y={10} textAnchor="middle" className="qci-hub-value">
+                <text y={8} textAnchor="middle" className="qci-hub-value">
                   ${money(shownPrice)}
                 </text>
                 <text
-                  y={34}
+                  y={25}
                   textAnchor="middle"
                   className={`qci-hub-change ${flat ? "flat" : up ? "up" : "down"}`}
                 >
-                  {flat
-                    ? "— unchanged"
-                    : `${up ? "▲" : "▼"} ${Math.abs(point.changePct).toFixed(2)}%`}
-                </text>
-                <text y={54} textAnchor="middle" className="qci-hub-eyebrow">
-                  QCI {money(point.level, 2)}
+                  {flat ? "— flat" : `${up ? "▲" : "▼"} ${Math.abs(point.changePct).toFixed(2)}%`}
                 </text>
               </g>
             </g>
 
-            {/* Nodes */}
+            {/* Nodes. The label is rendered always and hidden by CSS at rest —
+                keeping it in the DOM is what lets it be read by assistive tech
+                and found by in-page search while the resting picture stays bare. */}
             {nodes.map((n, i) => (
               <g key={n.key} transform={`translate(${n.x} ${n.y})`}>
                 <g
                   className={`qci-node ${n.side}`}
-                  style={{ animationDelay: `${n.depth * 60 + i * 45}ms` }}
+                  style={{ animationDelay: `${n.depth * 60 + i * 40}ms` }}
                   data-dim={n.dim ? "true" : undefined}
-                  data-active={selectedKey === n.key ? "true" : undefined}
+                  data-active={
+                    selectedKey === n.key || hovered === n.key ? "true" : undefined
+                  }
                   data-stale={n.freshness < 0.75 ? "true" : undefined}
                   data-route={n.onRoute ? "true" : undefined}
                   onClick={() => setSelected(n.selection)}
                   onMouseEnter={() => setHovered(n.key)}
                   onMouseLeave={() => setHovered(null)}
+                  onFocus={() => setHovered(n.key)}
+                  onBlur={() => setHovered(null)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
@@ -776,62 +654,47 @@ export default function QciMap({
                   role="button"
                   aria-label={`${n.label}. ${n.sub}`}
                 >
-                  {n.onRoute ? <circle className="qci-route-ring" r={n.r + 9} /> : null}
+                  {n.onRoute ? <circle className="qci-route-ring" r={n.r + 7} /> : null}
                   <circle className="qci-node-halo" r={n.r} />
                   <circle r={n.r} />
-                  <text y={n.r + 17} textAnchor="middle" className="qci-node-label">
+                  <text y={n.r + 13} textAnchor="middle" className="qci-node-label">
                     {n.label}
                   </text>
-                  <text y={n.r + LABEL_ROOM - 3} textAnchor="middle" className="qci-node-sub">
+                  <text y={n.r + LABEL_ROOM + 2} textAnchor="middle" className="qci-node-sub">
                     {n.sub}
                   </text>
                 </g>
               </g>
             ))}
-
-            {/* ── Verdict ribbon ───────────────────────────────────────────
-                Where the job lands, under the policy currently selected.
-
-                Parked at the FOOT of the viewBox rather than tucked under the
-                hub. The space below the core looks free and is not: the two arcs
-                converge as they come down, so the clear span between the
-                flanking nodes shrinks from ~375px just under the hub to ~120px
-                at the bottom of the ring — and this ribbon needs 464 to render
-                "provider · machine · rate" without truncating. Sitting it there
-                buried a target node and clipped the cryogenics label. Below the
-                whole graph, the full width is available. */}
-            {winner ? (
-              <g
-                className="qci-verdict"
-                transform={`translate(${CX} ${VERDICT_Y})`}
-                onClick={() => setSelected({ kind: "device", id: winner.device.id })}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    setSelected({ kind: "device", id: winner.device.id });
-                  }
-                }}
-                tabIndex={0}
-                role="button"
-                aria-label={`Winning target: ${winner.device.provider} ${winner.device.device}`}
-              >
-                <rect x={-232} y={-25} width={464} height={50} rx={25} />
-                <text className="qci-verdict-eyebrow" x={-206} y={-4} textAnchor="start">
-                  ROUTES TO
-                </text>
-                <text className="qci-verdict-name" x={-206} y={13} textAnchor="start">
-                  {winner.device.provider} · {winner.device.device}
-                </text>
-                <text className="qci-verdict-figure" x={206} y={-4} textAnchor="end">
-                  ${money(winner.device.pricePerHour)}/hr
-                </text>
-                <text className="qci-verdict-sub" x={206} y={13} textAnchor="end">
-                  {AXIS_LABEL[winner.decidedBy].toLowerCase()} decided it · score{" "}
-                  {winner.score.toFixed(2)}
-                </text>
-              </g>
-            ) : null}
           </svg>
+
+          {/* ── Verdict ─────────────────────────────────────────────────────
+              Where a job lands under the selected policy.
+
+              Out of the SVG entirely. Inside it, this had to be parked at the
+              foot of a viewBox tall enough to clear the arcs — the two fans
+              converge as they descend, so the clear span under the core shrinks
+              to roughly a third of what "provider · machine · rate" needs, and
+              the earlier attempt at tucking it there buried a target node and
+              clipped a label. As HTML it takes the panel's own width and costs
+              the picture no height at all. */}
+          {winner ? (
+            <button
+              type="button"
+              className="qci-verdict"
+              onClick={() => setSelected({ kind: "device", id: winner.device.id })}
+            >
+              <span className="qci-verdict-eyebrow">Routes to</span>
+              <span className="qci-verdict-name">
+                {winner.device.provider} · {winner.device.device}
+              </span>
+              <span className="qci-verdict-figure">${money(winner.device.pricePerHour)}/hr</span>
+              <span className="qci-verdict-sub">
+                {AXIS_LABEL[winner.decidedBy].toLowerCase()} decided it · score{" "}
+                {winner.score.toFixed(2)}
+              </span>
+            </button>
+          ) : null}
         </div>
 
         <QciMapDetail

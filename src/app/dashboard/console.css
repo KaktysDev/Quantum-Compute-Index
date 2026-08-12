@@ -1729,493 +1729,530 @@
 .theme-panel > p { margin: 0; color: var(--qr-muted); font-size: 0.78rem; }
 .theme-switch { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .theme-switch button { display: inline-flex; align-items: center; gap: 0.4rem; }
-
 /* ═════════════════════════════════════════════════════════════════════════
-   QCI — index tab, attribution map, and the admin diagnostic view.
+   QCI — index tab, routing map, and the admin diagnostic view.
 
-   Design intent, in the console's own terms: no boxes around things that are
-   already visually grouped. The old version drew a ruled panel around the map,
-   a ruled divider down the middle, and a ruled circle behind the nodes — three
-   borders doing the work of one piece of whitespace. Here the grouping comes
-   from spacing and from a very soft field behind the graph, and the only rules
-   left are the ones separating rows of data.
+   TWO RULES, AND THE SECOND ONE IS THE POINT OF THIS REWRITE.
 
-   The two chromatic tokens stay: the map needs to separate the price side from
-   the cost side, and hue is the only encoding that survives at node-dot size.
+   1. No boxes around things that are already visually grouped. Grouping comes
+      from spacing; the only rules left are the ones separating rows of data.
+
+   2. NOTHING IS DRAWN THAT A HOVER COULD DRAW INSTEAD. The previous version
+      printed every label, every sub-value, every caption and every stat
+      permanently, then wrapped the lot in rotating orbits and a radar sweep.
+      Here the resting state carries only what pointing at something cannot
+      recover — the price, the shape of the two fans, and which target won.
+      Names, rates, weights and shares fade in under the cursor.
+
+   COLOUR: none. This section used to define `--qci-price` (a blue) and
+   `--qci-cost` (an amber), which broke the console's own house rule at the top
+   of this file. The price side and the cost side are now told apart by FORM —
+   targets are hollow rings, cost drivers are filled discs — which survives at
+   dot size just as well and costs the shell no hue at all.
    ═════════════════════════════════════════════════════════════════════════ */
 
 .console-shell {
-  --qci-price: #24406e;
-  --qci-cost: #7a5512;
-  --qci-hub-glow: rgba(10, 10, 10, 0.16);
-  --qci-field: rgba(10, 10, 10, 0.035);
+  --qci-field: rgba(10, 10, 10, 0.028);
   --qci-node-fill: #ffffff;
+  /* Charts inherit ink from their panel; these two are the only things the
+     shared .qcx component needs told about its host. */
+  --qcx-hollow: var(--qr-panel-raised);
+  --qcx-halo: rgba(10, 10, 10, 0.1);
 }
 html[data-theme="dark"] .console-shell {
-  --qci-price: #8fb3f5;
-  --qci-cost: #dfae5b;
-  --qci-hub-glow: rgba(255, 255, 255, 0.18);
-  --qci-field: rgba(255, 255, 255, 0.045);
+  --qci-field: rgba(255, 255, 255, 0.035);
   --qci-node-fill: #0d0d0d;
+  --qcx-hollow: var(--qr-panel-raised);
+  --qcx-halo: rgba(255, 255, 255, 0.14);
 }
 
-.qci-page { gap: 2.25rem; }
+.qci-page { gap: 2rem; }
+
+/* ── Section heads ────────────────────────────────────────────────────────
+   Shared by the map and the history panel so the two read as one page. */
+.qci-sec-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.qci-sec-head h2 { margin: 0; color: var(--qr-text); font-size: 0.82rem; font-weight: 620; }
+.qci-sec-head p { max-width: 66ch; margin: 0.28rem 0 0; color: var(--qr-dim); font-size: 0.68rem; line-height: 1.55; }
 
 /* ── Hero ─────────────────────────────────────────────────────────────────
-   Borderless on purpose. The price is the largest thing on the page and does
-   not need a frame to be found. */
-.qci-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 2rem 3rem;
-  padding: 0.5rem 0 1.75rem;
-  border-bottom: 1px solid var(--qr-line);
-  animation: qciRise 520ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
-}
+   Borderless, and now a single line rather than a two-column block. The price
+   is the largest thing on the page; the unit and the move sit on its baseline
+   instead of stacking under it, which is what took ~180px of height out. */
+.qci-hero { display: grid; gap: 0.85rem; animation: qciRise 520ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+
 .qci-hero-eyebrow {
   margin: 0;
   color: var(--qr-dim);
-  font: 600 0.58rem var(--qr-mono);
+  font: 600 0.56rem var(--qr-mono);
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
+
+.qci-hero-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.65rem; }
 .qci-hero h1 {
-  display: flex;
-  align-items: baseline;
-  margin: 0.6rem 0 0;
+  margin: 0;
   color: var(--qr-text);
-  font-size: clamp(2.6rem, 6vw, 4rem);
-  font-weight: 600;
-  letter-spacing: -0.035em;
-  line-height: 1;
+  font: 500 clamp(2.1rem, 5vw, 3.1rem)/1 var(--qr-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+.qci-hero h1.qci-hero-empty { font: 500 clamp(1.2rem, 3vw, 1.6rem)/1.2 var(--font-sans); letter-spacing: -0.02em; }
+.qci-hero-currency { margin-right: 0.04em; color: var(--qr-dim); font-size: 0.44em; }
+.qci-hero-unit { color: var(--qr-dim); font-size: 0.7rem; letter-spacing: 0.02em; }
+.qci-hero-note { margin: 0; color: var(--qr-muted); font-size: 0.72rem; line-height: 1.6; }
+
+.qci-hero-change {
+  color: var(--qr-muted);
+  font: 560 0.68rem var(--qr-mono);
   font-variant-numeric: tabular-nums;
 }
-.qci-hero h1.qci-hero-empty { font-size: clamp(1.4rem, 3vw, 1.9rem); letter-spacing: -0.02em; }
-.qci-hero-currency { margin-right: 0.06em; color: var(--qr-dim); font-size: 0.46em; font-weight: 500; }
-.qci-hero h1 small {
-  margin-left: 0.75rem;
-  color: var(--qr-dim);
-  font-size: 0.2em;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.qci-hero-change {
-  display: inline-flex;
-  align-items: center;
-  margin: 0.85rem 0 0;
-  padding: 0.26rem 0.62rem;
-  border-radius: 999px;
-  font: 600 0.66rem var(--qr-mono);
-  letter-spacing: 0.02em;
-}
-.qci-hero-change[data-dir="up"] { background: var(--qr-success-dim); color: var(--qr-success); }
-.qci-hero-change[data-dir="down"] { background: var(--qr-danger-dim); color: var(--qr-danger); }
-.qci-hero-change[data-dir="flat"],
-.qci-hero-change[data-dir="new"] { background: var(--qr-accent-dim); color: var(--qr-muted); }
-.qci-hero-blurb {
-  max-width: 54ch;
-  margin: 1rem 0 0;
-  color: var(--qr-muted);
-  font-size: 0.78rem;
-  line-height: 1.65;
-}
+.qci-hero-change[data-dir="up"] { color: var(--qr-success); }
+.qci-hero-change[data-dir="down"] { color: var(--qr-danger); }
 
+/* One thin row of facts. The caption under each is the hover — it explains the
+   number, and an explanation is only wanted by someone already looking at it. */
 .qci-hero-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(112px, max-content));
+  display: flex;
+  flex-wrap: wrap;
   margin: 0;
-  gap: 1.6rem 2.4rem;
+  gap: 0 2.2rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--qr-line);
 }
+.qci-hero-stats > div { position: relative; padding: 0.15rem 0; }
 .qci-hero-stats dt {
   color: var(--qr-dim);
-  font: 600 0.55rem var(--qr-mono);
-  letter-spacing: 0.1em;
+  font: 600 0.52rem var(--qr-mono);
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 .qci-hero-stats dd {
-  margin: 0.4rem 0 0;
+  margin: 0.24rem 0 0;
   color: var(--qr-text);
-  font-size: 1.15rem;
-  font-weight: 560;
-  letter-spacing: -0.01em;
+  font: 520 0.86rem var(--qr-mono);
   font-variant-numeric: tabular-nums;
 }
-.qci-hero-stats small { display: block; margin-top: 0.22rem; color: var(--qr-dim); font-size: 0.62rem; }
-
-/* ── Map shell ──────────────────────────────────────────────────────────── */
-.qci-map-panel { display: grid; gap: 1.1rem; }
-.qci-map-head { display: flex; align-items: flex-start; gap: 1rem; }
-.qci-map-head h2 { margin: 0; color: var(--qr-text); font-size: 0.92rem; font-weight: 620; }
-.qci-map-head p { max-width: 62ch; margin: 0.3rem 0 0; color: var(--qr-muted); font-size: 0.72rem; line-height: 1.55; }
-.qci-map-status {
-  margin-left: auto;
-  flex-shrink: 0;
-  padding: 0.26rem 0.62rem;
-  border: 1px solid var(--qr-line);
-  border-radius: 999px;
-  color: var(--qr-muted);
-  font: 600 0.56rem var(--qr-mono);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+.qci-hero-stats small {
+  display: block;
+  height: 0;
+  color: var(--qr-dim);
+  font-size: 0.6rem;
+  line-height: 1.5;
+  opacity: 0;
+  overflow: hidden;
+  transition: opacity 180ms ease, height 180ms ease;
 }
-.qci-map-status[data-status="provisional"] { border-color: var(--qr-warning-line); background: var(--qr-warning-dim); color: var(--qr-warning); }
-.qci-map-status[data-status="final"] { border-color: var(--qr-success-line); color: var(--qr-success); }
-.qci-map-status[data-status="inception"] { border-color: var(--qr-line-strong); color: var(--qr-muted); }
+.qci-hero-stats > div:hover small,
+.qci-hero-stats > div:focus-within small { height: 0.95rem; opacity: 1; }
 
-.qci-map-body { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 1.5rem; align-items: start; }
-.qci-map-canvas { min-width: 0; }
+/* ── Map ──────────────────────────────────────────────────────────────────── */
+.qci-map-panel { display: grid; gap: 0.95rem; }
+.qci-map-body { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 1.4rem; align-items: start; }
+.qci-map-canvas { position: relative; min-width: 0; }
 .qci-map-canvas svg { display: block; width: 100%; height: auto; overflow: visible; }
 
-/* ENTRY ANIMATIONS USE fill-mode: backwards, NEVER both.
-   `both` holds the final keyframe indefinitely, and an animated property beats
-   a normal declaration in the cascade — so a keyframe ending at `opacity: 1`
-   permanently overrides `[data-dim] { opacity: 0.26 }` and the dimming of
-   unselected clusters silently stops working. `backwards` applies the opening
-   keyframe during the delay and then hands the element back to its own rules,
-   which is what an entry animation actually wants. Every keyframe set below is
-   therefore written `from`-only, with the resting state living in the rule. */
-.qci-map-axis {
-  fill: var(--qr-dim);
-  font: 600 10px var(--qr-mono);
-  letter-spacing: 0.12em;
-  animation: qciFade 700ms ease 260ms backwards;
+.qci-map-status {
+  flex: none;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--qr-line);
+  border-radius: 999px;
+  color: var(--qr-dim);
+  font: 600 0.55rem var(--qr-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.qci-map-status[data-status="provisional"] { border-color: var(--qr-warning-line); color: var(--qr-warning); }
+.qci-map-status[data-status="final"] { border-color: var(--qr-success-line); color: var(--qr-success); }
+
+/* A soft field behind the graph, replacing the old ruled circle and hub glow.
+   One mark instead of four, and it reads as depth rather than as a border. */
+.qci-graph { --qci-reveal: 0; }
+.qci-graph::before { content: ""; }
+.qci-map-canvas::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 47%;
+  width: 58%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--qci-field) 0%, transparent 70%);
+  pointer-events: none;
 }
 
-/* ── Orbit rings ──────────────────────────────────────────────────────────
-   Two counter-rotating dashed circles. They carry no data — they exist so a
-   static daily snapshot still reads as a live instrument rather than a
-   screenshot. Slow enough (60s/90s) to register only peripherally. */
-.qci-map-orbit {
-  fill: none;
-  stroke: var(--qr-line);
-  stroke-dasharray: 2 10;
-  transform-box: view-box;
-  transform-origin: 640px 545px;
-  animation: qciOrbit 90s linear infinite, qciFade 900ms ease backwards;
-  opacity: 0.9;
+.qci-axis {
+  fill: var(--qr-dim);
+  font: 600 8px var(--qr-mono);
+  letter-spacing: 0.18em;
+  opacity: 0.55;
+  pointer-events: none;
+  animation: qciFade 900ms ease 260ms backwards;
 }
-.qci-map-orbit.reverse { animation: qciOrbitReverse 130s linear infinite, qciFade 900ms ease 120ms backwards; stroke-dasharray: 1 14; }
 
 /* ── Edges ────────────────────────────────────────────────────────────────
-   pathLength="1" on the element normalises every edge, so a single dash
-   animation draws long and short edges at the same speed. */
+   Hairlines. Deliberately near-invisible at rest: the fan's SHAPE is carried by
+   the nodes, and at this size a full-strength spoke per node reads as a wheel
+   of clutter rather than as structure. */
 .qci-edge {
   stroke: var(--qr-line-strong);
   stroke-width: 1;
-  opacity: 0.5;
-  stroke-dasharray: 1;
-  stroke-dashoffset: 0;
-  animation: qciDraw 620ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
-  transition: opacity 180ms ease, stroke-width 180ms ease;
+  opacity: 0.4;
+  pathlength: 1;
+  animation: qciDraw 620ms ease backwards;
+  transition: opacity 180ms ease, stroke 180ms ease;
 }
-.qci-edge.price { stroke: var(--qci-price); }
-.qci-edge.cost { stroke: var(--qci-cost); }
+.qci-edge.cost { stroke-dasharray: 2 3; }
 .qci-edge[data-dim="true"] { opacity: 0.1; }
-.qci-edge[data-active="true"] { opacity: 1; stroke-width: 1.8; }
+.qci-edge[data-active="true"] { stroke: var(--qr-text); opacity: 0.85; }
 
 /* ── Nodes ────────────────────────────────────────────────────────────────
-   The positioning translate lives on an OUTER <g> as an SVG attribute; this
-   inner group owns the CSS transform. Mixing the two on one element loses the
-   position, because a CSS transform replaces the attribute entirely. */
+   Targets are rings, cost drivers are discs. That is the whole encoding of
+   "which side of the router is this on", and it needs no hue to carry it. */
 .qci-node {
   cursor: pointer;
-  transform-box: view-box;
-  transform-origin: 0 0;
-  animation: qciPop 560ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: qciPop 520ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
   transition: opacity 180ms ease;
 }
 .qci-node:focus { outline: none; }
-.qci-node:focus-visible > circle:not(.qci-node-halo) { stroke: var(--qr-accent); stroke-width: 2.5; }
 .qci-node > circle {
   fill: var(--qci-node-fill);
-  stroke: var(--qr-line-strong);
-  stroke-width: 1.4;
-  transition: stroke-width 200ms ease, fill 200ms ease, r 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  stroke: color-mix(in srgb, var(--qr-text) 32%, transparent);
+  stroke-width: 1.2;
+  transition: stroke 160ms ease, stroke-width 160ms ease, fill 160ms ease;
 }
-.qci-node.price > circle { stroke: var(--qci-price); }
-.qci-node.cost > circle { stroke: var(--qci-cost); }
-.qci-node:hover > circle:not(.qci-node-halo) { stroke-width: 2.4; }
-.qci-node[data-active="true"] > circle:not(.qci-node-halo) { stroke-width: 3; }
-.qci-node.price[data-active="true"] > circle { fill: color-mix(in srgb, var(--qci-price) 14%, var(--qci-node-fill)); }
-.qci-node.cost[data-active="true"] > circle { fill: color-mix(in srgb, var(--qci-cost) 16%, var(--qci-node-fill)); }
-.qci-node[data-dim="true"] { opacity: 0.26; }
-/* A dashed ring means the datum was not re-measured today. Reading the map
-   should make staleness obvious without opening anything. */
-.qci-node[data-stale="true"] > circle:not(.qci-node-halo) { stroke-dasharray: 3 3; }
+.qci-node.cost > circle {
+  fill: color-mix(in srgb, var(--qr-text) 34%, var(--qci-node-fill));
+  stroke: none;
+}
+.qci-node:hover > circle:not(.qci-node-halo):not(.qci-route-ring),
+.qci-node:focus-visible > circle:not(.qci-node-halo):not(.qci-route-ring),
+.qci-node[data-active="true"] > circle:not(.qci-node-halo):not(.qci-route-ring) {
+  stroke: var(--qr-accent);
+  stroke-width: 2;
+}
+.qci-node.cost:hover > circle:not(.qci-node-halo):not(.qci-route-ring),
+.qci-node.cost:focus-visible > circle:not(.qci-node-halo):not(.qci-route-ring),
+.qci-node.cost[data-active="true"] > circle:not(.qci-node-halo):not(.qci-route-ring) {
+  fill: var(--qr-accent);
+  stroke: none;
+}
+.qci-node[data-dim="true"] { opacity: 0.28; }
+/* Stale data is drawn as a broken ring — the mark itself says "incomplete". */
+.qci-node[data-stale="true"] > circle:not(.qci-node-halo):not(.qci-route-ring) { stroke-dasharray: 3 3; }
 
-/* A halo that expands and fades on hover — the ripple that tells you the node
-   is live under the cursor without moving anything around it. */
-.qci-node-halo { fill: none; stroke-width: 1; opacity: 0; pointer-events: none; }
-.qci-node.price .qci-node-halo { stroke: var(--qci-price); }
-.qci-node.cost .qci-node-halo { stroke: var(--qci-cost); }
+.qci-node-halo { fill: none !important; stroke: var(--qr-accent) !important; stroke-width: 1; opacity: 0; pointer-events: none; }
 .qci-node:hover .qci-node-halo,
-.qci-node[data-active="true"] .qci-node-halo { animation: qciRipple 1.6s ease-out infinite; }
+.qci-node[data-active="true"] .qci-node-halo { animation: qciRipple 1.8s ease-out infinite; }
 
-.qci-node-label { fill: var(--qr-text); font: 620 12.5px var(--font-sans); pointer-events: none; }
-.qci-node-sub { fill: var(--qr-dim); font: 500 10.5px var(--qr-mono); pointer-events: none; }
+/* ── Labels: the hover reveal ─────────────────────────────────────────────
+   Hidden at rest, ghosted the moment the cursor enters the graph (so the map
+   teaches its own layout without being asked twice), and full strength on the
+   node actually under the cursor. Kept in the DOM throughout so screen readers
+   and in-page search still find them. */
+.qci-node-label,
+.qci-node-sub {
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+.qci-node-label { fill: var(--qr-text); font: 600 10px var(--font-sans); }
+.qci-node-sub { fill: var(--qr-dim); font: 500 8.5px var(--qr-mono); }
 
-/* ── Hub ──────────────────────────────────────────────────────────────────
-   Two stacked circles: a pulse ring that breathes outward, and the solid face
-   over the top of it. */
-.qci-node.hub { animation: qciPop 700ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
-.qci-node.hub > circle { fill: var(--qr-panel-raised); stroke: var(--qr-accent); stroke-width: 1.6; }
-.qci-hub-pulse { fill: none !important; stroke: var(--qr-accent) !important; opacity: 0.35; transform-box: view-box; transform-origin: 0 0; animation: qciPulse 4.5s ease-out infinite; }
-.qci-hub-glow { animation: qciBreathe 6s ease-in-out infinite; transform-box: view-box; transform-origin: 640px 545px; }
-.qci-hub-eyebrow { fill: var(--qr-dim); font: 600 8.5px var(--qr-mono); letter-spacing: 0.12em; pointer-events: none; }
-.qci-hub-value { fill: var(--qr-text); font: 560 30px var(--qr-mono); font-variant-numeric: tabular-nums; pointer-events: none; }
-.qci-hub-change { font: 600 10px var(--qr-mono); pointer-events: none; }
+.qci-graph:hover .qci-node-label { opacity: 0.42; }
+.qci-node:hover .qci-node-label,
+.qci-node:focus-visible .qci-node-label,
+.qci-node[data-active="true"] .qci-node-label,
+.qci-node[data-route="true"] .qci-node-label { opacity: 1; }
+.qci-node:hover .qci-node-sub,
+.qci-node:focus-visible .qci-node-sub,
+.qci-node[data-active="true"] .qci-node-sub { opacity: 1; }
+.qci-node[data-dim="true"] .qci-node-label,
+.qci-node[data-dim="true"] .qci-node-sub { opacity: 0 !important; }
+
+/* ── Hub ──────────────────────────────────────────────────────────────────── */
+.qci-node.hub > circle { fill: var(--qr-panel-raised); stroke: var(--qr-accent); stroke-width: 1.4; }
+.qci-node.hub:hover > circle:not(.qci-hub-pulse) { stroke-width: 2; }
+.qci-hub-pulse {
+  fill: none !important;
+  stroke: var(--qr-accent) !important;
+  opacity: 0.3;
+  transform-box: view-box;
+  transform-origin: 0 0;
+  animation: qciPulse 5s ease-out infinite;
+}
+.qci-hub-ring {
+  fill: none;
+  stroke: var(--qr-line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 2 9;
+  opacity: 0.7;
+  transform-box: view-box;
+  transform-origin: 0 0;
+  animation: qciOrbit 40s linear infinite;
+}
+.qci-hub-brand { fill: var(--qr-dim); font: 700 7px var(--qr-mono); letter-spacing: 0.22em; pointer-events: none; }
+.qci-hub-value { fill: var(--qr-text); font: 520 22px var(--qr-mono); font-variant-numeric: tabular-nums; pointer-events: none; }
+.qci-hub-change { font: 600 8px var(--qr-mono); pointer-events: none; }
 .qci-hub-change.up { fill: var(--qr-success); }
 .qci-hub-change.down { fill: var(--qr-danger); }
 .qci-hub-change.flat { fill: var(--qr-dim); }
 
-/* ── Detail panel ─────────────────────────────────────────────────────────
-   A raised surface rather than a bordered box, and it re-enters on every
-   selection change (React `key`), so drilling into a provider reads as
-   navigation rather than as text swapping in place. */
+/* ── Intake ───────────────────────────────────────────────────────────────
+   One conduit and one travelling dash, in place of the four-chip pipeline that
+   used to run across the top of the viewBox. */
+.qci-conduit { stroke: var(--qr-line-strong); stroke-width: 1; opacity: 0.5; }
+.qci-conduit-flow {
+  stroke: var(--qr-accent);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-dasharray: 0.12 0.88;
+  opacity: 0.55;
+  animation: qciFlow 2.8s linear infinite;
+}
+
+/* ── The winning route ────────────────────────────────────────────────────
+   A travelling segment over the existing edge, and a ring on the node it lands
+   on. Deliberately a SEPARATE line rather than a modifier on `.qci-edge`: the
+   edge carries dimming and selection, and layering the flow on top keeps those
+   independent of whether this happens to be the routed path. */
+.qci-route-flow {
+  stroke: var(--qr-accent);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  fill: none;
+  stroke-dasharray: 0.16 0.84;
+  opacity: 0.85;
+  animation: qciFlow 2.1s linear infinite;
+  pointer-events: none;
+}
+.qci-route-ring {
+  fill: none !important;
+  stroke: var(--qr-accent) !important;
+  stroke-width: 1 !important;
+  opacity: 0.45;
+  transform-box: view-box;
+  transform-origin: 0 0;
+  animation: qciRipple 2.6s ease-out infinite;
+  pointer-events: none;
+}
+.qci-node[data-route="true"] > circle:not(.qci-node-halo):not(.qci-route-ring) {
+  stroke: var(--qr-accent);
+  stroke-width: 2;
+}
+
+/* ── Verdict ──────────────────────────────────────────────────────────────
+   HTML, under the graph. Inside the SVG this had to be parked at the foot of a
+   taller viewBox to clear the two converging arcs; out here it costs the
+   picture no height. */
+.qci-verdict {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  gap: 0.55rem;
+  margin-top: 0.4rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--qr-line);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+.qci-verdict:hover { border-color: var(--qr-line-strong); background: var(--qr-hover); }
+.qci-verdict-eyebrow {
+  color: var(--qr-dim);
+  font: 700 0.52rem var(--qr-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.qci-verdict-name { color: var(--qr-text); font-size: 0.74rem; font-weight: 560; }
+.qci-verdict-figure {
+  margin-left: auto;
+  color: var(--qr-text);
+  font: 520 0.74rem var(--qr-mono);
+  font-variant-numeric: tabular-nums;
+}
+.qci-verdict-sub { color: var(--qr-dim); font: 0.58rem var(--qr-mono); }
+
+/* ── Policy switcher + the shared segmented control ───────────────────────── */
+.qci-policy-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
+.qci-policy-label { color: var(--qr-dim); font: 600 0.52rem var(--qr-mono); letter-spacing: 0.12em; text-transform: uppercase; }
+.qci-policy-note { margin-left: auto; color: var(--qr-dim); font-size: 0.6rem; }
+
+.qci-seg { display: inline-flex; padding: 2px; border: 1px solid var(--qr-line); border-radius: 999px; gap: 2px; }
+.qci-seg button {
+  padding: 0.28rem 0.66rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--qr-dim);
+  font: 540 0.63rem var(--font-sans);
+  cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.qci-seg button:hover { color: var(--qr-text); }
+.qci-seg button[data-active="true"] { background: var(--qr-accent); color: var(--qr-accent-fg); }
+
+/* ── Detail panel ─────────────────────────────────────────────────────────── */
 .qci-map-detail {
   display: flex;
-  min-width: 0;
+  max-height: 640px;
   flex-direction: column;
+  padding: 1rem 1.05rem 1.05rem;
   overflow-y: auto;
-  max-height: 860px;
-  padding: 1.15rem 1.2rem;
+  border: 1px solid var(--qr-line);
   border-radius: var(--qr-radius);
-  background: var(--qr-panel-raised);
-  animation: qciSlide 380ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  background: var(--qr-panel);
+  animation: qciSlide 320ms ease backwards;
 }
-.qci-map-detail header { padding-bottom: 0.85rem; border-bottom: 1px solid var(--qr-line); }
-.qci-detail-eyebrow { margin: 0; color: var(--qr-dim); font: 600 0.55rem var(--qr-mono); letter-spacing: 0.1em; text-transform: uppercase; }
-.qci-map-detail h3 { margin: 0.35rem 0 0; color: var(--qr-text); font-size: 0.95rem; font-weight: 650; }
-.qci-map-detail dl { display: grid; margin: 0.85rem 0 0; gap: 0; }
-.qci-detail-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.7rem; align-items: baseline; padding: 0.5rem 0; border-bottom: 1px solid var(--qr-line); }
+.qci-map-detail header { padding-bottom: 0.75rem; border-bottom: 1px solid var(--qr-line); }
+.qci-detail-eyebrow { margin: 0; color: var(--qr-dim); font: 600 0.52rem var(--qr-mono); letter-spacing: 0.12em; text-transform: uppercase; }
+.qci-map-detail h3 { margin: 0.3rem 0 0; color: var(--qr-text); font-size: 0.88rem; font-weight: 620; }
+.qci-map-detail dl { display: grid; margin: 0.75rem 0 0; gap: 0; }
+.qci-detail-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.7rem; align-items: baseline; padding: 0.45rem 0; border-bottom: 1px solid var(--qr-line); }
 .qci-detail-row:last-child { border-bottom: 0; }
-.qci-detail-row dt { color: var(--qr-muted); font-size: 0.68rem; }
-.qci-detail-row dt small { display: block; margin-top: 0.15rem; color: var(--qr-dim); font-size: 0.58rem; line-height: 1.4; }
-.qci-detail-row dd { margin: 0; color: var(--qr-text); font-size: 0.7rem; font-weight: 520; text-align: right; }
-.qci-detail-row dd.mono { font-family: var(--qr-mono); font-size: 0.66rem; font-variant-numeric: tabular-nums; }
-.qci-detail-row dd code { font-size: 0.6rem; color: var(--qr-muted); }
+.qci-detail-row dt { color: var(--qr-muted); font-size: 0.66rem; }
+/* The clarifying line under a label is a hover, like everything else on this
+   page: it is a footnote, and footnotes do not belong in the middle of a table. */
+.qci-detail-row dt small {
+  display: block;
+  height: 0;
+  color: var(--qr-dim);
+  font-size: 0.56rem;
+  line-height: 1.4;
+  opacity: 0;
+  overflow: hidden;
+  transition: opacity 180ms ease, height 180ms ease;
+}
+.qci-detail-row:hover dt small { height: 1.5em; margin-top: 0.15rem; opacity: 1; }
+.qci-detail-row dd { margin: 0; color: var(--qr-text); font-size: 0.68rem; font-weight: 520; text-align: right; }
+.qci-detail-row dd.mono { font-family: var(--qr-mono); font-size: 0.64rem; font-variant-numeric: tabular-nums; }
+.qci-detail-row dd code { font-size: 0.58rem; color: var(--qr-muted); }
 .qci-detail-row dd .ok { color: var(--qr-success); }
 .qci-detail-row dd .warn { color: var(--qr-warning); }
 
-.qci-pill { display: inline-block; padding: 0.14rem 0.44rem; border-radius: 999px; font: 600 0.56rem var(--qr-mono); }
+.qci-pill { display: inline-block; padding: 0.12rem 0.42rem; border-radius: 999px; font: 600 0.54rem var(--qr-mono); }
 .qci-pill.ok { background: var(--qr-success-dim); color: var(--qr-success); }
 .qci-pill.warn { background: var(--qr-warning-dim); color: var(--qr-warning); }
 
-.qci-detail-note { margin: 0.9rem 0 0; color: var(--qr-muted); font-size: 0.68rem; line-height: 1.65; }
-.qci-detail-note.strong { padding: 0.7rem 0.8rem; border-radius: var(--qr-radius-sm); background: var(--qr-panel); }
+.qci-detail-note { margin: 0.8rem 0 0; color: var(--qr-muted); font-size: 0.66rem; line-height: 1.6; }
+.qci-detail-note.strong { padding: 0.65rem 0.75rem; border-radius: var(--qr-radius-sm); background: var(--qr-panel-raised); }
+.qci-detail-note.warn { color: var(--qr-warning); }
 .qci-detail-note b { color: var(--qr-text); }
 
-.qci-detail-list { display: grid; margin: 0.55rem 0 0; padding: 0; gap: 0.3rem; list-style: none; }
+.qci-detail-list { display: grid; margin: 0.5rem 0 0; padding: 0; gap: 0.2rem; list-style: none; }
 .qci-detail-list button {
   display: grid;
   width: 100%;
   grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.7rem;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.58rem 0.65rem;
+  padding: 0.42rem 0.5rem;
   border: 0;
   border-radius: var(--qr-radius-sm);
-  background: var(--qr-panel);
-  color: var(--qr-muted);
-  text-align: left;
+  background: transparent;
+  color: inherit;
   cursor: pointer;
-  transition: background-color 160ms ease, transform 160ms ease;
+  text-align: left;
+  transition: background-color 140ms ease;
 }
-.qci-detail-list button:hover { background: var(--qr-hover); transform: translateX(2px); }
+.qci-detail-list button:hover { background: var(--qr-hover); }
 .qci-detail-list b, .qci-detail-list small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.qci-detail-list b { color: var(--qr-text); font-size: 0.7rem; }
-.qci-detail-list small { margin-top: 0.2rem; color: var(--qr-dim); font: 0.56rem var(--qr-mono); }
+.qci-detail-list b { color: var(--qr-text); font-size: 0.68rem; font-weight: 540; }
+.qci-detail-list small { margin-top: 0.16rem; color: var(--qr-dim); font: 0.54rem var(--qr-mono); }
 .qci-detail-value { text-align: right; }
 .qci-detail-value b { font-family: var(--qr-mono); }
 .qci-detail-value small.ok { color: var(--qr-success); }
 .qci-detail-value small.warn { color: var(--qr-warning); }
 
-.qci-detail-excluded { display: grid; margin: 0.5rem 0 0; padding: 0; gap: 0.25rem; list-style: none; }
-.qci-detail-excluded li { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.35rem 0.5rem; border-radius: var(--qr-radius-sm); background: var(--qr-panel); }
-.qci-detail-excluded code { color: var(--qr-muted); font-size: 0.58rem; }
-.qci-detail-excluded span { color: var(--qr-dim); font-size: 0.56rem; }
+.qci-detail-excluded { display: grid; margin: 0.5rem 0 0; padding: 0; gap: 0.2rem; list-style: none; }
+.qci-detail-excluded li { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.3rem 0.5rem; border-radius: var(--qr-radius-sm); background: var(--qr-panel-raised); }
+.qci-detail-excluded code { color: var(--qr-muted); font-size: 0.56rem; }
+.qci-detail-excluded span { color: var(--qr-dim); font-size: 0.54rem; }
 
-.qci-provenance { margin-top: 0.9rem; padding: 0.72rem 0.8rem; border-left: 2px solid var(--qr-line-strong); border-radius: 0 var(--qr-radius-sm) var(--qr-radius-sm) 0; background: var(--qr-panel); }
+.qci-provenance { margin-top: 0.85rem; padding: 0.68rem 0.75rem; border-left: 2px solid var(--qr-line-strong); border-radius: 0 var(--qr-radius-sm) var(--qr-radius-sm) 0; background: var(--qr-panel-raised); }
 .qci-provenance[data-tier="primary"] { border-left-color: var(--qr-success); }
-.qci-provenance[data-tier="official"] { border-left-color: var(--qci-price); }
-.qci-provenance[data-tier="published"] { border-left-color: var(--qci-cost); }
 .qci-provenance[data-tier="assumed"] { border-left-color: var(--qr-warning); }
-.qci-tier { display: block; color: var(--qr-text); font: 600 0.62rem var(--font-sans); }
-.qci-provenance code { display: block; margin-top: 0.25rem; color: var(--qr-dim); font-size: 0.56rem; }
-.qci-provenance p { margin: 0.45rem 0 0; color: var(--qr-muted); font-size: 0.63rem; line-height: 1.55; }
-.qci-provenance small { display: block; margin-top: 0.4rem; color: var(--qr-dim); font: 0.56rem var(--qr-mono); }
+.qci-tier { display: block; color: var(--qr-text); font: 600 0.6rem var(--font-sans); }
+.qci-provenance code { display: block; margin-top: 0.22rem; color: var(--qr-dim); font-size: 0.54rem; }
+.qci-provenance p { margin: 0.4rem 0 0; color: var(--qr-muted); font-size: 0.6rem; line-height: 1.55; }
+.qci-provenance small { display: block; margin-top: 0.35rem; color: var(--qr-dim); font: 0.54rem var(--qr-mono); }
 
-.qci-detail-back { margin-top: auto; padding-top: 1rem; border: 0; background: transparent; color: var(--qr-muted); font-size: 0.66rem; text-align: left; cursor: pointer; transition: color 140ms ease; }
+.qci-detail-back { margin-top: auto; padding-top: 0.9rem; border: 0; background: transparent; color: var(--qr-dim); font-size: 0.64rem; text-align: left; cursor: pointer; transition: color 140ms ease; }
 .qci-detail-back:hover { color: var(--qr-text); }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   ROUTER LAYER
-   The map's centre is QRouter, not the price. Everything below draws the parts
-   of that story the attribution graph did not have: the job coming in, the
-   policy being applied, and the one path that wins.
-
-   The colour discipline from the rest of the map holds — price/target hue on
-   the left, cost hue on the right, accent reserved for the router itself. The
-   winning route is the ONLY thing on the map allowed to use the accent outside
-   the core, which is what makes it findable in one glance.
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-/* ── Policy switcher ──────────────────────────────────────────────────────── */
-.qci-policy-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
-.qci-policy-label { margin-right: 0.15rem; color: var(--qr-dim); font: 600 0.55rem var(--qr-mono); letter-spacing: 0.1em; text-transform: uppercase; }
-.qci-policy-chip {
-  padding: 0.34rem 0.72rem;
-  border: 1px solid var(--qr-line);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--qr-muted);
-  font-size: 0.68rem;
-  cursor: pointer;
-  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
-}
-.qci-policy-chip:hover { background: var(--qr-hover); color: var(--qr-text); }
-.qci-policy-chip[data-active="true"] {
-  border-color: var(--qr-accent);
-  background: var(--qr-accent-dim);
-  color: var(--qr-text);
-  font-weight: 560;
-}
-.qci-policy-note { margin-left: auto; color: var(--qr-dim); font-size: 0.62rem; }
-
-/* ── Intake column ────────────────────────────────────────────────────────
-   The conduit is two stacked lines: a static rail, and a short travelling dash
-   on top of it. pathLength="1" normalises the geometry so the dash reads at the
-   same speed no matter how the viewBox is scaled. */
-.qci-conduit { fill: none; stroke: var(--qr-line-strong); stroke-width: 1.2; opacity: 0.55; animation: qciFade 700ms ease 200ms backwards; }
-.qci-conduit-flow {
-  fill: none;
-  stroke: var(--qr-accent);
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-dasharray: 0.06 0.94;
-  opacity: 0.85;
-  animation: qciFlow 2.6s linear infinite;
-}
-.qci-conduit-tip { fill: none; stroke: var(--qr-accent); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: 0.7; }
-.qci-intake-link { stroke: var(--qr-line-strong); stroke-width: 1.2; opacity: 0.5; }
-.qci-intake-cap { fill: var(--qr-accent-dim); stroke: var(--qr-accent); stroke-width: 1.2; animation: qciPop 600ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
-.qci-intake-cap-text { fill: var(--qr-text); font: 600 10px var(--qr-mono); letter-spacing: 0.14em; pointer-events: none; }
-.qci-stage { fill: var(--qr-panel-raised); stroke: var(--qr-line); stroke-width: 1; animation: qciPop 560ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
-.qci-stage-label { fill: var(--qr-text); font: 560 11.5px var(--font-sans); pointer-events: none; }
-.qci-stage-sub { fill: var(--qr-dim); font: 500 9px var(--qr-mono); pointer-events: none; }
-
-/* ── The winning route ────────────────────────────────────────────────────
-   A travelling segment over the existing edge. Deliberately a SEPARATE line
-   rather than a modifier on `.qci-edge`: the edge carries the dimming and
-   selection states, and layering the flow on top keeps those independent of
-   whether this happens to be the routed path. */
-.qci-route-flow {
-  stroke: var(--qr-accent);
-  stroke-width: 2.4;
-  stroke-linecap: round;
-  fill: none;
-  stroke-dasharray: 0.14 0.86;
-  opacity: 0.9;
-  animation: qciFlow 1.9s linear infinite;
-  pointer-events: none;
-}
-.qci-route-ring {
-  fill: none;
-  stroke: var(--qr-accent);
-  stroke-width: 1.4;
-  opacity: 0.6;
-  transform-box: view-box;
-  transform-origin: 0 0;
-  animation: qciRipple 2.4s ease-out infinite;
-  pointer-events: none;
-}
-.qci-node[data-route="true"] > circle:not(.qci-node-halo):not(.qci-route-ring) {
-  stroke: var(--qr-accent);
-  stroke-width: 2.6;
-}
-
-/* ── Evaluation sweep ─────────────────────────────────────────────────────
-   Rotates over the candidate side only. It is the one purely atmospheric mark
-   on the map, and confining it to the half where scoring happens keeps it from
-   reading as data. */
-.qci-sweep-wrap { transform-box: view-box; transform-origin: 640px 545px; animation: qciSweepSpin 14s linear infinite; }
-.qci-sweep { fill: url(#qciSweep); opacity: 0.16; pointer-events: none; }
-
-/* ── Hub rings ────────────────────────────────────────────────────────────
-   Two counter-rotating arcs around the core. Dashed rather than solid so the
-   rotation is legible; a solid ring rotating is a ring standing still. */
-.qci-hub-ring { fill: none; stroke: var(--qr-accent); opacity: 0.32; transform-box: view-box; transform-origin: 0 0; }
-.qci-hub-ring.outer { stroke-width: 1; stroke-dasharray: 3 13; animation: qciOrbit 26s linear infinite; }
-.qci-hub-ring.inner { stroke-width: 1.4; stroke-dasharray: 26 10; animation: qciOrbitReverse 18s linear infinite; opacity: 0.2; }
-.qci-hub-brand { fill: var(--qr-accent); font: 700 11px var(--qr-mono); letter-spacing: 0.2em; pointer-events: none; }
-
-/* ── Verdict ribbon ───────────────────────────────────────────────────────── */
-.qci-verdict { cursor: pointer; animation: qciRise 520ms cubic-bezier(0.22, 1, 0.36, 1) backwards; animation-delay: 420ms; }
-.qci-verdict rect {
-  fill: var(--qr-panel-raised);
-  stroke: var(--qr-accent);
-  stroke-width: 1.2;
-  transition: stroke-width 180ms ease;
-}
-.qci-verdict:hover rect { stroke-width: 2.2; }
-.qci-verdict:focus { outline: none; }
-.qci-verdict:focus-visible rect { stroke-width: 2.6; }
-.qci-verdict-eyebrow { fill: var(--qr-accent); font: 700 8.5px var(--qr-mono); letter-spacing: 0.18em; pointer-events: none; }
-.qci-verdict-name { fill: var(--qr-text); font: 600 13px var(--font-sans); pointer-events: none; }
-.qci-verdict-figure { fill: var(--qr-text); font: 560 13px var(--qr-mono); font-variant-numeric: tabular-nums; pointer-events: none; }
-.qci-verdict-sub { fill: var(--qr-dim); font: 500 9px var(--qr-mono); pointer-events: none; }
+.qci-detail-subhead { margin: 1.1rem 0 0; color: var(--qr-dim); font: 600 0.52rem var(--qr-mono); letter-spacing: 0.12em; text-transform: uppercase; }
 
 /* ── Ranking card + axis bars ─────────────────────────────────────────────
-   The bars are the answer to "why did this win" — normalised score per axis,
-   with the policy's own weight next to it. An axis nobody reported is drawn
-   struck-through rather than empty, so "no data" cannot be misread as "zero". */
-.qci-rank-card { margin-top: 0.9rem; padding: 0.8rem 0.85rem; border-radius: var(--qr-radius-sm); background: var(--qr-panel); }
+   The bars answer "why did this win" — normalised score per axis, with the
+   policy's own weight next to it. An axis nobody reported is struck through
+   rather than empty, so "no data" cannot be misread as "zero". */
+.qci-rank-card { margin-top: 0.8rem; padding: 0.7rem 0.75rem; border-radius: var(--qr-radius-sm); background: var(--qr-panel-raised); }
 .qci-rank-card[data-winner="true"] { border-left: 2px solid var(--qr-accent); }
-.qci-rank-card > p { margin: 0; color: var(--qr-muted); font-size: 0.68rem; line-height: 1.6; }
+.qci-rank-card > p { margin: 0; color: var(--qr-muted); font-size: 0.66rem; line-height: 1.6; }
 .qci-rank-card > p b { color: var(--qr-text); }
 
-.qci-axis-bars { display: grid; margin: 0.7rem 0 0; padding: 0; gap: 0.4rem; list-style: none; }
-.qci-axis-bars li { display: grid; grid-template-columns: 88px minmax(0, 1fr) 30px; align-items: center; gap: 0.5rem; }
-.qci-axis-name { color: var(--qr-muted); font-size: 0.62rem; }
-.qci-axis-name small { margin-left: 0.3rem; color: var(--qr-dim); font: 0.55rem var(--qr-mono); }
-.qci-axis-track { height: 4px; border-radius: 999px; background: var(--qr-line); overflow: hidden; }
-.qci-axis-fill {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
-  background: var(--qr-accent);
-  transition: width 420ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-.qci-axis-value { color: var(--qr-dim); font: 0.58rem var(--qr-mono); font-variant-numeric: tabular-nums; text-align: right; }
+.qci-axis-bars { display: grid; margin: 0.65rem 0 0; padding: 0; gap: 0.35rem; list-style: none; }
+.qci-axis-bars li { display: grid; grid-template-columns: 78px minmax(0, 1fr) 28px; align-items: center; gap: 0.45rem; }
+.qci-axis-name { color: var(--qr-muted); font-size: 0.6rem; }
+.qci-axis-name small { margin-left: 0.28rem; color: var(--qr-dim); font: 0.52rem var(--qr-mono); }
+.qci-axis-track { height: 3px; border-radius: 999px; background: var(--qr-line); overflow: hidden; }
+.qci-axis-fill { display: block; height: 100%; border-radius: 999px; background: var(--qr-accent); transition: width 420ms cubic-bezier(0.22, 1, 0.36, 1); }
+.qci-axis-value { color: var(--qr-dim); font: 0.56rem var(--qr-mono); font-variant-numeric: tabular-nums; text-align: right; }
 .qci-axis-bars li[data-imputed="true"] .qci-axis-fill { background: var(--qr-line-strong); }
 .qci-axis-bars li[data-imputed="true"] .qci-axis-name { text-decoration: line-through; opacity: 0.6; }
 
-.qci-detail-subhead { margin: 1.2rem 0 0; color: var(--qr-dim); font: 600 0.55rem var(--qr-mono); letter-spacing: 0.1em; text-transform: uppercase; }
-.qci-detail-note.warn { color: var(--qr-warning); }
-
 /* ── Empty state ──────────────────────────────────────────────────────────── */
-.qci-empty { display: grid; min-height: 280px; place-items: center; align-content: center; gap: 0.5rem; padding: 2rem; border-radius: var(--qr-radius); background: var(--qr-panel-raised); text-align: center; }
-.qci-empty h3 { margin: 0; color: var(--qr-text); font-size: 0.88rem; }
-.qci-empty p { max-width: 48ch; margin: 0; color: var(--qr-muted); font-size: 0.71rem; line-height: 1.6; }
-.qci-empty code { padding: 0.12rem 0.35rem; border-radius: 4px; background: var(--qr-code-bg); font-size: 0.64rem; }
+.qci-empty { display: grid; min-height: 200px; place-items: center; align-content: center; gap: 0.45rem; padding: 2rem; border-radius: var(--qr-radius); background: var(--qr-panel-raised); text-align: center; }
+.qci-empty h3 { margin: 0; color: var(--qr-text); font-size: 0.82rem; }
+.qci-empty p { max-width: 48ch; margin: 0; color: var(--qr-dim); font-size: 0.68rem; line-height: 1.6; }
+.qci-empty code { padding: 0.1rem 0.3rem; border-radius: 4px; background: var(--qr-code-bg); font-size: 0.62rem; }
 
 /* ── History panel ────────────────────────────────────────────────────────── */
-.qci-series-panel { display: grid; gap: 1rem; }
-.qci-series-body { display: flex; flex-direction: column; border-radius: var(--qr-radius); background: var(--qr-panel-raised); }
-.qci-series-chart { width: 100%; height: 290px; padding: 0 0.5rem; }
-.qci-series-panel .market-quote { border-bottom: 0; }
-.qci-series-panel .market-quote dd.warn { color: var(--qr-warning); }
-.qci-series-panel .market-ranges { flex-wrap: wrap; gap: 0.25rem; border-top: 1px solid var(--qr-line); }
-.qci-series-panel .market-ranges button { width: auto; padding: 0 0.7rem; }
-.qci-series-panel .market-ranges .qci-range-group { margin-left: auto; display: flex; gap: 0.25rem; }
-.qci-series-panel .market-ranges .qci-range-group button { width: 46px; padding: 0; }
+.qci-series { display: grid; gap: 0.95rem; }
+.qci-series-body {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1.1rem 1.15rem 0.75rem;
+  border: 1px solid var(--qr-line);
+  border-radius: var(--qr-radius);
+  background: var(--qr-panel);
+}
+.qci-series-quote { display: flex; align-items: flex-start; justify-content: space-between; gap: 1.5rem; }
+.qci-quote-main { display: grid; gap: 0.3rem; }
+.qci-quote-label { color: var(--qr-dim); font-size: 0.64rem; }
+.qci-quote-main strong {
+  color: var(--qr-text);
+  font: 500 clamp(1.5rem, 3.4vw, 2.1rem)/1 var(--qr-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.qci-quote-move { color: var(--qr-muted); font: 540 0.64rem var(--qr-mono); font-variant-numeric: tabular-nums; }
+.qci-quote-move[data-dir="up"] { color: var(--qr-success); }
+.qci-quote-move[data-dir="down"] { color: var(--qr-danger); }
+.qci-quote-move small { color: var(--qr-dim); font-size: 0.92em; }
+
+/* Ghosted until the panel is under the cursor. These three are checks, not
+   headline facts — a reader wants them when they are already interrogating the
+   series, and never before that. */
+.qci-quote-meta { display: flex; margin: 0; gap: 0 1.4rem; opacity: 0.35; transition: opacity 220ms ease; }
+.qci-series-body:hover .qci-quote-meta,
+.qci-series-body:focus-within .qci-quote-meta { opacity: 1; }
+.qci-quote-meta dt { color: var(--qr-dim); font: 600 0.5rem var(--qr-mono); letter-spacing: 0.1em; text-transform: uppercase; }
+.qci-quote-meta dd { margin: 0.22rem 0 0; color: var(--qr-muted); font: 0.6rem var(--qr-mono); }
+.qci-quote-meta dd[data-warn="true"] { color: var(--qr-warning); }
+
+.qci-series-chart { color: var(--qr-text); }
+.qci-series-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; padding-top: 0.7rem; border-top: 1px solid var(--qr-line); }
 
 /* ── Console links ────────────────────────────────────────────────────────── */
 .qci-console-links a { transition: transform 160ms ease, background-color 160ms ease; }
 .qci-console-links a:hover { transform: translateY(-1px); }
-
 /* ── Admin: index health ──────────────────────────────────────────────────── */
 .admin-health-actions { display: grid; justify-items: end; gap: 0.6rem; }
 .admin-health-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; }
@@ -2268,13 +2305,13 @@ html[data-theme="dark"] .console-shell {
 
 .admin-note-list { display: grid; margin: 0.6rem 0 0; padding: 0; gap: 0.3rem; list-style: none; }
 .admin-note-list li { padding: 0.42rem 0.6rem; border-left: 2px solid var(--qr-warning-line); border-radius: 0 var(--qr-radius-sm) var(--qr-radius-sm) 0; background: var(--qr-panel); color: var(--qr-muted); font-size: 0.64rem; line-height: 1.5; }
-
 /* ── Responsive ───────────────────────────────────────────────────────────── */
 @media (max-width: 1100px) {
   .qci-map-body { grid-template-columns: 1fr; }
   .qci-map-detail { max-height: none; }
-  .qci-hero { grid-template-columns: 1fr; align-items: start; }
-  .qci-hero-stats { grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 1.2rem; }
+  .qci-hero-stats { gap: 0 1.4rem; }
+  .qci-series-quote { flex-direction: column; gap: 0.9rem; }
+  .qci-policy-note { flex-basis: 100%; margin-left: 0; }
   .admin-run-log li { grid-template-columns: 1fr auto; }
   .admin-run-log .detail { grid-column: 1 / -1; }
   .admin-feed-row { grid-template-columns: minmax(0, 1fr) auto; }
@@ -2283,9 +2320,16 @@ html[data-theme="dark"] .console-shell {
   .admin-health-result, .admin-health-warnings { text-align: left; }
 }
 
+@media (max-width: 640px) {
+  .qci-verdict { flex-wrap: wrap; row-gap: 0.2rem; }
+  .qci-verdict-figure { margin-left: 0; }
+  .qci-series-body { padding: 0.9rem 0.9rem 0.6rem; }
+  .qci-quote-meta { flex-wrap: wrap; gap: 0.5rem 1.1rem; }
+}
+
 /* ── Motion ───────────────────────────────────────────────────────────────── */
-/* `from`-only, so the closing state is whatever the element's own rules say —
-   see the fill-mode note above. Adding a `to` here would re-break dimming. */
+/* `from`-only, so the closing state is whatever the element's own rules say.
+   Adding a `to` here would re-break dimming. */
 @keyframes qciRise {
   from { opacity: 0; transform: translateY(10px); }
 }
@@ -2299,28 +2343,19 @@ html[data-theme="dark"] .console-shell {
   from { opacity: 0; transform: scale(0.62); }
 }
 @keyframes qciDraw {
-  from { stroke-dashoffset: 1; opacity: 0; }
+  from { stroke-dasharray: 1; stroke-dashoffset: 1; opacity: 0; }
 }
 @keyframes qciOrbit {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
-@keyframes qciOrbitReverse {
-  from { transform: rotate(360deg); }
-  to { transform: rotate(0deg); }
-}
 @keyframes qciPulse {
-  0% { transform: scale(1); opacity: 0.32; }
-  70% { transform: scale(1.32); opacity: 0; }
-  100% { transform: scale(1.32); opacity: 0; }
-}
-@keyframes qciBreathe {
-  0%, 100% { opacity: 0.85; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.05); }
+  0% { transform: scale(1); opacity: 0.3; }
+  70%, 100% { transform: scale(1.3); opacity: 0; }
 }
 @keyframes qciRipple {
-  0% { transform: scale(1); opacity: 0.5; }
-  100% { transform: scale(1.75); opacity: 0; }
+  0% { transform: scale(1); opacity: 0.45; }
+  100% { transform: scale(1.7); opacity: 0; }
 }
 /* A travelling dash. Needs an explicit `to`, unlike the entry animations: it is
    a loop rather than an entrance, so there is no resting state to hand back. */
@@ -2328,39 +2363,29 @@ html[data-theme="dark"] .console-shell {
   from { stroke-dashoffset: 1; }
   to { stroke-dashoffset: 0; }
 }
-@keyframes qciSweepSpin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
 
-/* The console-wide reduced-motion rule zeroes durations, which would leave
-   every animated-in element stuck at its `from` keyframe (opacity 0). These
-   restore the resting state outright rather than animating to it. */
+/* The console-wide reduced-motion rule zeroes durations, which would leave every
+   animated-in element stuck at its `from` keyframe (opacity 0). These restore the
+   resting state outright rather than animating to it. */
 @media (prefers-reduced-motion: reduce) {
   .qci-hero,
-  .qci-map-axis,
-  .qci-map-orbit,
+  .qci-axis,
   .qci-node,
   .qci-map-detail,
-  .qci-hub-glow,
   .qci-hub-pulse,
-  .qci-intake-cap,
-  .qci-stage,
-  .qci-conduit,
-  .qci-verdict,
   .qci-hub-ring { animation: none !important; opacity: 1; transform: none; }
-  .qci-hub-pulse { opacity: 0.3; }
-  .qci-hub-ring { opacity: 0.28; }
-  .qci-edge { animation: none !important; stroke-dashoffset: 0; opacity: 0.5; }
+  .qci-hub-pulse { opacity: 0.28; }
+  .qci-hub-ring { opacity: 0.6; }
+  .qci-edge { animation: none !important; stroke-dasharray: none; stroke-dashoffset: 0; opacity: 0.4; }
   .qci-node-halo { animation: none !important; opacity: 0; }
-  /* The travelling dashes and the sweep are motion with no static equivalent —
-     a frozen dash is just a broken line, so they are removed outright rather
-     than stopped mid-cycle. The winning route stays findable through the solid
-     ring on its node, which carries no animation of its own here. */
+  /* The travelling dashes are motion with no static equivalent — a frozen dash
+     is just a broken line, so they are removed outright rather than stopped
+     mid-cycle. The winning route stays findable through the ring on its node,
+     which carries no animation here. */
   .qci-conduit-flow,
-  .qci-route-flow,
-  .qci-sweep-wrap { display: none; }
-  .qci-route-ring { animation: none !important; opacity: 0.55; }
-  .qci-detail-list button:hover { transform: none; }
+  .qci-route-flow { display: none; }
+  .qci-route-ring { animation: none !important; opacity: 0.5; }
   .qci-console-links a:hover { transform: none; }
+  /* Labels are a hover reveal, not an animation — but the transition is zeroed,
+     so they snap instead of fading. That is the correct behaviour here. */
 }

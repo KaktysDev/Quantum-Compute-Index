@@ -19,6 +19,16 @@ export async function middleware(request: NextRequest) {
 
   const isDashboard = request.nextUrl.pathname.startsWith("/dashboard");
 
+  // The dev bypass used to be reachable only when Supabase was UNCONFIGURED,
+  // which meant the only way to open the console locally was with an empty
+  // database — exactly the configuration in which the index has no points to
+  // draw. Honour it whenever it is set; `consoleDevBypassEnabled()` is itself
+  // gated on NODE_ENV !== "production", so this cannot open a deployed console.
+  if (isDashboard && consoleDevBypassEnabled()) {
+    response.headers.set("x-request-id", requestId);
+    return response;
+  }
+
   if (!/^https?:\/\/.+\..+/.test(SUPABASE_URL) || SUPABASE_ANON_KEY.length <= 20) {
     if (isDashboard && !consoleDevBypassEnabled()) {
       const url = request.nextUrl.clone();

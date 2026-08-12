@@ -9,6 +9,13 @@
       "autoPort": true
     },
     {
+      "name": "qrouter-qci-preview",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["QROUTER_DEV_AUTH_BYPASS=true", "npm", "run", "dev"],
+      "port": 3000,
+      "autoPort": true
+    },
+    {
       "name": "qrouter-local",
       "runtimeExecutable": "env",
       "runtimeArgs": [
