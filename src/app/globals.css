@@ -53,6 +53,16 @@ html[data-theme="dark"]:has(.console-shell) {
 /* The atmospheric backdrop is a landing-page device; the console is flat. */
 html:has(.console-shell) .curtain { display: none; }
 
+/* Brand mark edge (LogoMark). The tile is near-black by design, which is right
+   on every light surface but vanishes into the near-black console and docs
+   backgrounds in dark mode. Paint a hairline there and nowhere else, so the
+   mark stays the plain brand artwork everywhere it already reads. */
+.qr-logomark-edge { fill: none; stroke: transparent; }
+:root[data-theme="dark"] .console-shell .qr-logomark-edge,
+:root[data-theme="dark"] .docs-shell .qr-logomark-edge {
+  stroke: rgba(255, 255, 255, 0.16);
+}
+
 html,
 body {
   margin: 0;

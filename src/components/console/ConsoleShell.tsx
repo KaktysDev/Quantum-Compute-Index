@@ -185,7 +185,7 @@ export default function ConsoleShell({
       <aside className="console-sidebar">
         <div className="console-sidebar-head">
           <Link href="/dashboard" className="console-brand" aria-label="QRouter console">
-            <LogoMark size={22} glow={false} />
+            <LogoMark size={22} />
             <b>QROUTER</b>
           </Link>
         </div>

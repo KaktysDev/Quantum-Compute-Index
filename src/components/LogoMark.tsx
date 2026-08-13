@@ -1,22 +1,38 @@
 /**
- * QRouter brand mark — a rounded-square "die" with the emerald routing path:
- * a short left riser, a step up to the top rail, then a drop to a rounded
- * terminal node. Matches the official brand lockup. Self-contained (dark die +
- * green route), so it reads on both the light public pages and the dark
- * dashboard. Used by Logo, the landing hero, and the footer.
+ * QRouter brand mark — the black rounded tile with the emerald route: a tail
+ * entering through the left edge, a step up to the top rail, then a drop that
+ * exits through the bottom edge, with a node where the drop crosses the tail
+ * line. Geometry is traced from the brand lockup.
+ *
+ * Two details that matter if you edit this:
+ *
+ *  · The tile is full-bleed in the 32-unit box, so `size` is the mark's true
+ *    rendered size and it lines up with text at any scale. The route is drawn
+ *    past the box on the left (x = -2) and bottom (y = 34) and the SVG viewport
+ *    clips it — that is what makes the route bleed off the edges. It also means
+ *    the mark needs no clipPath, hence no element ids, hence no duplicate-id
+ *    collisions when several marks share a page.
+ *
+ *  · `.qr-logomark-edge` is a hairline that only paints on the dark console and
+ *    docs surfaces (see globals.css), where the near-black tile would otherwise
+ *    disappear into a near-black background. Everywhere else it is transparent
+ *    and the mark renders as the plain brand artwork.
+ *
+ * Self-contained (dark tile + green route), so it reads on the light public
+ * pages and the dark dashboard alike. Used by Logo, the landing nav and footer,
+ * the console sidebar, the chat avatar, and the sign-in header.
  */
+const ROUTE =
+  "M-2 21.8H6.9A2.5 2.5 0 0 0 9.4 19.3V12.1A2.5 2.5 0 0 1 11.9 9.6" +
+  "H18.7A2.5 2.5 0 0 1 21.2 12.1V34";
+
 export default function LogoMark({
   size = 26,
   className,
-  glow = true,
 }: {
   size?: number;
   className?: string;
-  glow?: boolean;
 }) {
-  // Unique-ish id so multiple marks on one page don't collide on the filter.
-  const gid = `qr-glow-${size}`;
-
   return (
     <svg
       width={size}
@@ -26,39 +42,18 @@ export default function LogoMark({
       aria-hidden="true"
       className={className}
     >
-      {glow && (
-        <defs>
-          <filter id={gid} x="-40%" y="-40%" width="180%" height="180%">
-            <feGaussianBlur stdDeviation="1.1" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
-      )}
-
+      <rect width="32" height="32" rx="9" fill="#0d100e" />
+      <path d={ROUTE} stroke="#42e59e" strokeWidth="3.4" />
+      <circle cx="21.2" cy="21.8" r="2.3" fill="#42e59e" />
       <rect
-        x="1.75"
-        y="1.75"
-        width="28.5"
-        height="28.5"
+        className="qr-logomark-edge"
+        x="0.5"
+        y="0.5"
+        width="31"
+        height="31"
         rx="8.5"
-        fill="#0d100e"
-        stroke="rgba(255,255,255,0.14)"
-        strokeWidth="1.2"
+        strokeWidth="1"
       />
-
-      <g filter={glow ? `url(#${gid})` : undefined}>
-        <path
-          d="M10.5 14V20.5H16V11.5H21.5V20.5"
-          stroke="#42E59E"
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <circle cx="21.5" cy="20.5" r="2.5" fill="#42E59E" />
-      </g>
     </svg>
   );
 }

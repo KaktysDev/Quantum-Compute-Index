@@ -115,7 +115,7 @@ export default async function LandingPage() {
           <span className="ql-blink" aria-hidden="true" /> THE QUANTUM EXECUTION LAYER
         </p>
 
-        <h1 className="ql-hero-title">The economic layer <HeroParticleText>for quantum</HeroParticleText></h1>
+        <h1 className="ql-hero-title">The routing layer <HeroParticleText>for quantum</HeroParticleText></h1>
 
         <div className="ql-hero-grid">
           <div className="ql-hero-copy">

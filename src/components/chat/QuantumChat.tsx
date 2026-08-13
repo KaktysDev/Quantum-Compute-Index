@@ -925,7 +925,7 @@ export default function QuantumChat({
                   const { body, proposal } = splitProposal(msg.content);
                   return (
                     <div key={msg.key} className="qc-msg assistant">
-                      <span className="qc-avatar"><LogoMark size={18} glow={false} /></span>
+                      <span className="qc-avatar"><LogoMark size={18} /></span>
                       <div className="qc-assistant-col">
                         <ThinkingBlock msg={msg} />
                         {msg.status === "streaming" && !msg.content && !msg.thoughts && (
