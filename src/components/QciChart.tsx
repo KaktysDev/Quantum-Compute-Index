@@ -95,6 +95,14 @@ interface Geometry {
   baseY: number;
   /** One point cannot describe a movement; it is drawn as a mark, not a line. */
   single: boolean;
+  /** Every value identical. The scale is then synthetic and must not be labelled. */
+  flat: boolean;
+  /** Real observed extremes — NOT the padded plot bounds. */
+  lo: number;
+  hi: number;
+  /** y of those extremes, for the scale labels. */
+  loY: number;
+  hiY: number;
 }
 
 function build(points: ChartPoint[]): Geometry | null {
@@ -141,6 +149,11 @@ function build(points: ChartPoint[]): Geometry | null {
     area: single ? "" : `${d} L ${placed[placed.length - 1].x} ${VB_H} L ${placed[0].x} ${VB_H} Z`,
     baseY: placed[0].y,
     single,
+    flat: spanV === 0,
+    lo,
+    hi,
+    loY: r2(yOf(lo)),
+    hiY: r2(yOf(hi)),
   };
 }
 
@@ -314,6 +327,25 @@ export default function QciChart({
               {chartDate(cursor.time)}
               {cursor.status === "provisional" ? " · provisional" : ""}
             </small>
+          </span>
+        </>
+      ) : null}
+
+      {/* ── The y-scale ──────────────────────────────────────────────────────
+          The observed high and low, parked at their own heights.
+
+          Only when the series actually varies. On a flat series the plot bounds
+          are synthetic — `build()` invents a ±5% span so the line has somewhere
+          to sit — and printing those invented numbers as an axis would be the
+          chart asserting a range nobody measured. A flat line then needs an
+          explanation, not a scale, and the host panel gives it one. */}
+      {!geo.flat && !geo.single ? (
+        <>
+          <span className="qcx-scale" style={{ top: `${(geo.hiY / VB_H) * 100}%` }}>
+            {fmt(geo.hi)}
+          </span>
+          <span className="qcx-scale" style={{ top: `${(geo.loY / VB_H) * 100}%` }}>
+            {fmt(geo.lo)}
           </span>
         </>
       ) : null}

@@ -66,13 +66,23 @@ import type { DeviceDerived, FactorObservation, IndexPoint } from "@/lib/qci/v2/
 // wrong does not clip (the SVG allows overflow so labels can breathe); it spills
 // children over the panel edge instead, which is worse.
 //
+// The WIDTH is set by the content, not by the aspect ratio. At 720 it was set by
+// nothing: the fans only reach CX±231, so ~100px at each edge was empty, and
+// since the SVG scales to its container that dead margin was rendering the whole
+// graph ~16% smaller than the card it sits in. 620 is the real extent.
+//
 // Budget, with SIDE_SPREAD at ±60°:
-//   top    CY − DEVICE_RING·sin60 − r_max  = 218 − 177.5 − 14 = 26  (> axis row)
-//   bottom CY + DEVICE_RING·sin60 + r_max + LABEL_ROOM = 431  (< H)
-const W = 720;
+//   left/right CX ± (DEVICE_RING + r_max + half a label) = CX ± 231   (≤ W/2)
+//   axis row   CX ± AXIS_X ± half a caption               = CX ± 265   (≤ W/2)
+//   top        CY − DEVICE_RING·sin60 − r_max = 218 − 177.5 − 24 = 16  (> axis row)
+//   bottom     CY + DEVICE_RING·sin60 + r_max + LABEL_ROOM      = 442  (< H)
+const W = 620;
 const H = 460;
 const CX = W / 2;
 const CY = 218;
+
+/** How far out the two side captions sit. Bounded by W/2 minus half a caption. */
+const AXIS_X = 218;
 
 const HUB_R = 50;
 const PROVIDER_RING = 138;
@@ -496,6 +506,11 @@ export default function QciMap({
       </div>
 
       <div className="qci-map-body">
+        {/* The stage is one material card: the graph, then a hairline, then the
+            verdict as its footer. Previously the graph floated on the page
+            background and the verdict was a detached pill under it — two loose
+            objects where the reader sees one answer. */}
+        <div className="qci-map-stage qci-card">
         <div className="qci-map-canvas">
           <svg
             className="qci-graph"
@@ -504,10 +519,10 @@ export default function QciMap({
             aria-label="QRouter routing map over the Quantum Compute Index"
             preserveAspectRatio="xMidYMid meet"
           >
-            <text className="qci-axis" x={CX - 268} y={26} textAnchor="middle">
+            <text className="qci-axis" x={CX - AXIS_X} y={24} textAnchor="middle">
               TARGETS
             </text>
-            <text className="qci-axis" x={CX + 268} y={26} textAnchor="middle">
+            <text className="qci-axis" x={CX + AXIS_X} y={24} textAnchor="middle">
               COST TO PRODUCE
             </text>
 
@@ -668,15 +683,18 @@ export default function QciMap({
             ))}
           </svg>
 
+        </div>
+
           {/* ── Verdict ─────────────────────────────────────────────────────
-              Where a job lands under the selected policy.
+              Where a job lands under the selected policy — the stage's footer
+              row, below a hairline.
 
               Out of the SVG entirely. Inside it, this had to be parked at the
               foot of a viewBox tall enough to clear the arcs — the two fans
               converge as they descend, so the clear span under the core shrinks
               to roughly a third of what "provider · machine · rate" needs, and
               the earlier attempt at tucking it there buried a target node and
-              clipped a label. As HTML it takes the panel's own width and costs
+              clipped a label. As HTML it takes the card's own width and costs
               the picture no height at all. */}
           {winner ? (
             <button

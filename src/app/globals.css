@@ -502,6 +502,23 @@ textarea:focus-visible {
   text-transform: uppercase;
 }
 
+/* The y-scale: the observed high and low, each parked at its own height on the
+   right edge. Only rendered when the series varies — see the note in the
+   component about not printing a synthetic range as if it were measured. */
+.qcx-scale {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+  padding-left: 0.5rem;
+  color: currentColor;
+  font: 0.6rem var(--font-mono), monospace;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.3;
+  pointer-events: none;
+  transition: opacity 200ms ease;
+}
+.qcx:hover .qcx-scale { opacity: 0.6; }
+
 /* The x-axis, such as it is: the two ends of the window, sitting inside the
    plot's bottom padding so they cost the chart no height. Ghosted until the
    chart is under the cursor, like every other label in this design. */

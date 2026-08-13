@@ -39,6 +39,8 @@ const METRICS: Array<{
   unit: string;
   dp: number;
   money: boolean;
+  /** Why this metric can sit flat for days without anything being wrong. */
+  flatReason: string;
 }> = [
   {
     key: "usdPerQpuHour",
@@ -47,6 +49,8 @@ const METRICS: Array<{
     unit: "USD per QPU-hour",
     dp: 0,
     money: true,
+    flatReason:
+      "Every machine in the basket is still on the hourly rate its seller last published, and sellers revise rate cards a few times a year — not daily.",
   },
   {
     key: "usdPerQcu",
@@ -55,6 +59,8 @@ const METRICS: Array<{
     unit: "USD per capability-hour",
     dp: 0,
     money: true,
+    flatReason:
+      "Neither the published rates nor the calibration behind them changed across this window.",
   },
   {
     key: "level",
@@ -63,6 +69,8 @@ const METRICS: Array<{
     unit: "1,000 at inception",
     dp: 2,
     money: false,
+    flatReason:
+      "No machine that could be compared with the previous day repriced or changed capability.",
   },
   {
     key: "costBasis",
@@ -71,6 +79,8 @@ const METRICS: Array<{
     unit: "USD per QPU-hour",
     dp: 0,
     money: true,
+    flatReason:
+      "The cost model is dominated by capital amortisation, which is a pinned constant; the live energy and consumables feeds are too small a share to move it.",
   },
 ];
 
@@ -116,6 +126,34 @@ export default function QciSeriesPanel({
 
   const fmt = (v: number) => `${active.money ? "$" : ""}${num(v, active.dp)}`;
 
+  // ── Which metrics actually moved in this window ────────────────────────────
+  //
+  // The headline price is a basket of PUBLISHED HOURLY RATES, and published rates
+  // are revised roughly quarterly. So across any short window it is usually a
+  // dead-flat line, while the level and the quality-adjusted price — which track
+  // daily calibration — move underneath it. A reader who lands on the default
+  // metric and sees a ruler has no way to tell "measured, unchanged" from
+  // "chart is broken", and will reasonably assume the latter.
+  //
+  // So the panel says which is which: a dot on every metric that moved, and,
+  // when the visible one did not, a sentence explaining why and pointing at the
+  // ones that did.
+  const moved = useMemo(() => {
+    const out: Partial<Record<MetricKey, boolean>> = {};
+    const days = RANGES.find((r) => r.label === range)?.days ?? 36_500;
+    for (const m of METRICS) {
+      const pts = series[m.key] ?? [];
+      const end = pts.at(-1)?.time ?? 0;
+      const cut = pts.filter((p) => p.time >= end - days * 86_400);
+      const win = cut.length > 1 ? cut : pts;
+      const vals = win.map((p) => p.value);
+      out[m.key] = vals.length > 1 && Math.max(...vals) - Math.min(...vals) > 0;
+    }
+    return out;
+  }, [series, range]);
+
+  const alsoMoved = METRICS.filter((m) => m.key !== metric && moved[m.key]);
+
   if (!hasData || all.length === 0) {
     return (
       <section className="qci-series">
@@ -143,7 +181,7 @@ export default function QciSeriesPanel({
         </div>
       </header>
 
-      <div className="qci-series-body">
+      <div className="qci-series-body qci-card">
         <div className="qci-series-quote">
           <div className="qci-quote-main">
             <span className="qci-quote-label">{active.label}</span>
@@ -194,6 +232,26 @@ export default function QciSeriesPanel({
           className="qci-series-chart"
         />
 
+        {flat && visible.length > 1 ? (
+          <p className="qci-flat-note">
+            <b>Measured, and unchanged.</b> {active.flatReason}
+            {alsoMoved.length > 0 ? (
+              <>
+                {" "}
+                {alsoMoved.map((m, i) => (
+                  <span key={m.key}>
+                    {i === 0 ? "" : i === alsoMoved.length - 1 ? " and " : ", "}
+                    <button type="button" onClick={() => { setMetric(m.key); setHovered(null); }}>
+                      {m.symbol.replace(/\.$/, "")}
+                    </button>
+                  </span>
+                ))}{" "}
+                {alsoMoved.length === 1 ? "did move" : "did move"} over the same window.
+              </>
+            ) : null}
+          </p>
+        ) : null}
+
         <div className="qci-series-controls">
           <div className="qci-seg">
             {METRICS.map((m) => (
@@ -201,6 +259,8 @@ export default function QciSeriesPanel({
                 key={m.key}
                 type="button"
                 data-active={metric === m.key ? "true" : undefined}
+                data-moved={moved[m.key] ? "true" : undefined}
+                title={moved[m.key] ? `${m.label} moved over this window` : `${m.label} is unchanged over this window`}
                 onClick={() => {
                   setMetric(m.key);
                   setHovered(null);

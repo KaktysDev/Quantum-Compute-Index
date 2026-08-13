@@ -59,7 +59,7 @@ export default async function QciPage() {
             </span>
           </div>
 
-          <dl className="qci-hero-stats">
+          <dl className="qci-hero-stats qci-card">
             <div>
               <dt>Level</dt>
               <dd>{money(latest.level, 2)}</dd>
