@@ -20,7 +20,7 @@ const policies = [
 
 export default function RoutingPage() {
   return <div className="console-page system-page">
-    <div className="console-page-heading compact"><div><p className="qr-eyebrow"><span /> Execution policy</p><h1>Routing fabric</h1><p>How a circuit becomes an eligible, ranked provider candidate.</p></div><Link className="console-primary" href="/dashboard"><Play size={14} /> Deploy a job</Link></div>
+    <div className="console-page-heading compact"><div><h1>Routing</h1></div><Link className="console-primary" href="/dashboard"><Play size={14} /> Deploy a job</Link></div>
     <section className="console-panel routing-detail-panel">
       <div className="panel-title"><Route size={16} /><div><h2>Execution path</h2><small>Commit source to provider target</small></div><span>QROUTER/V1</span></div>
       <div className="routing-command-flow">

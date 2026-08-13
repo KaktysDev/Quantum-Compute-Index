@@ -24,9 +24,7 @@ export default async function SupportPage() {
     <div className="console-page">
       <div className="console-page-heading compact">
         <div>
-          <p className="qr-eyebrow"><span /> Help center</p>
           <h1>Support</h1>
-          <p>Report bugs, billing problems, or provider issues — the team tracks every ticket.</p>
         </div>
       </div>
       <SupportPanel reports={reports} />

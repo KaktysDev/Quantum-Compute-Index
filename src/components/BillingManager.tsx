@@ -225,7 +225,7 @@ export default function BillingManager({
         <strong>${status.available.toFixed(2)}</strong>
         <span>Compute credits{status.reserved > 0 ? ` · $${status.reserved.toFixed(2)} reserved` : ""}</span>
         <div>
-          <ShieldCheck size={15} /> Funds are reserved only after you approve a quote.
+          <ShieldCheck size={14} /> Reserved only on approved quotes.
         </div>
       </section>
 
@@ -244,12 +244,14 @@ export default function BillingManager({
         <button className="console-primary full" disabled={busy || !status.billingComplete} onClick={purchase}>
           {busy ? <Loader2 className="spin" size={16} /> : <CreditCard size={15} />} Purchase ${amount}
         </button>
+        {/* The terms still have to be linked at the point of purchase — they
+            just do not need three lines of preamble to get there. */}
         <p className="billing-fineprint">
-          Credits are prepaid and charged against accepted quotes. Purchasing means you accept the{" "}
+          By purchasing you accept the{" "}
           <a href="/terms#credits" className="underline underline-offset-2">
-            credit and quote terms
+            credit terms
           </a>{" "}
-          and the{" "}
+          and{" "}
           <a href="/terms#refunds" className="underline underline-offset-2">
             refund policy
           </a>

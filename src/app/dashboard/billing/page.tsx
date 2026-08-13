@@ -52,9 +52,7 @@ export default async function BillingPage() {
     <div className="console-page">
       <div className="console-page-heading compact">
         <div>
-          <p className="qr-eyebrow">Usage and funds</p>
           <h1>Billing</h1>
-          <p>Preload credits and inspect the financial state of every quantum run.</p>
         </div>
       </div>
       <BillingManager balance={balance} billingComplete={billingComplete} ledger={ledger} />

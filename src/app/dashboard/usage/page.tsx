@@ -153,9 +153,7 @@ export default async function UsagePage({
     <div className="console-page">
       <div className="console-page-heading compact">
         <div>
-          <p className="qr-eyebrow">Consumption</p>
           <h1>Usage</h1>
-          <p>Jobs, shots, execution time, and credit spend across this workspace.</p>
         </div>
         <UsageRangeTabs current={range} />
       </div>

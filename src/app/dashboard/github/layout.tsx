@@ -9,9 +9,7 @@ export default function RepositoriesLayout({ children }: { children: React.React
     <div className="console-page">
       <div className="console-page-heading compact">
         <div>
-          <p className="qr-eyebrow">Source integration</p>
           <h1>Repositories</h1>
-          <p>Import a GitHub repository, then run its circuits on commit-pinned source.</p>
         </div>
       </div>
       <ConsoleSubtabs

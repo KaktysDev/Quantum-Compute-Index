@@ -19,22 +19,13 @@ import { FileCode2, GitBranch, ShieldCheck, X } from "lucide-react";
 
 const DISMISS_KEY = "qrouter.getStartedDismissed";
 
+// One line each. The long-form version of this lived here for a while and read
+// as documentation pinned above an empty chat — the point is orientation, and
+// orientation is three nouns and a promise, not three paragraphs.
 const STEPS = [
-  {
-    icon: GitBranch,
-    title: "Point it at a repository",
-    body: "Paste a public GitHub URL. QRouter reads the repo, finds your .qasm circuits, and picks up defaults from qrouter.json if you have one.",
-  },
-  {
-    icon: FileCode2,
-    title: "Describe the run you want",
-    body: "Say it in plain language — “run bell.qasm with 2048 shots on the cheapest backend”. You can also paste OpenQASM straight into the box.",
-  },
-  {
-    icon: ShieldCheck,
-    title: "Approve the quote, then it runs",
-    body: "You get the real routed backend, the real price and your credit balance before anything executes. Nothing is charged until you confirm.",
-  },
+  { icon: GitBranch, title: "Point at a repo", body: "Paste a public GitHub URL." },
+  { icon: FileCode2, title: "Say what to run", body: "Plain language, or raw OpenQASM." },
+  { icon: ShieldCheck, title: "Approve the quote", body: "Nothing runs until you confirm." },
 ];
 
 export default function GetStartedPanel({ onDismissed }: { onDismissed?: () => void }) {
@@ -70,19 +61,11 @@ export default function GetStartedPanel({ onDismissed }: { onDismissed?: () => v
 
   return (
     <aside className="qc-getstarted" aria-label="Get started">
-      <header>
-        <b>Get started</b>
-        <span>Three things to know before your first run</span>
-        <button type="button" onClick={dismiss} aria-label="Dismiss get started">
-          <X size={14} />
-        </button>
-      </header>
       <ol>
-        {STEPS.map((step, index) => (
+        {STEPS.map((step) => (
           <li key={step.title}>
             <span className="qc-getstarted-step">
-              <i>{index + 1}</i>
-              <step.icon size={13} />
+              <step.icon size={14} />
             </span>
             <div>
               <b>{step.title}</b>
@@ -91,6 +74,9 @@ export default function GetStartedPanel({ onDismissed }: { onDismissed?: () => v
           </li>
         ))}
       </ol>
+      <button type="button" onClick={dismiss} aria-label="Dismiss get started">
+        <X size={13} />
+      </button>
     </aside>
   );
 }

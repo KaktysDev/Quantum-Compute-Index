@@ -379,11 +379,10 @@ export default function GitHubManager() {
           )}
         </div>
         {repoSource === "none" ? (
+          /* The panel subtitle above already states what a connection buys;
+             repeating it here in two lines only delayed the one link that
+             actually does something. */
           <div className="repo-source-hint">
-            <p>
-              Importing a <b>public</b> repository above needs nothing at all. Listing your own repositories — and
-              importing <b>private</b> ones — needs a GitHub connection.
-            </p>
             <Link className="console-secondary" href="/docs#github">
               How to connect GitHub <ArrowUpRight size={13} />
             </Link>

@@ -57,15 +57,16 @@ export default function ProviderCatalog({ backends, initialQuery = "" }: { backe
   return <div className="provider-marketplace">
     <aside className={`provider-filter-rail ${filtersOpen ? "open" : ""}`}>
       <div className="filter-rail-title"><SlidersHorizontal size={15} /><b>Filters</b><button className="mobile-filter-toggle" onClick={() => setFiltersOpen((current) => !current)}>{filtersOpen ? "Hide" : "Show"}</button><button onClick={() => { setKind("all"); setMinQubits(0); setMaxRunPrice(5); setProviders([]); }}>Reset</button></div>
-      <section><h3>Compute type</h3>{[["all","All targets"],["qpu","Physical QPU"],["simulator","Simulator"],["connected","Connected"]].map(([value,label]) => <label key={value}><input type="radio" name="kind" checked={kind === value} onChange={() => setKind(value as CatalogKind)} /><span>{label}</span><small>{value === "all" ? backends.length : value === "connected" ? backends.filter((item) => item.available).length : backends.filter((item) => item.kind === value).length}</small></label>)}</section>
+      {/* Compute type is not repeated here: the tabs above the results set the
+          same state and are where the eye already is. Two controls driving one
+          value is the kind of thing that makes a console feel guessy. */}
       <section><h3>Minimum qubits <span>{minQubits}</span></h3><input type="range" min="0" max="200" step="5" value={minQubits} onChange={(event) => setMinQubits(Number(event.target.value))} /><div className="filter-range"><span>0</span><span>200+</span></div></section>
       <section><h3>Max 1K-shot price <span>${maxRunPrice.toFixed(2)}</span></h3><input type="range" min="0.01" max="5" step="0.01" value={maxRunPrice} onChange={(event) => setMaxRunPrice(Number(event.target.value))} /><div className="filter-range"><span>$0.01</span><span>$5</span></div></section>
       <section><h3>Providers</h3>{providerOptions.map((provider) => <label key={provider}><input type="checkbox" checked={providers.includes(provider)} onChange={() => toggleProvider(provider)} /><span>{provider}</span><small>{backends.filter((item) => item.provider === provider).length}</small></label>)}</section>
-      <section><h3>Capabilities</h3><p>OpenQASM 2 / 3</p><p>Hardware transpilation</p><p>Commit-pinned source</p><p>Normalized results</p></section>
     </aside>
 
     <main className="provider-catalog-main">
-      <div className="provider-catalog-heading"><div><h1>Quantum providers</h1><p>Route one API across simulators and physical quantum computers.</p></div><Link href="/dashboard/github/deploy">Deploy workload <ArrowRight size={13} /></Link></div>
+      <div className="provider-catalog-heading"><div><h1>Providers</h1></div><Link href="/dashboard/github/deploy">Deploy workload <ArrowRight size={13} /></Link></div>
       <div className="provider-catalog-toolbar">
         <label><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search providers, targets, and gates..." /></label>
         <div className="catalog-sort"><ArrowUpDown size={13} /><select value={sort} onChange={(event) => setSort(event.target.value)}><option value="price">Lowest price</option><option value="queue">Shortest queue</option><option value="fidelity">Highest fidelity</option><option value="capacity">Most qubits</option></select></div>

@@ -52,14 +52,10 @@ export default async function QciPreviewPage() {
     <div className="console-page">
       <div className="console-page-heading">
         <div>
-          <p className="qr-eyebrow">
-            <span /> QCI / DRY RUN
-          </p>
           <h1>Index preview</h1>
-          <p>
-            Computed live from the AWS Braket rate card and the macro factor feeds, using published
-            reference specs for hardware metrics. Nothing here is written or published.
-          </p>
+          {/* This one stays: it is the only thing distinguishing a dry run from
+              the live index, which is a distinction worth a sentence. */}
+          <p>Computed live from the Braket rate card and macro feeds. Nothing here is written or published.</p>
         </div>
         <Link href="/dashboard/qci" className="console-primary">
           <ArrowLeft size={14} /> Back to QCI

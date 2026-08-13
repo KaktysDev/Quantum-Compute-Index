@@ -10,9 +10,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className="console-page">
       <div className="console-page-heading compact">
         <div>
-          <p className="qr-eyebrow"><span /> Restricted area</p>
           <h1>Admin console</h1>
-          <p>Users, support reports, provider credentials, and platform health.</p>
         </div>
       </div>
       <AdminTabs />

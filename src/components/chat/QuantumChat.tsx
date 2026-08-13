@@ -906,10 +906,9 @@ export default function QuantumChat({
             {empty ? (
               <div className="qc-welcome">
                 <h1>{greeting}</h1>
-                <p>
-                  Describe a quantum job, paste a GitHub repository, or ask about hardware and pricing.
-                  You approve every run before it executes.
-                </p>
+                {/* The composer placeholder below already says what to type,
+                    and the footnote already says nothing runs unconfirmed. */}
+                <p>Describe a job, paste a repository, or ask about hardware and pricing.</p>
                 <GhostSuggestion items={SUGGESTIONS} onPick={send} disabled={busy} />
               </div>
             ) : (
@@ -977,10 +976,9 @@ export default function QuantumChat({
               </button>
             )}
           </form>
-          <p className="qc-footnote">
-            Jobs run only after you confirm the quote. The assistant can be wrong — the confirmation card
-            always shows QRouter&apos;s own numbers.
-          </p>
+          {/* The caveat that matters is that nothing is spent without a
+              confirmation; the rest was already true of the card itself. */}
+          <p className="qc-footnote">Nothing runs until you confirm the quote.</p>
         </div>
       </div>
     </div>
