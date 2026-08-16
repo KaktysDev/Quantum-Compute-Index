@@ -27,6 +27,7 @@ import {
   Unplug,
 } from "lucide-react";
 import MagnetField from "@/components/routing/MagnetField";
+import { fetchJsonWithRetry } from "@/lib/client/fetch-json";
 import type { QRouterProject, RepositoryInspection } from "@/lib/qrouter/repositories";
 
 const PLACEHOLDER_REPOSITORY = "Search repositories or paste a GitHub URL";
@@ -48,7 +49,19 @@ interface GithubRepo {
   description: string | null;
 }
 
+interface ApiErrorPayload {
+  error?: { message?: string };
+}
+
+function apiErrorMessage(data: unknown, fallback: string): string {
+  const payload = data as ApiErrorPayload | null;
+  return payload?.error?.message ?? fallback;
+}
+
 function hint(message: string): string {
+  if (/load failed|failed to fetch|fetch failed|network(?: request)? failed/i.test(message)) {
+    return "QRouter could not reach the repository import service. Please try again.";
+  }
   if (/rate limit/i.test(message)) {
     return `${message} Connect GitHub to use your installation's higher API limit.`;
   }
@@ -224,7 +237,7 @@ export default function GitHubManager() {
     setError(null);
     try {
       const config = inspection.config ?? {};
-      const response = await fetch("/api/v1/projects", {
+      const { response, data } = await fetchJsonWithRetry<QRouterProject | ApiErrorPayload>("/api/v1/projects", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -238,15 +251,21 @@ export default function GitHubManager() {
               ? config.routing_mode
               : "balanced",
             optimizationLevel: typeof config.optimization_level === "number" ? config.optimization_level : 2,
+            failover: typeof config.failover === "boolean" ? config.failover : true,
+            maxAttempts: typeof config.max_attempts === "number" ? config.max_attempts : 3,
+            timeoutSeconds: typeof config.timeout_seconds === "number" ? config.timeout_seconds : 7200,
           },
         }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error?.message ?? "Project import failed.");
+      if (!response.ok) throw new Error(apiErrorMessage(data, "Project import failed."));
+      const project = data as QRouterProject;
       setNotice(`${inspection.repository.fullName} is ready. You can now reference it by name in Deploy.`);
       setInspection(null);
       setCircuitPath("");
-      await loadProjects();
+      setProjects((current) => [
+        project,
+        ...current.filter((item) => item.id !== project.id && item.repository !== project.repository),
+      ]);
     } catch (value) {
       setError(value instanceof Error ? hint(value.message) : "Project import failed.");
     } finally {

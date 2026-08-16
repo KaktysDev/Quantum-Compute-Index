@@ -8,6 +8,9 @@ import { getGithubAccess } from "@/lib/qrouter/github";
 import { inspectRepository, normalizeCircuitPath, normalizeRef, RepositorySourceError, type ProjectSettings, type QRouterProject } from "@/lib/qrouter/repositories";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
 const schema = z.object({
   repository: z.string().min(3).max(220),
   production_branch: z.string().min(1).max(255).optional(),
