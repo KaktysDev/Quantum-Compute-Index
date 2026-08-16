@@ -50,8 +50,26 @@ html[data-theme="dark"]:has(.console-shell) {
   --bg: #000000;
   --fg: #ededed;
 }
-/* The atmospheric backdrop is a landing-page device; the console is flat. */
-html:has(.console-shell) .curtain { display: none; }
+/* Docs carry their own two-theme token set the same way (docs/docs.css) and
+   need the same thing from here. Without this the document itself stayed on the
+   landing page's near-black, which showed through as a dark band in the
+   overscroll gutter and behind native scrollbars on a light docs page. */
+html:has(.docs-shell) {
+  color-scheme: light;
+  --bg: #fafafa;
+  --fg: #0a0a0a;
+}
+html[data-theme="dark"]:has(.docs-shell) {
+  color-scheme: dark;
+  --bg: #0a0a0a;
+  --fg: #ededed;
+}
+
+/* The atmospheric backdrop is a landing-page device; the console and docs are
+   flat surfaces and its emerald/violet wash is the last remnant of the skin
+   they no longer share. */
+html:has(.console-shell) .curtain,
+html:has(.docs-shell) .curtain { display: none; }
 
 /* Brand mark edge (LogoMark). The tile is near-black by design, which is right
    on every light surface but vanishes into the near-black console and docs

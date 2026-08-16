@@ -24,6 +24,7 @@ import {
 import DocsCodeExamples from "@/components/DocsCodeExamples";
 import DocsV2CodeExamples from "@/components/docs/DocsV2CodeExamples";
 import Logo from "@/components/Logo";
+import ThemeToggle from "@/components/ThemeToggle";
 import { PUBLIC_CONFIG } from "@/lib/publicConfig";
 import "./docs.css";
 
@@ -122,9 +123,13 @@ export default function DocsPage() {
         </div>
         <nav className="docs-toc" aria-label="Documentation">
           <div>
-            <p>Getting started</p>
-            <a href="#quickstart">Quickstart</a>
-            <a href="#cli">Terminal client</a>
+            <p>Start here</p>
+            <a href="#quickstart">Run your first job</a>
+            <a href="#cli-more">More CLI commands</a>
+          </div>
+          <div>
+            <p>Build with the API</p>
+            <a href="#http">Call it over HTTP</a>
             <a href="#authentication">Authentication</a>
             <a href="#key-security">Key security</a>
             <a href="#versions">Choosing v1 or v2</a>
@@ -165,33 +170,103 @@ export default function DocsPage() {
           </div>
         </nav>
         <div className="docs-sidebar-foot">
-          <Link href="/dashboard"><KeyRound size={13} /> Back to console</Link>
+          <Link href="/dashboard/api-keys"><KeyRound size={13} /> Get an API key</Link>
+          <Link href="/dashboard"><ArrowRight size={13} /> Back to console</Link>
           <a href="/openapi.json">OpenAPI <ExternalLink size={12} /></a>
+          {/* The docs are reachable straight from a search result, so this is
+              the only appearance control a reader arriving here has. */}
+          <ThemeToggle />
           <div className="docs-sidebar-legal"><Link href="/terms">Terms</Link><Link href="/privacy">Privacy</Link></div>
           <div><span>API versions</span><b>v1 · v2</b><span>Base URL</span><code>{PUBLIC_CONFIG.apiBaseUrl.replace("https://", "")}</code></div>
         </div>
       </aside>
 
       <main className="docs-main">
-        <section className="docs-intro" id="quickstart">
-          <p className="docs-eyebrow"><span /> QRouter / API v1 · v2</p>
-          <h1>One contract for quantum compute.</h1>
-          <p>Submit OpenQASM once. The QCI Engine analyzes the workload, selects an eligible configured backend, transpiles against its native target, creates a quote, and normalizes the result. One workspace key authenticates both the single-request <code>/api/v1</code> surface and the circuit-and-execution resource model in <code>/api/v2</code>.</p>
-          <div className="docs-actions"><Link href="/dashboard/github/deploy">Open deployments <ArrowRight size={14} /></Link><a href="/openapi.json">Download specification <FileJson size={14} /></a></div>
+        <section className="docs-intro">
+          <p className="docs-eyebrow"><span /> QRouter documentation</p>
+          <h1>Run a quantum job in three steps.</h1>
+          <p>QRouter routes a circuit to the cheapest, fastest or most accurate machine that can actually run it, across every provider you have enabled. The quickest way in is the terminal — one command, one key, then plain English. The HTTP API is underneath it when you need to automate.</p>
+          <div className="docs-actions">
+            <a href="#quickstart">Start with the terminal <ArrowRight size={14} /></a>
+            <a href="#http">Or call the API <Code2 size={14} /></a>
+          </div>
         </section>
 
-        <section className="docs-section" id="cli">
-          <div className="docs-section-title"><Terminal size={17} /><div><h2>Terminal client</h2><p>No SDK, no curl, no scaffolding: one command, one pasted key, then plain English.</p></div></div>
-          <pre className="docs-inline-code"><code>npx qrouter.app</code></pre>
-          <p className="docs-copy-text">The client asks for an API key once, verifies it against <code>GET /api/v1/session</code>, and reports the workspace, credit balance, and which backends the key can actually reach before anything else happens. The key is stored at <code>~/.config/qrouter/config.json</code> with <code>0600</code> permissions; <code>QROUTER_API_KEY</code> overrides it and is never written to disk.</p>
-          <p className="docs-copy-text">After that it is the same assistant as the console. Describe the run — including a GitHub repository to take the circuit from — and it prepares a job. The confirmation prompt shows QRouter&apos;s own quote and selected backend from <code>/api/chat/quote</code>, never the model&apos;s estimate, and nothing executes or is charged until you type <code>run</code>. Completed runs are written to your Downloads folder as <code>qrouter quantum results ___provider___ &lt;timestamp&gt;.json</code> with a readable <code>.txt</code> companion.</p>
-          <pre className="docs-inline-code"><code>{`› run the quantum job at https://github.com/owner/repo using the qci cpu simulator`}</code></pre>
-          <p className="docs-copy-text">For scripts and CI there is a non-conversational path: <code>qrouter run ./bell.qasm --shots 1024 --yes</code>, <code>qrouter status &lt;job-id&gt; --wait</code>, and <code>qrouter backends --json</code>. Prefer a permanent install to <code>npx</code>? <code>curl -fsSL https://qrouter.app/install | sh</code>.</p>
-          <div className="docs-callout"><ShieldCheck size={16} /><p>While it waits, the client calls <code>POST /api/v1/jobs/&#123;id&#125;/advance</code> for its own job, so a run finishes even on a deployment with no execution scheduler configured. The endpoint is scoped to the caller&apos;s workspace and refuses any job without a quote and a matching credit reservation.</p></div>
+        {/* ── The three steps ──────────────────────────────────────────────
+            First on the page and deliberately short. Everything that used to
+            live here — the config-file path, the advance endpoint, the
+            non-conversational subcommands — is true and none of it is needed to
+            get a first job running, so it moved down to `#cli-more`. */}
+        <section className="docs-section" id="quickstart">
+          <div className="docs-section-title"><Terminal size={17} /><div><h2>Run your first job</h2><p>No SDK, no install, no scaffolding. About a minute end to end.</p></div></div>
+
+          <ol className="docs-steps">
+            <li>
+              <div className="docs-step-body">
+                <h3>Open your terminal and run QRouter</h3>
+                <p>Node 18.17 or newer is the only requirement. Nothing is installed — <code>npx</code> fetches and runs it.</p>
+                <div className="docs-terminal">
+                  <div className="docs-terminal-bar"><i /><i /><i /><span>terminal</span></div>
+                  <pre><code><i>{"$ "}</i><b>npx qrouter.app</b></code></pre>
+                </div>
+              </div>
+            </li>
+
+            <li>
+              <div className="docs-step-body">
+                <h3>Get your API key</h3>
+                <p>Open <b>API keys</b> in the console and create one. It is shown once, so copy it before closing the dialog.</p>
+                <Link className="docs-step-link" href="/dashboard/api-keys">
+                  <KeyRound size={14} /> Create an API key
+                </Link>
+              </div>
+            </li>
+
+            <li>
+              <div className="docs-step-body">
+                <h3>Paste the key, then just ask</h3>
+                <p>QRouter asks for the key on first run and remembers it. After that, describe the run in plain English — including the GitHub repository to take the circuit from — and it finds the circuit, picks the machine, and shows you the price before anything is charged.</p>
+                <div className="docs-terminal">
+                  <div className="docs-terminal-bar"><i /><i /><i /><span>terminal</span></div>
+                  {/* Kept under ~56 columns so it never needs a horizontal
+                      scrollbar at the narrowest column this page renders at. */}
+                  <pre><code>
+{`❯ Paste your QRouter API key: `}<b>{`••••••••••••`}</b>{`
+`}<em>{`✓ local workspace · $25.00 credit · 12 backends`}</em>{`
+
+❯ `}<b>{`Run this IBM quantum task on the cheapest
+  IonQ model from github repo:
+  acme-labs/bell-state-demo`}</b>{`
+
+`}<i>{`Found circuits/bell.qasm — 2 qubits, depth 3
+Routing under "cheapest" … IonQ Aria-1
+Quote  $2.14 · 1024 shots · ~4 min queue`}</i>{`
+
+❯ type `}<b>run</b>{` to execute, or ask for something else`}
+                  </code></pre>
+                </div>
+              </div>
+            </li>
+          </ol>
+
+          <div className="docs-callout"><ShieldCheck size={16} /><p>Nothing runs and nothing is charged until you type <b>run</b>. The price on the confirmation line is QRouter&apos;s own quote for the backend it selected — never the assistant&apos;s estimate of one. Finished runs land in your Downloads folder as JSON with a readable <code>.txt</code> companion.</p></div>
         </section>
 
-        <section className="docs-section">
-          <div className="docs-section-title"><Code2 size={17} /><div><h2>Run a Bell circuit</h2><p>The v1 single-request flow. The same API key and job lifecycle work across every enabled simulator and QPU.</p></div></div>
+        <section className="docs-section" id="cli-more">
+          <div className="docs-section-title"><Terminal size={17} /><div><h2>More CLI commands</h2><p>For scripts and CI, where a conversation is the wrong shape.</p></div></div>
+          <div className="docs-endpoints">
+            <div><b>run</b><code>qrouter run ./bell.qasm --shots 1024 --yes</code><span>Submit a circuit file or repository URL with no prompts.</span></div>
+            <div><b>status</b><code>qrouter status &lt;job-id&gt; --wait</code><span>Check a job, or block until it reaches a terminal state.</span></div>
+            <div><b>backends</b><code>qrouter backends --json</code><span>List every target this key can reach, machine-readable.</span></div>
+            <div><b>login</b><code>qrouter login</code><span>Store or replace the saved API key.</span></div>
+          </div>
+          <p className="docs-copy-text">The key is stored at <code>~/.config/qrouter/config.json</code> with <code>0600</code> permissions. Setting <code>QROUTER_API_KEY</code> overrides the stored value and is never written to disk — that is the form to use in CI. Prefer a permanent install to <code>npx</code>? <code>curl -fsSL https://qrouter.app/install | sh</code>.</p>
+          <p className="docs-copy-text">While it waits, the client calls <code>POST /api/v1/jobs/&#123;id&#125;/advance</code> for its own job, so a run finishes even on a deployment with no execution scheduler configured. The endpoint is scoped to the caller&apos;s workspace and refuses any job without a quote and a matching credit reservation.</p>
+        </section>
+
+        <section className="docs-section" id="http">
+          <div className="docs-section-title"><Code2 size={17} /><div><h2>Call it over HTTP</h2><p>The same key, the same router. One request submits a circuit; poll it, then read the result.</p></div></div>
+          <p className="docs-copy-text">Send the key you created in step 2 as a bearer token against <code>{PUBLIC_CONFIG.apiBaseUrl}</code>. Only <code>circuit</code> is required — every routing input has a default, and <code>&quot;target&quot;: &quot;auto&quot;</code> lets the router choose the machine exactly as the CLI does.</p>
           <DocsCodeExamples />
           <p className="docs-copy-text">To store a circuit once and run it on several backends in one call, use the <a href="#v2-quickstart">v2 quickstart</a> instead.</p>
         </section>
@@ -208,7 +283,7 @@ export default function DocsPage() {
             <div><code>qci_live_…</code><b>live · default</b><p>The environment applied when a key is created without an explicit choice. May route to simulators and QPUs.</p></div>
             <div><code>qci_test_…</code><b>test · opt-in</b><p>Selected in the create-key form. Restricted to simulators — useful for CI and staging.</p></div>
           </div>
-          <div className="docs-callout"><ShieldAlert size={16} /><p>A <code>qci_test_</code> key shares the same workspace and credit balance as a live key, but it can only run on simulators: pinning a QPU returns <code>403</code>, and <code>&quot;target&quot;: &quot;auto&quot;</code> stays on simulators. Key scopes such as <code>jobs:read</code> and <code>jobs:write</code> are enforced for API-key principals; console sessions remain full-privilege.</p></div>
+          <div className="docs-callout" data-tone="warn"><ShieldAlert size={16} /><p>A <code>qci_test_</code> key shares the same workspace and credit balance as a live key, but it can only run on simulators: pinning a QPU returns <code>403</code>, and <code>&quot;target&quot;: &quot;auto&quot;</code> stays on simulators. Key scopes such as <code>jobs:read</code> and <code>jobs:write</code> are enforced for API-key principals; console sessions remain full-privilege.</p></div>
 
           <h3 className="docs-subhead">Creating, rotating, and revoking</h3>
           <p className="docs-copy-text">Create and revoke keys in <Link href="/dashboard/api-keys">Console → API keys</Link>. Keys can only be minted from a signed-in console session: calling the key endpoint with an API key returns <code>403</code>, so a leaked key can never mint another one. Revoking takes effect immediately and the next request with that key fails <code>401</code>. A key that carries an expiry stops authenticating at that timestamp with the same status. There is no in-place rotation — create the replacement, deploy it, confirm the <b>Last used</b> column has gone quiet on the old key, then revoke it.</p>
@@ -463,7 +538,7 @@ GITHUB_OAUTH_STATE_SECRET=$(openssl rand -base64 32)`}</code></pre>
           </div>
           <p className="docs-copy-text">The key is trimmed and must be between 8 and 255 characters. Anything shorter, longer, or absent is rejected with <code>400 invalid_idempotency_key</code> before the request is processed. Keys are scoped to your workspace and, separately, to each resource type — the same string can address one circuit and one job without colliding.</p>
           <p className="docs-copy-text">QRouter fingerprints each creation request with a SHA-256 hash of the validated body after defaults have been applied, which means omitting a field and sending its documented default are treated as the same request. Replaying an identical request returns the original resource with <code>200</code> and the header <code>idempotent-replayed: true</code>, and never charges twice.</p>
-          <div className="docs-callout"><ShieldAlert size={16} /><p>Reusing a key with a different body returns <code>409 idempotency_conflict</code> and creates nothing. Unlike v1, a v2 key is never released — a job that ends <code>failed</code> keeps its key, so retrying the same work needs a new one.</p></div>
+          <div className="docs-callout" data-tone="warn"><ShieldAlert size={16} /><p>Reusing a key with a different body returns <code>409 idempotency_conflict</code> and creates nothing. Unlike v1, a v2 key is never released — a job that ends <code>failed</code> keeps its key, so retrying the same work needs a new one.</p></div>
         </section>
 
         <section className="docs-section" id="v2-lifecycle">

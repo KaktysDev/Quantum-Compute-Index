@@ -19,27 +19,39 @@
 // QRouter's own published policy weights. It is a real answer to "where would a
 // job land right now". It is NOT a replay of live jobs, and the map says so.
 //
-// ── WHY THIS VERSION IS SO MUCH QUIETER THAN THE LAST ────────────────────────
-// The previous map drew everything it knew, all the time: a four-chip intake
-// pipeline across the top, three counter-rotating orbit rings, a rotating radar
-// sweep, a hub glow, a verdict ribbon, and two labels under every node — inside
-// a 1280×980 viewBox that rendered ~0.77× the panel width tall. Every one of
-// those marks was defensible on its own and together they buried the finding.
+// ── WHAT IS DRAWN AT REST, AND WHY ───────────────────────────────────────────
+// An earlier version drew everything it knew, all the time, and buried the
+// finding. The correction over-shot: it hid every NAME behind a hover too, so
+// the resting picture was a ring of anonymous grey dots that told a first-time
+// reader nothing at all and could not be understood without pawing at it.
 //
-// So the resting state now carries only what cannot be recovered by pointing at
-// something: the core price, the shape of the two fans, and which node won.
-// Everything else — names, rates, weights, shares — is one hover away. Node area
-// is still strictly proportional to real contribution, so the energy node is
-// genuinely a dot next to capital; the picture still states that finding, it
-// just no longer shouts the rest.
+// The rule now is the middle one. A node's IDENTITY is always drawn — you can
+// read "IQM", "Capital", "Energy" without touching anything — and only its
+// NUMBERS (rate, share, unit value) wait for the cursor. Identity is what makes
+// the picture legible; numbers are what make it noisy.
 //
-// COLOUR
-// There is none, and that is the console's own house rule (see the header of
-// console.css): neutral surfaces, hue reserved for status. This map used to
-// break it with a blue "price" token and an amber "cost" token. The two sides
-// are now told apart by FORM instead — targets are rings, cost drivers are
-// filled discs — which survives at dot size the way the console's greys do and
-// does not fight the rest of the shell.
+// Node area is still strictly proportional to real contribution, so the energy
+// node is genuinely a dot next to capital's; the picture still states that
+// finding.
+//
+// FORM
+// Flat. There was a pass at rendering each node as a glass bubble — radial
+// gradient, specular cap, drop shadow, a slow bob, blurred caustics behind the
+// field — and the result read as a tray of scattered ball bearings. Fake
+// lighting is not depth; it is just noise with a highlight on it.
+//
+// So the whole picture is now hairlines and flat marks:
+//   · Targets are hollow rings. Cost drivers are flat discs. That is the entire
+//     encoding of which side of the router something is on, and it survives at
+//     5px the way no gradient does.
+//   · The core is a bare ring — no fill, no glow. It can be bare because every
+//     edge stops EDGE_GAP short of the marks at both ends, so nothing has to be
+//     painted opaque to hide a line crossing it. Those gaps are most of what
+//     makes the diagram read as drawn rather than as a wireframe.
+//   · There is exactly ONE emphasised thing: the machine the policy picked. Its
+//     edge and ring go to full ink and it takes a solid centre dot. Everything
+//     else sits between 18% and 45%.
+// Hue is still reserved for status, per the console's house rule.
 //
 // TWO AUDIENCES, ONE LAYOUT
 //   "public"     — what it costs, where a job lands, what it is made of.
@@ -62,35 +74,45 @@ import {
 import type { DeviceDerived, FactorObservation, IndexPoint } from "@/lib/qci/v2/types";
 
 // Geometry is sized so the OUTERMOST ring — a selected cluster's expanded
-// children plus their label line — still fits inside the viewBox. Getting this
-// wrong does not clip (the SVG allows overflow so labels can breathe); it spills
-// children over the panel edge instead, which is worse.
+// children plus their two label lines — still fits inside the viewBox. Getting
+// this wrong does not clip the SVG (it allows overflow so labels can breathe);
+// it spills children past the card, which does clip, and is worse.
 //
-// The WIDTH is set by the content, not by the aspect ratio. At 720 it was set by
-// nothing: the fans only reach CX±231, so ~100px at each edge was empty, and
-// since the SVG scales to its container that dead margin was rendering the whole
-// graph ~16% smaller than the card it sits in. 620 is the real extent.
+// Budget, with SIDE_SPREAD at ±60° and r_max 20:
+//   left/right CX ± (DEVICE_RING + r + half a label) = CX ± 240   (≤ W/2)
+//   axis row   CX ± AXIS_X ± half a caption          = CX ± 246   (≤ W/2)
+//   top        CY − DEVICE_RING·sin60 − r = 200 − 164.5 − 7.5 = 28  (> axis row)
+//   bottom     CY + DEVICE_RING·sin60 + r + SUB_ROOM        = 398   (< H)
 //
-// Budget, with SIDE_SPREAD at ±60°:
-//   left/right CX ± (DEVICE_RING + r_max + half a label) = CX ± 231   (≤ W/2)
-//   axis row   CX ± AXIS_X ± half a caption               = CX ± 265   (≤ W/2)
-//   top        CY − DEVICE_RING·sin60 − r_max = 218 − 177.5 − 24 = 16  (> axis row)
-//   bottom     CY + DEVICE_RING·sin60 + r_max + LABEL_ROOM      = 442  (< H)
-const W = 620;
-const H = 460;
+// H is set by the EXPANDED extent, not the resting one, so opening a cluster
+// never resizes the card under the reader's cursor. That costs ~40px of empty
+// stage at rest, which is the cheaper of the two.
+const W = 580;
+const H = 400;
 const CX = W / 2;
-const CY = 218;
+const CY = 200;
 
 /** How far out the two side captions sit. Bounded by W/2 minus half a caption. */
-const AXIS_X = 218;
+const AXIS_X = 196;
 
-const HUB_R = 50;
-const PROVIDER_RING = 138;
-const DEVICE_RING = 205;
-const FACTOR_RING = 138;
-const FACTOR_DETAIL_RING = 205;
-/** Vertical room a node's label line needs below its circle. */
-const LABEL_ROOM = 22;
+const HUB_R = 46;
+const PROVIDER_RING = 128;
+const DEVICE_RING = 190;
+const FACTOR_RING = 128;
+const FACTOR_DETAIL_RING = 190;
+/** Baseline of a node's name, measured down from the bottom of its circle. */
+const LABEL_ROOM = 14;
+/** Baseline of the figure under the name. */
+const SUB_ROOM = 26;
+
+/**
+ * Gap left between a node's edge and the mark at each end of it.
+ *
+ * Lines that run all the way into a circle read as a wireframe; lines that stop
+ * a few pixels short read as drawn. It is also what lets the core be a bare
+ * hairline ring — nothing has to be painted opaque to hide an edge crossing it.
+ */
+const EDGE_GAP = 5;
 
 /**
  * Total arc each side occupies, in degrees. Kept well under 180 so the target
@@ -133,6 +155,11 @@ interface Node {
   onRoute?: boolean;
 }
 
+/** Two decimals — finer than a pixel at this viewBox scale. See `polar`. */
+function q(v: number): number {
+  return Math.round(v * 100) / 100;
+}
+
 /**
  * Polar → cartesian, ROUNDED.
  *
@@ -147,6 +174,39 @@ function polar(angleDeg: number, radius: number): { x: number; y: number } {
   return {
     x: Math.round((CX + radius * Math.cos(a)) * 100) / 100,
     y: Math.round((CY + radius * Math.sin(a)) * 100) / 100,
+  };
+}
+
+/**
+ * The straight run between two marks, pulled back from both ends.
+ *
+ * `trimA`/`trimB` are how much to leave clear at each end — the radius of the
+ * mark there plus `EDGE_GAP`. Math.hypot is correctly rounded per IEEE 754, so
+ * unlike cos/sin it agrees bit-for-bit across engines; rounding the result to
+ * two decimals anyway keeps the emitted attributes identical on server and
+ * client and out of React's hydration diff.
+ */
+function segment(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  trimA: number,
+  trimB: number,
+): { x1: number; y1: number; x2: number; y2: number } {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len = Math.hypot(dx, dy);
+  // Degenerate or shorter than the two gaps: draw nothing rather than a line
+  // running backwards through both marks.
+  if (!(len > trimA + trimB)) return { x1: ax, y1: ay, x2: ax, y2: ay };
+  const ux = dx / len;
+  const uy = dy / len;
+  return {
+    x1: q(ax + ux * trimA),
+    y1: q(ay + uy * trimA),
+    x2: q(bx - ux * trimB),
+    y2: q(by - uy * trimB),
   };
 }
 
@@ -354,7 +414,7 @@ export default function QciMap({
         x,
         y,
         // Area ∝ weight, so visual size reads as real influence.
-        r: 11 + 13 * Math.sqrt(p.weight / maxW),
+        r: q(9 + 11 * Math.sqrt(p.weight / maxW)),
         side: "price",
         selection: { kind: "provider", provider: p.provider },
         freshness: p.devices.length > 0 ? p.fresh / p.devices.length : 0,
@@ -383,7 +443,7 @@ export default function QciMap({
             sub: `$${money(d.pricePerHour)}/hr`,
             x,
             y,
-            r: 9,
+            r: 7.5,
             side: "price",
             selection: { kind: "device", id: d.id },
             freshness: d.fresh ? 1 : Math.max(0, 1 - d.staleDays / 45),
@@ -407,7 +467,7 @@ export default function QciMap({
         y,
         // Genuinely proportional: energy at 0.2% renders as a dot, and that is
         // the point being made.
-        r: 6 + 18 * Math.sqrt(c.share / maxShare),
+        r: q(5 + 15 * Math.sqrt(c.share / maxShare)),
         side: "cost",
         selection: { kind: "factor", group: c.group },
         freshness: 1,
@@ -431,7 +491,7 @@ export default function QciMap({
             sub: `${f.observation.value.toPrecision(4)} ${f.unit}`,
             x,
             y,
-            r: 8,
+            r: 7,
             side: "cost",
             selection: { kind: "factorItem", id: f.id },
             freshness: f.observation.tier === "assumed" ? 0.25 : 1,
@@ -463,11 +523,11 @@ export default function QciMap({
     <section className="qci-map-panel" data-mode={mode}>
       <header className="qci-sec-head">
         <div>
-          <h2>{diagnostic ? "Router attribution" : "How a job gets routed"}</h2>
+          <h2>{diagnostic ? "Router attribution" : "Where your job would run"}</h2>
           <p>
             {diagnostic
               ? "Every constituent with its source tier, staleness and exclusion state, under the live routing policy."
-              : "QRouter in the middle. Targets left, what an hour costs to produce right, the price it decides on in the core. Point at anything to read it."}
+              : "Pick a policy and the router re-decides. Click any bubble for its numbers."}
           </p>
         </div>
         {diagnostic ? (
@@ -500,8 +560,8 @@ export default function QciMap({
         </div>
         <span className="qci-policy-note">
           {ranking.missingAxes.length > 0
-            ? "No queue data today — its weight is redistributed, not scored as zero."
-            : "Ranked from today's published point. Not a replay of live traffic."}
+            ? "No queue data today — its weight is shared out, not scored as zero."
+            : "Live ranking, not replayed traffic."}
         </span>
       </div>
 
@@ -519,47 +579,30 @@ export default function QciMap({
             aria-label="QRouter routing map over the Quantum Compute Index"
             preserveAspectRatio="xMidYMid meet"
           >
+            {/* The two fan headings and the intake. Set as micro-caps: they are
+                structural labels for the halves of the diagram, and in sentence
+                case at body size they read as stray copy floating in a corner. */}
             <text className="qci-axis" x={CX - AXIS_X} y={24} textAnchor="middle">
-              TARGETS
+              WHERE IT CAN RUN
             </text>
             <text className="qci-axis" x={CX + AXIS_X} y={24} textAnchor="middle">
-              COST TO PRODUCE
+              WHAT AN HOUR COSTS
             </text>
-
-            {/* ── Intake ────────────────────────────────────────────────────
-                A job descending into the router. The travelling dash is the
-                only thing on the map that depicts movement, because it is the
-                only thing that actually moves. The four-chip pipeline that used
-                to run across the top said the same thing in 200px of vertical
-                space; its stage names live in the copy instead. */}
             <g className="qci-intake">
-              <line
-                className="qci-conduit"
-                x1={CX}
-                y1={INTAKE_Y}
-                x2={CX}
-                y2={CY - HUB_R - 3}
-                pathLength={1}
-              />
-              <line
-                className="qci-conduit-flow"
-                x1={CX}
-                y1={INTAKE_Y}
-                x2={CX}
-                y2={CY - HUB_R - 3}
-                pathLength={1}
-              />
-              <text className="qci-axis" x={CX} y={INTAKE_Y - 10} textAnchor="middle">
-                JOB IN
+              <line className="qci-conduit" x1={CX} y1={INTAKE_Y} x2={CX} y2={CY - HUB_R - EDGE_GAP} />
+              <text className="qci-axis" x={CX} y={INTAKE_Y - 11} textAnchor="middle">
+                YOUR JOB
               </text>
             </g>
 
-            {/* Edges */}
+            {/* Edges. Straight, hairline, and pulled back from the marks at both
+                ends — see EDGE_GAP. */}
             <g className="qci-edges">
               {nodes.map((n, i) => {
                 const isChild = n.depth > 0;
                 let ax = CX;
                 let ay = CY;
+                let trimA = HUB_R + EDGE_GAP;
                 if (isChild) {
                   const parentKey = n.key.startsWith("d:")
                     ? `p:${point.devices.find((d) => `d:${d.id}` === n.key)?.provider}`
@@ -568,49 +611,36 @@ export default function QciMap({
                   if (parent) {
                     ax = parent.x;
                     ay = parent.y;
+                    trimA = parent.r + EDGE_GAP;
                   }
                 }
+                const run = segment(ax, ay, n.x, n.y, trimA, n.r + EDGE_GAP);
                 return (
-                  <g key={`e:${n.key}`}>
-                    <line
-                      x1={ax}
-                      y1={ay}
-                      x2={n.x}
-                      y2={n.y}
-                      // pathLength normalises every edge to 1 unit long, so one
-                      // dash animation draws them all at the same rate
-                      // regardless of their real length.
-                      pathLength={1}
-                      className={`qci-edge ${n.side}`}
-                      style={{ animationDelay: `${(isChild ? 40 : 0) + i * 40}ms` }}
-                      data-dim={n.dim ? "true" : undefined}
-                      data-active={selectedKey === n.key || hovered === n.key ? "true" : undefined}
-                    />
-                    {/* The winning route, drawn as a second line with a running
-                        dash: one segment travelling from the core to the machine
-                        the policy picked. */}
-                    {n.onRoute ? (
-                      <line
-                        x1={ax}
-                        y1={ay}
-                        x2={n.x}
-                        y2={n.y}
-                        pathLength={1}
-                        className="qci-route-flow"
-                        style={{ animationDelay: `${isChild ? 300 : 0}ms` }}
-                      />
-                    ) : null}
-                  </g>
+                  <line
+                    key={`e:${n.key}`}
+                    {...run}
+                    // pathLength normalises every edge to 1 unit long, so one
+                    // dash animation draws them all at the same rate regardless
+                    // of their real length.
+                    pathLength={1}
+                    className={`qci-edge ${n.side}`}
+                    style={{ animationDelay: `${(isChild ? 40 : 0) + i * 40}ms` }}
+                    data-dim={n.dim ? "true" : undefined}
+                    data-active={selectedKey === n.key || hovered === n.key ? "true" : undefined}
+                    data-route={n.onRoute ? "true" : undefined}
+                  />
                 );
               })}
             </g>
 
-            {/* Centre hub — the router. Position on the OUTER group as an
-                attribute, animation on the inner one: a CSS transform replaces
-                the attribute outright, so animating a node that carries its own
-                translate throws it to the viewBox origin. */}
+            {/* The core. A bare ring — no fill, no glow, nothing behind it. The
+                edge gaps are what let it be bare.
+
+                Position on the OUTER group as an attribute, animation on the
+                inner one: a CSS transform replaces the attribute outright, so
+                animating a node that carries its own translate would throw it to
+                the viewBox origin. */}
             <g transform={`translate(${CX} ${CY})`}>
-              <circle className="qci-hub-ring" r={HUB_R + 13} />
               <g
                 className="qci-node hub"
                 data-active={selected.kind === "root" ? "true" : undefined}
@@ -622,27 +652,27 @@ export default function QciMap({
                 role="button"
                 aria-label="QRouter core and index summary"
               >
-                <circle className="qci-hub-pulse" r={HUB_R} />
-                <circle r={HUB_R} />
-                <text y={-17} textAnchor="middle" className="qci-hub-brand">
+                <circle className="qci-hub-ring" r={HUB_R} />
+                <text y={-13} textAnchor="middle" className="qci-hub-brand">
                   QROUTER
                 </text>
-                <text y={8} textAnchor="middle" className="qci-hub-value">
+                <text y={10} textAnchor="middle" className="qci-hub-value">
                   ${money(shownPrice)}
                 </text>
                 <text
-                  y={25}
+                  y={26}
                   textAnchor="middle"
                   className={`qci-hub-change ${flat ? "flat" : up ? "up" : "down"}`}
                 >
-                  {flat ? "— flat" : `${up ? "▲" : "▼"} ${Math.abs(point.changePct).toFixed(2)}%`}
+                  {flat ? "flat" : `${up ? "+" : "−"}${Math.abs(point.changePct).toFixed(2)}%`}
                 </text>
               </g>
             </g>
 
-            {/* Nodes. The label is rendered always and hidden by CSS at rest —
-                keeping it in the DOM is what lets it be read by assistive tech
-                and found by in-page search while the resting picture stays bare. */}
+            {/* Nodes. The NAME is drawn at rest — that is what makes the map
+                readable without touching it — and the figure under it waits for
+                the cursor. Both stay in the DOM throughout so assistive tech and
+                in-page search find them either way. */}
             {nodes.map((n, i) => (
               <g key={n.key} transform={`translate(${n.x} ${n.y})`}>
                 <g
@@ -669,13 +699,16 @@ export default function QciMap({
                   role="button"
                   aria-label={`${n.label}. ${n.sub}`}
                 >
-                  {n.onRoute ? <circle className="qci-route-ring" r={n.r + 7} /> : null}
-                  <circle className="qci-node-halo" r={n.r} />
-                  <circle r={n.r} />
-                  <text y={n.r + 13} textAnchor="middle" className="qci-node-label">
+                  <circle className="qci-node-face" r={n.r} />
+                  {/* The single emphasised mark in the whole picture. */}
+                  {n.onRoute ? <circle className="qci-route-dot" r={3.2} /> : null}
+                  {/* Transparent, generous hit area. A 5px disc is not a click
+                      target; this makes every node one. */}
+                  <circle className="qci-node-hit" r={Math.max(n.r + 9, 15)} />
+                  <text y={q(n.r + LABEL_ROOM)} textAnchor="middle" className="qci-node-label">
                     {n.label}
                   </text>
-                  <text y={n.r + LABEL_ROOM + 2} textAnchor="middle" className="qci-node-sub">
+                  <text y={q(n.r + SUB_ROOM)} textAnchor="middle" className="qci-node-sub">
                     {n.sub}
                   </text>
                 </g>
@@ -1182,20 +1215,13 @@ function QciMapDetail({
         </p>
       ) : null}
 
-      <p className="qci-detail-note">
-        Scored on {AXIS_SOURCE.cost.toLowerCase()}, {AXIS_SOURCE.queue.toLowerCase()},{" "}
-        {AXIS_SOURCE.fidelity.toLowerCase()}, and {AXIS_SOURCE.reliability.toLowerCase()}.
-      </p>
-
       <h4 className="qci-detail-subhead">The price it routes on</h4>
+      {/* Public reads five figures. Everything below that line — the axis
+          sources, the coverage ratios, the repricing-versus-hardware split — is
+          a methodology check rather than a fact about today, and a reader who
+          wants it is on the diagnostic view already. */}
       <dl>
         <Row k="Price" v={`$${money(point.usdPerQpuHour)} / hour`} mono />
-        <Row
-          k="Cost per capability"
-          v={`$${money(point.usdPerQcu, 0)} / hour`}
-          hint="adjusted for what the hardware can do"
-          mono
-        />
         <Row k="Index level" v={money(point.level, 2)} hint="1,000 at inception" mono />
         <Row
           k="Change"
@@ -1210,11 +1236,17 @@ function QciMapDetail({
         {point.costBasisPerHour ? (
           <Row k="Costs to produce" v={`$${money(point.costBasisPerHour)} / hour`} mono />
         ) : null}
-        {point.costCoverageRatio ? (
-          <Row k="Price vs cost" v={`${point.costCoverageRatio.toFixed(1)}× cost`} mono />
-        ) : null}
         {diagnostic ? (
           <>
+            <Row
+              k="Cost per capability"
+              v={`$${money(point.usdPerQcu, 0)} / hour`}
+              hint="adjusted for what the hardware can do"
+              mono
+            />
+            {point.costCoverageRatio ? (
+              <Row k="Price vs cost" v={`${point.costCoverageRatio.toFixed(1)}× cost`} mono />
+            ) : null}
             <Row
               k="Coverage"
               v={
@@ -1236,17 +1268,23 @@ function QciMapDetail({
           the baseline every future move is measured against — there is nothing to compare it with
           yet, so no change is shown.
         </p>
-      ) : total !== 0 ? (
+      ) : diagnostic ? (
         <p className="qci-detail-note">
-          Today&rsquo;s move splits into <b>{pct(Math.abs(priceShare), 0)} repricing</b> and{" "}
-          <b>{pct(Math.abs(1 - priceShare), 0)} hardware getting better or worse</b>.
+          {total !== 0 ? (
+            <>
+              Today&rsquo;s move splits into <b>{pct(Math.abs(priceShare), 0)} repricing</b> and{" "}
+              <b>{pct(Math.abs(1 - priceShare), 0)} hardware getting better or worse</b>. Scored on{" "}
+              {AXIS_SOURCE.cost.toLowerCase()}, {AXIS_SOURCE.queue.toLowerCase()},{" "}
+              {AXIS_SOURCE.fidelity.toLowerCase()}, and {AXIS_SOURCE.reliability.toLowerCase()}.
+            </>
+          ) : (
+            <>
+              No movement today — prices and hardware were unchanged across every machine that could
+              be compared with yesterday.
+            </>
+          )}
         </p>
-      ) : (
-        <p className="qci-detail-note">
-          No movement today — prices and hardware were unchanged across every machine that could be
-          compared with yesterday.
-        </p>
-      )}
+      ) : null}
 
       {diagnostic && point.excluded.length > 0 ? (
         <>

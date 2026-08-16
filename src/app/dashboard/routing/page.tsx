@@ -1,42 +1,70 @@
 import Link from "next/link";
-import { ArrowRight, Braces, Check, Cpu, Gauge, GitBranch, Play, Route, ServerCog, X } from "lucide-react";
-import RouteAdvisor from "@/components/RouteAdvisor";
+import { ArrowRight, BookOpen } from "lucide-react";
+import MagnetField from "@/components/routing/MagnetField";
+import RoutingDiagram from "@/components/routing/RoutingDiagram";
 import { BACKENDS } from "@/lib/qrouter/catalog";
 
-// Was /dashboard/playground/routing. The Playground grouping is gone — this is
-// the routing fabric itself, which is a first-class workspace surface: it
-// explains how a circuit becomes a ranked provider candidate, and the advisor
-// at the bottom answers "where would this actually land?" without spending
-// anything.
+// This tab used to be the routing fabric's reference sheet: the five-stage
+// execution path, the four policy weight tables, the hard-constraint list, a
+// live candidate table, and the route advisor. All of that is real, and all of
+// it answered a question you only have once you are already routing.
+//
+// What it never did was say what QRouter IS. So the tab is now the one picture
+// that does — you talk to one thing, it talks to all of them — and two ways
+// out: read how it works, or go and do it. The reference material lives in the
+// docs; the candidate table lives on Providers; the advisor is still in
+// components/RouteAdvisor.tsx if it should come back somewhere.
 
 export const metadata = { title: "QRouter Console — Routing" };
 
-const policies = [
-  ["balanced", "35 cost / 25 queue / 25 fidelity / 15 reliability"],
-  ["cost", "70 cost / 15 queue / 10 fidelity / 5 reliability"],
-  ["speed", "15 cost / 65 queue / 10 fidelity / 10 reliability"],
-  ["quality", "10 cost / 10 queue / 65 fidelity / 15 reliability"],
-];
+/**
+ * Six provider names, taken from the live catalog rather than typed in, so the
+ * picture cannot drift from what the router can actually reach. Deduped by
+ * provider — the diagram is about who we reach, not how many machines each of
+ * them runs.
+ */
+const PROVIDER_LABELS: Record<string, string> = {
+  ibm: "IBM Quantum",
+  ionq: "IonQ",
+  "aws-braket": "AWS Braket",
+  xanadu: "Xanadu",
+  quandela: "Quandela",
+  "quantum-inspire": "Quantum Inspire",
+  qci: "QCI Simulator",
+};
+
+const PROVIDERS = [...new Set(BACKENDS.map((backend) => backend.provider))]
+  .map((id) => PROVIDER_LABELS[id] ?? id)
+  .slice(0, 6);
 
 export default function RoutingPage() {
-  return <div className="console-page system-page">
-    <div className="console-page-heading compact"><div><h1>Routing</h1></div><Link className="console-primary" href="/dashboard"><Play size={14} /> Deploy a job</Link></div>
-    <section className="console-panel routing-detail-panel">
-      <div className="panel-title"><Route size={16} /><div><h2>Execution path</h2><small>Commit source to provider target</small></div><span>QROUTER/V1</span></div>
-      <div className="routing-command-flow">
-        <div><GitBranch size={17} /><span><b>Repository</b><small>commit + .qasm path</small></span></div><i />
-        <div><Braces size={17} /><span><b>Analyze</b><small>width + depth + gates</small></span></div><i />
-        <div><Route size={17} /><span><b>Route</b><small>constraints + QCI score</small></span></div><i />
-        <div><ServerCog size={17} /><span><b>Transpile</b><small>native gates + topology</small></span></div><i />
-        <div><Cpu size={17} /><span><b>Execute</b><small>normalized lifecycle</small></span></div>
-      </div>
-      <div className="routing-phase-log"><div><span>01</span><b>Parse source</b><code>OPENQASM 2 / 3</code></div><div><span>02</span><b>Filter targets</b><code>width · kind · provider · spend</code></div><div><span>03</span><b>Score candidates</b><code>cost · queue · fidelity · reliability</code></div><div><span>04</span><b>Compile + reprice</b><code>target topology · QCI snapshot</code></div></div>
-    </section>
-    <div className="routing-system-grid">
-      <section className="console-panel"><div className="panel-title"><Gauge size={16} /><div><h2>Routing policies</h2><small>Weighted candidate score</small></div></div><div className="policy-terminal-table">{policies.map(([name, weights]) => <div key={name}><code>{name}</code><span>{weights}</span></div>)}</div></section>
-      <section className="console-panel"><div className="panel-title"><Check size={16} /><div><h2>Hard constraints</h2><small>Applied before ranking</small></div></div><div className="constraint-list"><div><Check size={12} /><span>Qubit capacity and input compatibility</span></div><div><Check size={12} /><span>Maximum cost and queue duration</span></div><div><Check size={12} /><span>Minimum two-qubit fidelity</span></div><div><Check size={12} /><span>Provider allow and deny lists</span></div><div><X size={12} /><span>Unavailable credentials or offline target</span></div></div></section>
+  return (
+    <div className="console-page routing-page">
+      <section className="rt-stage">
+        <MagnetField />
+
+        <div className="rt-content">
+          <header className="rt-lede">
+            <h1>One request. Every quantum machine.</h1>
+            <p>
+              QRouter sits in the middle. Send one circuit with one key — it prices every provider
+              you could run on, picks the machine that fits, compiles for that hardware and hands
+              the result back. No accounts to open, no SDKs to learn.
+            </p>
+          </header>
+
+          <RoutingDiagram providers={PROVIDERS} />
+
+          <div className="rt-actions">
+            <Link className="rt-btn rt-btn-quiet" href="/docs">
+              <BookOpen size={15} /> Read docs
+            </Link>
+            <Link className="rt-btn rt-btn-loud" href="/dashboard">
+              Start routing <ArrowRight size={15} />
+            </Link>
+          </div>
+        </div>
+      </section>
     </div>
-    <section className="console-panel candidate-panel"><div className="panel-title"><Cpu size={16} /><div><h2>Current candidate inputs</h2><small>Live router catalog</small></div><Link href="/dashboard/providers">Full network <ArrowRight size={12} /></Link></div><div className="candidate-head"><span>Target</span><span>Kind</span><span>Queue</span><span>Fidelity</span><span>Reliability</span><span>State</span></div>{BACKENDS.slice(0, 6).map((backend) => <div className="candidate-row" key={backend.id}><span><b>{backend.displayName}</b><small>{backend.id}</small></span><span>{backend.kind}</span><span>{backend.queueSeconds}s</span><span>{(backend.fidelity * 100).toFixed(2)}%</span><span>{(backend.reliability * 100).toFixed(2)}%</span><span className={backend.available ? "terminal-ok" : "terminal-muted"}>{backend.available ? "eligible" : "credential required"}</span></div>)}</section>
-    <RouteAdvisor targets={BACKENDS.map((backend) => ({ id: backend.id, displayName: backend.displayName }))} />
-  </div>;
+  );
 }

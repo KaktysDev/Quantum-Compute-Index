@@ -1,43 +1,767 @@
-.docs-shell { --docs-bg:#f8f8f5; --docs-panel:#ffffff; --docs-line:#d9ddd8; --docs-strong:rgba(0,156,99,.35); --docs-text:#111612; --docs-muted:#626963; --docs-dim:#8a918b; --docs-green:#009c63; --docs-ink:#2b332d; --docs-ink-mid:#3c453e; --docs-ink-soft:#4a534c; --docs-link:#08764f; --docs-grid:rgba(17,22,18,.018); --docs-sidebar-bg:rgba(248,248,245,.92); --docs-badge-bg:rgba(0,156,99,.08); --docs-toc-hover:rgba(0,156,99,.07); --docs-action-hover:rgba(0,156,99,.06); --docs-active:#ecf7f1; --docs-rule:#c3ddd0; --docs-callout-line:#cfe6db; --docs-callout-bg:#eef6f1; --docs-callout-text:#4b5a52; --docs-callout-code:#2f6b4f; min-height:100vh; background: linear-gradient(var(--docs-grid) 1px, transparent 1px), linear-gradient(90deg, var(--docs-grid) 1px, transparent 1px), var(--docs-bg); background-size:64px 64px, 64px 64px, auto; background-attachment:fixed; color:var(--docs-text); font-family:var(--font-sans),-apple-system,BlinkMacSystemFont,sans-serif; color-scheme:light; }
-:root[data-theme="dark"] .docs-shell { --docs-bg:#030705; --docs-panel:#0a100d; --docs-line:rgba(255,255,255,.11); --docs-strong:rgba(66,229,158,.35); --docs-text:#eef4f1; --docs-muted:#93a69d; --docs-dim:#7d8f86; --docs-green:#42e59e; --docs-ink:#cfe0d7; --docs-ink-mid:#c2d3ca; --docs-ink-soft:#a9bcb2; --docs-link:#5ceeae; --docs-grid:rgba(255,255,255,.022); --docs-sidebar-bg:rgba(3,7,5,.92); --docs-badge-bg:rgba(66,229,158,.12); --docs-toc-hover:rgba(66,229,158,.1); --docs-action-hover:rgba(66,229,158,.08); --docs-active:rgba(66,229,158,.14); --docs-rule:rgba(66,229,158,.3); --docs-callout-line:rgba(66,229,158,.22); --docs-callout-bg:rgba(66,229,158,.07); --docs-callout-text:#b6c8bf; --docs-callout-code:#6ff0b6; color-scheme:dark; }
-.docs-shell * { box-sizing:border-box; letter-spacing:0; }
-.docs-shell .text-white { color:var(--docs-text); }
-.docs-shell :is(.docs-code-example,.docs-callout,.docs-inline-code,.docs-schema,.docs-flow,.docs-policy-grid,.docs-formula,.docs-lifecycle,.docs-error-table,.docs-endpoints,.docs-checklist) { border-radius:0; overflow:hidden; }
-.docs-sidebar { position:fixed; inset:0 auto 0 0; z-index:40; display:flex; width:248px; flex-direction:column; border-right:1px solid var(--docs-line); background:var(--docs-sidebar-bg); backdrop-filter:blur(10px); }
-.docs-brand-row { display:flex; height:68px; align-items:center; gap:.7rem; padding:0 1.15rem; border-bottom:1px solid var(--docs-line); }
-.docs-badge { padding:.2rem .4rem; border:1px solid var(--docs-strong); border-radius:0; background:var(--docs-badge-bg); color:var(--docs-green); font:600 .55rem var(--font-mono); text-transform:uppercase; }
-.docs-toc { flex:1; overflow-y:auto; padding:.9rem .75rem; }
-.docs-toc > div + div { margin-top:.75rem; }
-.docs-toc p { margin:0 0 .35rem; padding:0 .55rem; color:var(--docs-dim); font:600 .56rem var(--font-mono); text-transform:uppercase; }
-.docs-toc a { display:flex; min-height:34px; align-items:center; padding:0 .6rem; border-radius:0; color:var(--docs-muted); font-size:.72rem; transition:color 140ms ease, background 140ms ease; }
-.docs-toc a:hover { background:var(--docs-toc-hover); color:var(--docs-green); }
-.docs-sidebar-foot { display:flex; flex-direction:column; gap:.5rem; padding:.85rem .75rem; border-top:1px solid var(--docs-line); }
-.docs-sidebar-foot a { display:flex; align-items:center; gap:.4rem; color:var(--docs-muted); font-size:.62rem; }
-.docs-sidebar-foot a:hover { color:var(--docs-green); }
-.docs-sidebar-foot > .docs-sidebar-legal { display:flex; gap:.9rem; margin:0; padding:0; border-top:0; }
-.docs-sidebar-foot > div { display:grid; grid-template-columns:1fr auto; gap:.5rem .65rem; margin-top:.35rem; padding-top:.7rem; border-top:1px solid var(--docs-line); color:var(--docs-dim); font-size:.5rem; }
-.docs-sidebar-foot b,.docs-sidebar-foot code { color:var(--docs-ink-soft); font-weight:500; }
-.docs-main { width:min(940px,calc(100% - 248px)); margin-left:max(248px,calc((100% - 248px - 940px)/2 + 248px)); padding:0 2.5rem 7rem; }
-.docs-intro { padding:5.5rem 0 4.5rem; border-bottom:1px solid var(--docs-line); }
-.docs-eyebrow { display:flex; align-items:center; gap:.55rem; margin:0 0 1rem; color:var(--docs-green); font-size:.56rem; text-transform:uppercase; }.docs-eyebrow span { width:5px; height:5px; background:var(--docs-green); }
-.docs-intro h1 { max-width:760px; margin:0; font-family:var(--font-sans),sans-serif; font-size:clamp(2.6rem,6vw,5.2rem); font-weight:490; letter-spacing:-.05em; line-height:.98; }
-.docs-intro > p:not(.docs-eyebrow) { max-width:710px; margin:1.5rem 0 0; color:var(--docs-muted); font-size:.86rem; line-height:1.75; }
-.docs-actions { display:flex; margin-top:2rem; }.docs-actions a { display:flex; min-height:38px; align-items:center; gap:.5rem; padding:0 .9rem; border:1px solid var(--docs-line); color:var(--docs-muted); font-size:.66rem; }.docs-actions a+a { border-left:0; }.docs-actions a:first-child { border-color:var(--docs-strong); border-radius:0; color:var(--docs-green); }.docs-actions a:last-child { border-radius:0; }.docs-actions a:hover { background:var(--docs-action-hover); }
-.docs-section { padding:4rem 0; border-bottom:1px solid var(--docs-line); scroll-margin-top:58px; }
-.docs-section-title { display:flex; align-items:flex-start; gap:.75rem; margin-bottom:1.5rem; }.docs-section-title > svg { margin-top:.1rem; color:var(--docs-green); }.docs-section-title h2 { margin:0; font-size:1.2rem; font-weight:600; letter-spacing:-.02em; }.docs-section-title p { margin:.45rem 0 0; color:var(--docs-muted); font-size:.74rem; line-height:1.6; }.docs-section-title code { color:var(--docs-ink-soft); }
-.docs-code-example { border:1px solid var(--docs-line); background:var(--docs-panel); }.docs-code-toolbar { display:flex; min-height:42px; align-items:center; justify-content:space-between; border-bottom:1px solid var(--docs-line); }.docs-code-toolbar>div { display:flex; height:42px; }.docs-code-toolbar button { min-width:72px; border:0; border-right:1px solid var(--docs-line); background:transparent; color:var(--docs-dim); font: .54rem var(--font-mono); text-transform:uppercase; cursor:pointer; }.docs-code-toolbar button.active { background:var(--docs-active); color:var(--docs-green); }.docs-code-toolbar .docs-copy { display:grid; min-width:42px; width:42px; height:42px; place-items:center; border-left:1px solid var(--docs-line); border-right:0; color:var(--docs-muted); }.docs-code-example pre { min-height:340px; margin:0; padding:1.25rem; overflow:auto; color:var(--docs-ink); font:.65rem/1.75 var(--font-mono); }
-.docs-callout { display:flex; align-items:flex-start; gap:.7rem; margin:1rem 0; padding:1rem; border:1px solid var(--docs-callout-line); background:var(--docs-callout-bg); color:var(--docs-callout-text); }.docs-callout svg { flex:none; color:var(--docs-green); }.docs-callout p { margin:0; font-size:.62rem; line-height:1.65; }.docs-callout code { color:var(--docs-callout-code); }
-.docs-inline-code { margin:1rem 0; padding:1rem; overflow:auto; border:1px solid var(--docs-line); background:var(--docs-panel); color:var(--docs-ink); font:.64rem/1.7 var(--font-mono); }
-.docs-copy-text { margin:1.2rem 0 0; color:var(--docs-muted); font-size:.78rem; line-height:1.75; }.docs-copy-text a,.docs-copy-text code { color:var(--docs-link); }
-.docs-schema { display:grid; grid-template-columns:1fr 1fr; border:1px solid var(--docs-line); }.docs-schema>div { min-height:126px; padding:1rem; border-right:1px solid var(--docs-line); border-bottom:1px solid var(--docs-line); }.docs-schema>div:nth-child(2n) { border-right:0; }.docs-schema>div:nth-last-child(-n+2) { border-bottom:0; }.docs-schema code { color:var(--docs-green); font-size:.64rem; }.docs-schema b { display:block; margin-top:.5rem; color:var(--docs-ink-soft); font-size:.55rem; font-weight:500; }.docs-schema p { margin:.65rem 0 0; color:var(--docs-dim); font-size:.57rem; line-height:1.6; }
-.docs-flow,.docs-policy-grid { display:grid; grid-template-columns:repeat(4,1fr); border:1px solid var(--docs-line); }.docs-flow>div,.docs-policy-grid>div { min-height:150px; padding:1rem; border-right:1px solid var(--docs-line); }.docs-flow>div:last-child,.docs-policy-grid>div:last-child { border:0; }.docs-flow span { color:var(--docs-dim); font-size:.5rem; }.docs-flow b,.docs-policy-grid b { display:block; margin-top:1.7rem; color:var(--docs-ink); font-size:.64rem; }.docs-flow p,.docs-policy-grid p { margin:.6rem 0 0; color:var(--docs-dim); font-size:.55rem; line-height:1.55; }
-.docs-formula { display:flex; min-height:74px; align-items:center; justify-content:center; gap:1rem; border:1px solid var(--docs-line); background:var(--docs-panel); color:var(--docs-dim); font-size:.65rem; }.docs-formula span { color:var(--docs-green); }.docs-formula code { color:var(--docs-ink); }
-.docs-lifecycle { display:flex; align-items:center; justify-content:space-between; min-height:72px; padding:0 1rem; border:1px solid var(--docs-line); overflow:auto; }.docs-lifecycle span { flex:none; color:var(--docs-ink-mid); font-size:.54rem; }.docs-lifecycle i { width:40px; height:1px; margin:0 .5rem; background:var(--docs-rule); }
-.docs-error-table { border:1px solid var(--docs-line); }.docs-error-table>div { display:grid; grid-template-columns:54px 180px 1fr; min-height:52px; align-items:center; border-bottom:1px solid var(--docs-line); }.docs-error-table>div:last-child { border:0; }.docs-error-table b,.docs-error-table code,.docs-error-table span { padding:0 .8rem; font-size:.56rem; }.docs-error-table b { color:var(--docs-green); }.docs-error-table code { height:100%; display:flex; align-items:center; border-right:1px solid var(--docs-line); border-left:1px solid var(--docs-line); color:var(--docs-ink); }.docs-error-table span { color:var(--docs-dim); }
-.docs-endpoints { border:1px solid var(--docs-line); }.docs-endpoints>div { display:grid; grid-template-columns:62px minmax(260px,.9fr) 1fr; min-height:58px; align-items:center; border-bottom:1px solid var(--docs-line); }.docs-endpoints>div:last-child { border:0; }.docs-endpoints b { padding:0 .8rem; color:var(--docs-green); font-size:.52rem; }.docs-endpoints code { display:flex; height:100%; align-items:center; padding:0 .8rem; border-right:1px solid var(--docs-line); border-left:1px solid var(--docs-line); color:var(--docs-ink); font-size:.56rem; }.docs-endpoints span { padding:0 .8rem; color:var(--docs-dim); font-size:.54rem; line-height:1.5; }
-.docs-subhead { margin:2.2rem 0 .2rem; color:var(--docs-text); font-size:.8rem; font-weight:600; letter-spacing:-.015em; }.docs-subhead code { color:var(--docs-green); font-size:.72rem; }.docs-subhead+.docs-copy-text { margin-top:.55rem; }
-.docs-table-wrap { margin:1rem 0; overflow-x:auto; border:1px solid var(--docs-line); background:var(--docs-panel); }
-.docs-table { width:100%; min-width:540px; border-collapse:collapse; }.docs-table th,.docs-table td { padding:.7rem .8rem; border-bottom:1px solid var(--docs-line); text-align:left; vertical-align:top; font-size:.57rem; font-weight:400; line-height:1.6; }.docs-table thead th { color:var(--docs-green); font:600 .52rem var(--font-mono); text-transform:uppercase; }.docs-table tbody th { color:var(--docs-green); font-family:var(--font-mono); }.docs-table td { color:var(--docs-muted); }.docs-table tbody tr:last-child th,.docs-table tbody tr:last-child td { border-bottom:0; }.docs-table code { color:var(--docs-text); }.docs-table b { color:var(--docs-text); font-weight:500; }
-.docs-checklist { margin:0; padding:0; list-style:none; counter-reset:steps; border:1px solid var(--docs-line); }.docs-checklist li { counter-increment:steps; display:grid; grid-template-columns:48px 1fr; min-height:58px; align-items:center; border-bottom:1px solid var(--docs-line); color:var(--docs-muted); font-size:.61rem; }.docs-checklist li:last-child { border:0; }.docs-checklist li::before { content:counter(steps,decimal-leading-zero); display:grid; height:100%; place-items:center; border-right:1px solid var(--docs-line); color:var(--docs-green); }.docs-checklist code { color:var(--docs-ink); }
-.docs-end { display:flex; align-items:center; justify-content:space-between; padding:3rem 0; }.docs-end p { margin:0; color:var(--docs-ink); }.docs-end a { display:flex; align-items:center; gap:.5rem; color:var(--docs-green); font-size:.62rem; }
-@media(max-width:760px){.docs-sidebar{display:none}.docs-main{width:100%;margin:0;padding:2rem 1rem 5rem}.docs-intro{padding:2rem 0 3rem}.docs-intro h1{font-size:2.8rem}.docs-actions{display:grid}.docs-actions a+a{border-top:0;border-left:1px solid var(--docs-strong)}.docs-section{padding:3rem 0}.docs-schema{grid-template-columns:1fr}.docs-schema>div{border-right:0}.docs-schema>div:nth-last-child(2){border-bottom:1px solid var(--docs-line)}.docs-flow,.docs-policy-grid{grid-template-columns:1fr 1fr}.docs-flow>div,.docs-policy-grid>div{min-height:130px;border-bottom:1px solid var(--docs-line)}.docs-flow>div:nth-child(2),.docs-policy-grid>div:nth-child(2){border-right:0}.docs-flow>div:nth-last-child(-n+2),.docs-policy-grid>div:nth-last-child(-n+2){border-bottom:0}.docs-formula{flex-wrap:wrap;padding:1rem;gap:.6rem}.docs-error-table>div,.docs-endpoints>div{grid-template-columns:48px 1fr}.docs-error-table code,.docs-endpoints code{border-right:0;overflow:auto}.docs-error-table span,.docs-endpoints span{grid-column:1/-1;padding:.6rem .8rem;border-top:1px solid var(--docs-line)}.docs-code-example pre{min-height:390px;font-size:.58rem}.docs-table{min-width:460px}.docs-end{align-items:flex-start;gap:1rem}}
+/* ═════════════════════════════════════════════════════════════════════════
+   QRouter docs.
+
+   This page used to carry a skin of its own: an emerald accent, a ruled
+   graph-paper backdrop, square corners, and micro-caps set in the mono face.
+   None of that exists anywhere else in the product, so following a link out of
+   the console landed you somewhere that looked like a different company — and
+   in dark mode the near-black-and-green read as the oldest surface we ship.
+
+   So the tokens below are the CONSOLE's, renamed: neutral surfaces, ink for
+   accent, status hues only where something is actually a status, one 10px
+   radius, hairline borders, and the same two themes driven by the same
+   `data-theme` attribute the rest of the app already sets. Nothing here should
+   introduce a colour the console does not have.
+
+   Every token is declared twice — light on `.docs-shell`, dark under
+   `:root[data-theme="dark"]`. If you hard-code a colour in a rule below it WILL
+   be wrong in one of the two themes.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.docs-shell {
+  /* ── surfaces ─────────────────────────────────────────────────────────── */
+  --docs-bg: #fafafa;
+  --docs-panel: #ffffff;
+  --docs-raised: #f7f7f7;
+  --docs-hover: #f2f2f2;
+  --docs-code-bg: #fafafa;
+
+  /* ── lines ────────────────────────────────────────────────────────────── */
+  --docs-line: #e6e6e6;
+  --docs-line-strong: #d4d4d4;
+
+  /* ── type ─────────────────────────────────────────────────────────────── */
+  --docs-text: #0a0a0a;
+  --docs-muted: #5f5f5f;
+  --docs-dim: #8c8c8c;
+
+  /* ── accent = inverted ink, exactly as in the console ─────────────────── */
+  --docs-accent: #0a0a0a;
+  --docs-accent-fg: #ffffff;
+  --docs-accent-dim: rgba(10, 10, 10, 0.06);
+
+  /* ── status — the only hues on the page ───────────────────────────────── */
+  --docs-success: #147a3d;
+  --docs-success-dim: rgba(20, 122, 61, 0.1);
+  --docs-warning: #96590a;
+  --docs-warning-dim: rgba(150, 89, 10, 0.1);
+
+  /* ── geometry and motion ──────────────────────────────────────────────── */
+  --docs-mono: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+  --docs-radius: 10px;
+  --docs-radius-sm: 8px;
+  --docs-shadow: 0 1px 1px rgba(10, 10, 10, 0.03), 0 2px 6px -2px rgba(10, 10, 10, 0.05);
+  --docs-shadow-lg: 0 12px 40px -8px rgba(10, 10, 10, 0.16), 0 2px 8px -2px rgba(10, 10, 10, 0.06);
+  --docs-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --docs-sidebar-w: 252px;
+
+  min-height: 100vh;
+  background: var(--docs-bg);
+  color: var(--docs-text);
+  color-scheme: light;
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+:root[data-theme="dark"] .docs-shell {
+  --docs-bg: #0a0a0a;
+  --docs-panel: #0a0a0a;
+  --docs-raised: #141414;
+  --docs-hover: #1a1a1a;
+  --docs-code-bg: #111111;
+
+  --docs-line: #232323;
+  --docs-line-strong: #363636;
+
+  --docs-text: #ededed;
+  --docs-muted: #a0a0a0;
+  --docs-dim: #737373;
+
+  --docs-accent: #ffffff;
+  --docs-accent-fg: #000000;
+  --docs-accent-dim: rgba(255, 255, 255, 0.08);
+
+  --docs-success: #3ecf7e;
+  --docs-success-dim: rgba(62, 207, 126, 0.13);
+  --docs-warning: #e0a33a;
+  --docs-warning-dim: rgba(224, 163, 58, 0.13);
+
+  /* Dark surfaces sit on near-black, so depth is a lit top edge rather than a
+     drop shadow with nothing to fall onto. */
+  --docs-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 1px 3px rgba(0, 0, 0, 0.6);
+  --docs-shadow-lg: 0 16px 48px -12px rgba(0, 0, 0, 0.85), 0 2px 8px rgba(0, 0, 0, 0.6);
+
+  color-scheme: dark;
+}
+
+.docs-shell * { box-sizing: border-box; }
+.docs-shell a { color: inherit; text-decoration: none; }
+.docs-shell ::selection { background: var(--docs-accent-dim); color: var(--docs-text); }
+/* The shared markup still carries a couple of dark-mode utilities. */
+.docs-shell .text-white { color: var(--docs-text); }
+
+/* ── Sidebar ──────────────────────────────────────────────────────────────
+   Same fixed rail as the console, so moving between the two feels like moving
+   inside one app rather than between two sites. */
+.docs-sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 40;
+  display: flex;
+  width: var(--docs-sidebar-w);
+  flex-direction: column;
+  border-right: 1px solid var(--docs-line);
+  background: var(--docs-panel);
+}
+
+.docs-brand-row {
+  display: flex;
+  height: 56px;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0 1rem;
+  border-bottom: 1px solid var(--docs-line);
+}
+.docs-brand-row a { display: flex; align-items: center; }
+.docs-badge {
+  padding: 0.15rem 0.42rem;
+  border-radius: 999px;
+  background: var(--docs-accent-dim);
+  color: var(--docs-muted);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.docs-toc { flex: 1; overflow-y: auto; padding: 0.9rem 0.6rem; }
+.docs-toc > div + div { margin-top: 1rem; }
+.docs-toc p {
+  margin: 0 0 0.3rem;
+  padding: 0 0.6rem;
+  color: var(--docs-dim);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.docs-toc a {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  padding: 0 0.6rem;
+  border-radius: var(--docs-radius-sm);
+  color: var(--docs-muted);
+  font-size: 0.78rem;
+  transition: background-color 140ms var(--docs-ease), color 140ms var(--docs-ease);
+}
+.docs-toc a:hover { background: var(--docs-hover); color: var(--docs-text); }
+
+.docs-sidebar-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.8rem 0.75rem;
+  border-top: 1px solid var(--docs-line);
+}
+.docs-sidebar-foot a {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  padding: 0.3rem 0.35rem;
+  border-radius: var(--docs-radius-sm);
+  color: var(--docs-muted);
+  font-size: 0.74rem;
+  transition: background-color 140ms var(--docs-ease), color 140ms var(--docs-ease);
+}
+.docs-sidebar-foot a:hover { background: var(--docs-hover); color: var(--docs-text); }
+.docs-sidebar-foot > .docs-sidebar-legal {
+  display: flex;
+  gap: 0.9rem;
+  margin: 0;
+  padding: 0 0.35rem;
+  border-top: 0;
+}
+.docs-sidebar-foot > .docs-sidebar-legal a { padding: 0; font-size: 0.68rem; }
+.docs-sidebar-foot > div:last-child {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.35rem 0.6rem;
+  margin-top: 0.4rem;
+  padding: 0.65rem 0.35rem 0;
+  border-top: 1px solid var(--docs-line);
+  color: var(--docs-dim);
+  font-size: 0.62rem;
+}
+.docs-sidebar-foot b,
+.docs-sidebar-foot code { color: var(--docs-muted); font-weight: 500; }
+.docs-sidebar-foot code { font-family: var(--docs-mono); font-size: 0.6rem; }
+
+/* The docs are reachable straight from a search result, so this is the only
+   place a reader arriving here can change the appearance. Same two-button
+   switch as the console's settings page, restyled for this rail. */
+.docs-shell .theme-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--docs-radius-sm);
+  background: var(--docs-accent-dim);
+}
+.docs-shell .theme-switch button {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--docs-muted);
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: background-color 160ms var(--docs-ease), color 160ms var(--docs-ease);
+}
+.docs-shell .theme-switch button:hover { color: var(--docs-text); }
+.docs-shell .theme-switch button[aria-pressed="true"] {
+  background: var(--docs-panel);
+  box-shadow: var(--docs-shadow);
+  color: var(--docs-text);
+  font-weight: 550;
+}
+
+/* ── Main column ──────────────────────────────────────────────────────────── */
+.docs-main {
+  width: min(940px, calc(100% - var(--docs-sidebar-w)));
+  margin-left: max(
+    var(--docs-sidebar-w),
+    calc((100% - var(--docs-sidebar-w) - 940px) / 2 + var(--docs-sidebar-w))
+  );
+  padding: 0 2.5rem 7rem;
+}
+
+.docs-intro { padding: 4.5rem 0 3.5rem; border-bottom: 1px solid var(--docs-line); }
+.docs-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.9rem;
+  color: var(--docs-dim);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+.docs-eyebrow span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--docs-success);
+}
+.docs-intro h1 {
+  max-width: 760px;
+  margin: 0;
+  font-size: clamp(2.2rem, 5vw, 3.4rem);
+  font-weight: 570;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+}
+.docs-intro > p:not(.docs-eyebrow) {
+  max-width: 68ch;
+  margin: 1.2rem 0 0;
+  color: var(--docs-muted);
+  font-size: 0.92rem;
+  line-height: 1.7;
+}
+
+.docs-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1.8rem; }
+.docs-actions a {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0 1rem;
+  border: 1px solid var(--docs-line-strong);
+  border-radius: var(--docs-radius-sm);
+  color: var(--docs-text);
+  font-size: 0.8rem;
+  font-weight: 500;
+  transition: background-color 160ms var(--docs-ease), border-color 160ms var(--docs-ease);
+}
+.docs-actions a:first-child {
+  border-color: transparent;
+  background: var(--docs-accent);
+  color: var(--docs-accent-fg);
+}
+.docs-actions a:first-child:hover { opacity: 0.86; }
+.docs-actions a:not(:first-child):hover { background: var(--docs-hover); }
+
+.docs-section { padding: 3.5rem 0; border-bottom: 1px solid var(--docs-line); scroll-margin-top: 24px; }
+.docs-section-title { display: flex; align-items: flex-start; gap: 0.7rem; margin-bottom: 1.4rem; }
+.docs-section-title > svg { margin-top: 0.15rem; color: var(--docs-muted); }
+.docs-section-title h2 { margin: 0; font-size: 1.28rem; font-weight: 600; letter-spacing: -0.022em; }
+.docs-section-title p { max-width: 70ch; margin: 0.4rem 0 0; color: var(--docs-muted); font-size: 0.84rem; line-height: 1.62; }
+.docs-section-title code { color: var(--docs-text); font-family: var(--docs-mono); font-size: 0.78rem; }
+
+.docs-subhead {
+  margin: 2.2rem 0 0.2rem;
+  color: var(--docs-text);
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.docs-subhead code { color: var(--docs-text); font-family: var(--docs-mono); font-size: 0.85rem; }
+.docs-subhead + .docs-copy-text { margin-top: 0.5rem; }
+
+.docs-copy-text { margin: 1.1rem 0 0; color: var(--docs-muted); font-size: 0.86rem; line-height: 1.75; }
+.docs-copy-text b { color: var(--docs-text); font-weight: 560; }
+.docs-copy-text code {
+  padding: 0.08rem 0.32rem;
+  border-radius: 5px;
+  background: var(--docs-accent-dim);
+  color: var(--docs-text);
+  font-family: var(--docs-mono);
+  font-size: 0.78rem;
+}
+.docs-copy-text a {
+  color: var(--docs-text);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: var(--docs-line-strong);
+  text-underline-offset: 3px;
+  transition: text-decoration-color 160ms var(--docs-ease);
+}
+.docs-copy-text a:hover { text-decoration-color: currentColor; }
+
+/* ── Get started: the three steps ─────────────────────────────────────────
+   The first thing on the page, because it is the only thing most readers
+   need. Numbered rail on the left, one action per row. */
+.docs-steps {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--docs-line);
+  border-radius: var(--docs-radius);
+  background: var(--docs-panel);
+  box-shadow: var(--docs-shadow);
+  list-style: none;
+  counter-reset: docsteps;
+}
+.docs-steps > li {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  counter-increment: docsteps;
+  border-top: 1px solid var(--docs-line);
+}
+.docs-steps > li:first-child { border-top: 0; }
+.docs-steps > li::before {
+  content: counter(docsteps);
+  display: flex;
+  justify-content: center;
+  padding: 1.5rem 0 0;
+  border-right: 1px solid var(--docs-line);
+  color: var(--docs-dim);
+  font: 500 0.9rem var(--docs-mono);
+}
+.docs-step-body { padding: 1.35rem 1.5rem 1.5rem; }
+.docs-step-body h3 {
+  margin: 0;
+  color: var(--docs-text);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.018em;
+}
+.docs-step-body > p {
+  max-width: 62ch;
+  margin: 0.45rem 0 0;
+  color: var(--docs-muted);
+  font-size: 0.84rem;
+  line-height: 1.65;
+}
+.docs-step-body > p code {
+  padding: 0.08rem 0.32rem;
+  border-radius: 5px;
+  background: var(--docs-accent-dim);
+  color: var(--docs-text);
+  font-family: var(--docs-mono);
+  font-size: 0.76rem;
+}
+.docs-step-body > p b { color: var(--docs-text); font-weight: 560; }
+/* Scoped through `.docs-shell` on purpose: this is an anchor, and the blanket
+   `.docs-shell a { color: inherit }` above outranks a bare single class — which
+   left the label taking the page's text colour on top of the accent fill, i.e.
+   white on white in dark mode. */
+.docs-shell .docs-step-link {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.95rem;
+  padding: 0 0.95rem;
+  border: 0;
+  border-radius: var(--docs-radius-sm);
+  background: var(--docs-accent);
+  color: var(--docs-accent-fg);
+  font-size: 0.79rem;
+  font-weight: 550;
+  transition: opacity 160ms var(--docs-ease);
+}
+.docs-shell .docs-step-link:hover { opacity: 0.86; }
+
+/* ── Terminal ─────────────────────────────────────────────────────────────
+   A window, not a code fence. The three dots and the title bar are what make a
+   reader recognise "this goes in your terminal" before reading a word — which
+   is the single most common thing to get wrong about a CLI quickstart. */
+.docs-terminal {
+  margin: 1rem 0 0;
+  overflow: hidden;
+  border: 1px solid var(--docs-line);
+  border-radius: var(--docs-radius-sm);
+  background: var(--docs-code-bg);
+}
+.docs-terminal-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--docs-line);
+  background: var(--docs-raised);
+}
+.docs-terminal-bar i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--docs-line-strong);
+}
+.docs-terminal-bar i + i { margin-left: -0.3rem; }
+.docs-terminal-bar span {
+  margin-left: 0.3rem;
+  color: var(--docs-dim);
+  font-size: 0.66rem;
+  letter-spacing: 0.02em;
+}
+.docs-terminal pre {
+  margin: 0;
+  padding: 0.95rem 1rem;
+  overflow-x: auto;
+  color: var(--docs-text);
+  font: 0.78rem/1.75 var(--docs-mono);
+}
+.docs-terminal pre b { color: var(--docs-text); font-weight: 600; }
+.docs-terminal pre i { color: var(--docs-dim); font-style: normal; }
+.docs-terminal pre em { color: var(--docs-success); font-style: normal; }
+
+/* ── Code examples (the language-tabbed block) ────────────────────────────── */
+.docs-code-example {
+  overflow: hidden;
+  border: 1px solid var(--docs-line);
+  border-radius: var(--docs-radius);
+  background: var(--docs-panel);
+}
+.docs-code-toolbar {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--docs-line);
+  background: var(--docs-raised);
+}
+.docs-code-toolbar > div { display: flex; height: 40px; padding: 4px; gap: 2px; }
+.docs-code-toolbar button {
+  min-width: 74px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--docs-muted);
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: background-color 160ms var(--docs-ease), color 160ms var(--docs-ease);
+}
+.docs-code-toolbar button:hover { color: var(--docs-text); }
+.docs-code-toolbar button.active {
+  background: var(--docs-panel);
+  box-shadow: var(--docs-shadow);
+  color: var(--docs-text);
+  font-weight: 550;
+}
+.docs-code-toolbar .docs-copy {
+  display: grid;
+  min-width: 40px;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 0;
+  color: var(--docs-muted);
+}
+.docs-code-example pre {
+  min-height: 320px;
+  margin: 0;
+  padding: 1.2rem;
+  overflow: auto;
+  color: var(--docs-text);
+  font: 0.74rem/1.8 var(--docs-mono);
+}
+
+.docs-inline-code {
+  margin: 1rem 0;
+  padding: 0.95rem 1.05rem;
+  overflow: auto;
+  border: 1px solid var(--docs-line);
+  border-radius: var(--docs-radius-sm);
+  background: var(--docs-code-bg);
+  color: var(--docs-text);
+  font: 0.76rem/1.8 var(--docs-mono);
+}
+
+/* ── Callouts ─────────────────────────────────────────────────────────────
+   Neutral by default. `warn` is the one variant that earns a hue, because it is
+   the one that is actually a status. */
+.docs-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  margin: 1.1rem 0 0;
+  padding: 0.95rem 1.05rem;
+  border: 1px solid var(--docs-line);
+  border-radius: var(--docs-radius-sm);
+  background: var(--docs-raised);
+  color: var(--docs-muted);
+}
+.docs-callout svg { flex: none; margin-top: 0.1rem; color: var(--docs-muted); }
+.docs-callout p { margin: 0; font-size: 0.8rem; line-height: 1.65; }
+.docs-callout b { color: var(--docs-text); font-weight: 560; }
+.docs-callout code {
+  padding: 0.06rem 0.3rem;
+  border-radius: 5px;
+  background: var(--docs-accent-dim);
+  color: var(--docs-text);
+  font-family: var(--docs-mono);
+  font-size: 0.74rem;
+}
+.docs-callout[data-tone="warn"] {
+  border-color: var(--docs-warning-dim);
+  background: var(--docs-warning-dim);
+}
+.docs-callout[data-tone="warn"] svg { color: var(--docs-warning); }
+
+/* ── Data blocks ──────────────────────────────────────────────────────────── */
+.docs-schema {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  overflow: hidden;
+  border: 1px solid var(--docs-line);
+  border-radius: var(--docs-radius);
+  background: var(--docs-panel);
+}
+.docs-schema > div {
+  min-height: 118px;
+  padding: 1rem 1.1rem;
+  border-right: 1px solid var(--docs-line);
+  border-bottom: 1px solid var(--docs-line);
+}
+.docs-schema > div:nth-child(2n) { border-right: 0; }
+.docs-schema > div:nth-last-child(-n + 2) { border-bottom: 0; }
+.docs-schema code { color: var(--docs-text); font-family: var(--docs-mono); font-size: 0.76rem; }
+.docs-schema b { display: block; margin-top: 0.45rem; color: var(--docs-muted); font-size: 0.68rem; font-weight: 500; }
+.docs-schema p { margin: 0.55rem 0 0; color: var(--docs-dim); font-size: 0.72rem; line-height: 1.6; }
+
+.docs-flow,
+.docs-policy-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--docs-line);
+  border-radius: var(--docs-radius);
+  background: var(--docs-panel);
+}
+.docs-flow > div,
+.docs-policy-grid > div { min-height: 142px; padding: 1rem 1.1rem; border-right: 1px solid var(--docs-line); }
+.docs-flow > div:last-child,
+.docs-policy-grid > div:last-child { border-right: 0; }
+.docs-flow span { color: var(--docs-dim); font: 0.66rem var(--docs-mono); }
+.docs-flow b,
+.docs-policy-grid b { display: block; margin-top: 1.4rem; color: var(--docs-text); font-size: 0.8rem; font-weight: 560; }
+.docs-policy-grid b { margin-top: 0; }
+.docs-flow p,
+.docs-policy-grid p { margin: 0.5rem 0 0; color: var(--docs-muted); font-size: 0.72rem; line-height: 1.6; }
+
+.docs-formula {
+  display: flex;
+  min-height: 68px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8rem;
+  border: 1px solid var(--docs-line);
+  border-radius: var(--docs-radius);
+  background: var(--docs-panel);
+  color: var(--docs-dim);
+  font-size: 0.78rem;
+}
+.docs-formula span { color: var(--docs-muted); }
+.docs-formula code { color: var(--docs-text); font-family: var(--docs-mono); font-size: 0.76rem; }
+
+.docs-lifecycle {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.1rem;
+  overflow: auto;
+  border: 1px solid var(--docs-line);
+  border-radius: var(--docs-radius);
+  background: var(--docs-panel);
+}
+.docs-lifecycle span { flex: none; color: var(--docs-muted); font: 0.72rem var(--docs-mono); }
+.docs-lifecycle i { width: 34px; height: 1px; margin: 0 0.5rem; background: var(--docs-line-strong); }
+
+.docs-error-table,
+.docs-endpoints {
+  overflow: hidden;
+  border: 1px solid var(--docs-line);
+  border-radius: var(--docs-radius);
+  background: var(--docs-panel);
+}
+.docs-error-table > div {
+  display: grid;
+  grid-template-columns: 60px 190px minmax(0, 1fr);
+  min-height: 48px;
+  align-items: center;
+  border-bottom: 1px solid var(--docs-line);
+}
+.docs-endpoints > div {
+  display: grid;
+  grid-template-columns: 66px minmax(240px, 0.9fr) minmax(0, 1fr);
+  min-height: 52px;
+  align-items: center;
+  border-bottom: 1px solid var(--docs-line);
+}
+.docs-error-table > div:last-child,
+.docs-endpoints > div:last-child { border-bottom: 0; }
+.docs-error-table b,
+.docs-endpoints b { padding: 0 0.85rem; color: var(--docs-muted); font: 600 0.66rem var(--docs-mono); }
+.docs-error-table code,
+.docs-endpoints code {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  padding: 0 0.85rem;
+  border-right: 1px solid var(--docs-line);
+  border-left: 1px solid var(--docs-line);
+  color: var(--docs-text);
+  font-family: var(--docs-mono);
+  font-size: 0.72rem;
+}
+.docs-error-table span,
+.docs-endpoints span { padding: 0 0.85rem; color: var(--docs-muted); font-size: 0.72rem; line-height: 1.5; }
+
+.docs-table-wrap {
+  margin: 1rem 0 0;
+  overflow-x: auto;
+  border: 1px solid var(--docs-line);
+  border-radius: var(--docs-radius);
+  background: var(--docs-panel);
+}
+.docs-table { width: 100%; min-width: 540px; border-collapse: collapse; }
+.docs-table th,
+.docs-table td {
+  padding: 0.7rem 0.85rem;
+  border-bottom: 1px solid var(--docs-line);
+  text-align: left;
+  vertical-align: top;
+  font-size: 0.74rem;
+  font-weight: 400;
+  line-height: 1.6;
+}
+.docs-table thead th { color: var(--docs-dim); font-size: 0.68rem; font-weight: 600; }
+.docs-table tbody th { color: var(--docs-text); font-family: var(--docs-mono); font-size: 0.72rem; }
+.docs-table td { color: var(--docs-muted); }
+.docs-table tbody tr:last-child th,
+.docs-table tbody tr:last-child td { border-bottom: 0; }
+.docs-table code { color: var(--docs-text); font-family: var(--docs-mono); font-size: 0.72rem; }
+.docs-table b { color: var(--docs-text); font-weight: 550; }
+
+.docs-checklist {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--docs-line);
+  border-radius: var(--docs-radius);
+  background: var(--docs-panel);
+  list-style: none;
+  counter-reset: steps;
+}
+.docs-checklist li {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  min-height: 52px;
+  align-items: center;
+  counter-increment: steps;
+  border-bottom: 1px solid var(--docs-line);
+  color: var(--docs-muted);
+  font-size: 0.79rem;
+  line-height: 1.6;
+}
+.docs-checklist li:last-child { border-bottom: 0; }
+.docs-checklist li::before {
+  content: counter(steps);
+  display: grid;
+  height: 100%;
+  place-items: center;
+  border-right: 1px solid var(--docs-line);
+  color: var(--docs-dim);
+  font: 0.72rem var(--docs-mono);
+}
+.docs-checklist li > * { padding-right: 1.1rem; }
+.docs-checklist code {
+  padding: 0.06rem 0.3rem;
+  border-radius: 5px;
+  background: var(--docs-accent-dim);
+  color: var(--docs-text);
+  font-family: var(--docs-mono);
+  font-size: 0.72rem;
+}
+
+.docs-end { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; padding: 3rem 0; }
+.docs-end p { margin: 0; color: var(--docs-text); font-size: 0.95rem; font-weight: 550; letter-spacing: -0.015em; }
+.docs-end a {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0 1rem;
+  border-radius: var(--docs-radius-sm);
+  background: var(--docs-accent);
+  color: var(--docs-accent-fg);
+  font-size: 0.8rem;
+  font-weight: 550;
+  transition: opacity 160ms var(--docs-ease);
+}
+.docs-end a:hover { opacity: 0.86; }
+
+/* ── Responsive ───────────────────────────────────────────────────────────── */
+@media (max-width: 860px) {
+  .docs-sidebar { display: none; }
+  .docs-main { width: 100%; margin: 0; padding: 1.5rem 1.15rem 4rem; }
+  .docs-intro { padding: 1.5rem 0 2.5rem; }
+  .docs-section { padding: 2.5rem 0; }
+  .docs-schema { grid-template-columns: 1fr; }
+  .docs-schema > div { border-right: 0; }
+  .docs-schema > div:nth-last-child(2) { border-bottom: 1px solid var(--docs-line); }
+  .docs-flow,
+  .docs-policy-grid { grid-template-columns: 1fr 1fr; }
+  .docs-flow > div,
+  .docs-policy-grid > div { min-height: 124px; border-bottom: 1px solid var(--docs-line); }
+  .docs-flow > div:nth-child(2n),
+  .docs-policy-grid > div:nth-child(2n) { border-right: 0; }
+  .docs-flow > div:nth-last-child(-n + 2),
+  .docs-policy-grid > div:nth-last-child(-n + 2) { border-bottom: 0; }
+  .docs-steps > li { grid-template-columns: 44px minmax(0, 1fr); }
+  .docs-step-body { padding: 1.15rem 1.1rem 1.25rem; }
+  .docs-error-table > div,
+  .docs-endpoints > div { grid-template-columns: 56px minmax(0, 1fr); }
+  .docs-error-table code,
+  .docs-endpoints code { border-right: 0; overflow: auto; }
+  .docs-error-table span,
+  .docs-endpoints span { grid-column: 1 / -1; padding: 0.6rem 0.85rem; border-top: 1px solid var(--docs-line); }
+  .docs-code-example pre { min-height: 320px; font-size: 0.68rem; }
+  .docs-table { min-width: 460px; }
+}
