@@ -55,6 +55,17 @@
   --qr-danger-dim: rgba(188, 48, 37, 0.09);
   --qr-danger-line: rgba(188, 48, 37, 0.30);
 
+  /* ── the one non-status hue ───────────────────────────────────────────
+        Reserved for a token the user is holding but has not sent yet — today
+        that is the routing chip in the composer. It has to be a colour, not
+        another grey, because the whole point is that it reads as one solid
+        object dropped into a line of plain text. Deliberately the only place
+        blue appears in the console. */
+  --qr-blue: #1c5fd6;
+  --qr-blue-dim: rgba(28, 95, 214, 0.10);
+  --qr-blue-soft: rgba(28, 95, 214, 0.18);
+  --qr-blue-line: rgba(28, 95, 214, 0.32);
+
   /* ── legacy token aliases ─────────────────────────────────────────────
         Older component rules still say `--qr-emerald` / `--qr-violet`. They
         now resolve to neutrals so nothing has to be renamed at every call
@@ -130,6 +141,11 @@
   --qr-danger: #f36e63;
   --qr-danger-dim: rgba(243, 110, 99, 0.12);
   --qr-danger-line: rgba(243, 110, 99, 0.32);
+
+  --qr-blue: #7aabff;
+  --qr-blue-dim: rgba(122, 171, 255, 0.14);
+  --qr-blue-soft: rgba(122, 171, 255, 0.24);
+  --qr-blue-line: rgba(122, 171, 255, 0.36);
 
   /* Dark surfaces sit on near-black, so depth comes from a light top edge
      rather than from a drop shadow that has nothing to fall onto. */
@@ -1543,6 +1559,32 @@
    the verb. */
 .rt-arrow { stroke: var(--qr-dim); stroke-width: 1.3; fill: none; }
 .rt-head { fill: var(--qr-dim); }
+
+/* ── The provider boxes are links ─────────────────────────────────────────
+   Pressing one opens the assistant with that provider already in the composer.
+   Nothing marks them at rest — the diagram stays a diagram — and the whole cue
+   arrives together on hover or focus: the outline goes to full ink and an arrow
+   fades in at the right edge. */
+.rt-target { cursor: pointer; }
+.rt-target rect {
+  transition: fill var(--qr-fast) var(--qr-ease), stroke var(--qr-fast) var(--qr-ease);
+}
+.rt-target:hover rect,
+.rt-target:focus-visible rect { fill: var(--qr-hover); stroke: var(--qr-accent); }
+/* The focus ring is drawn as the box's own outline rather than as a browser
+   outline, which on an SVG anchor lands on the element's bounding box and so
+   would trace the whole row, arrow cue included. */
+.rt-target:focus-visible rect { stroke-width: 2.4; }
+.rt-target:focus { outline: none; }
+/* (0,2,0), so it beats `.rt-box text`'s fill. */
+.rt-box text.rt-target-cue {
+  fill: var(--qr-muted);
+  font-size: 17px;
+  opacity: 0;
+  transition: opacity var(--qr-fast) var(--qr-ease);
+}
+.rt-target:hover .rt-target-cue,
+.rt-target:focus-visible .rt-target-cue { opacity: 1; }
 
 /* ── The two ways out ─────────────────────────────────────────────────────── */
 .rt-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.7rem; }

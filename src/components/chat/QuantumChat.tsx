@@ -21,6 +21,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type KeyboardEvent,
   type ReactNode,
 } from "react";
 import {
@@ -81,6 +82,25 @@ const SUGGESTIONS = [
   "What would 4,096 shots of a Bell state cost right now?",
   "Run a Bell state with 1,024 shots on the best available backend.",
 ];
+
+// ── the routing chip ─────────────────────────────────────────────────────────
+//
+// Pressing a provider on the routing tab lands here with that provider already
+// chosen, shown as one atomic blue block at the head of the composer.
+//
+// It is a sibling of the textarea rather than text inside it, which is what
+// makes "atomic" true rather than simulated: there is no way to land a caret
+// inside it, select half of it, or type into the middle of it, because none of
+// it is in the text buffer. The one thing that has to be wired by hand is
+// Backspace at offset zero, below — the gesture that would delete the previous
+// character if the chip were text takes the whole chip instead.
+
+/** Exactly the sentence the chip reads, and exactly what gets sent. */
+const chipText = (provider: string) => `Route task using "${provider}"`;
+
+/** Shown in place of the normal composer hint once a chip is in play — the
+    chip has already said which machine, so this asks for the rest. */
+const CHIP_PLACEHOLDER = "…add what to run, from where, and any limits";
 
 /**
  * Rotating ghost suggestion: types one prompt out, holds ~2s, fades, then
@@ -575,10 +595,13 @@ export default function QuantumChat({
   userName,
   balance,
   showGetStarted = false,
+  routeProvider = null,
 }: {
   userName: string;
   balance: number | null;
   showGetStarted?: boolean;
+  /** Provider chosen on the routing tab, already validated server-side. */
+  routeProvider?: string | null;
 }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [threads, setThreads] = useState<ThreadRow[]>([]);
@@ -588,6 +611,7 @@ export default function QuantumChat({
   const [renameDraft, setRenameDraft] = useState("");
   const [migrationNeeded, setMigrationNeeded] = useState(false);
   const [input, setInput] = useState("");
+  const [chip, setChip] = useState<string | null>(routeProvider);
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -614,6 +638,16 @@ export default function QuantumChat({
   useEffect(() => {
     loadThreads();
   }, [loadThreads]);
+
+  // Arriving from the routing tab: put the caret where the sentence continues,
+  // and drop `?route=` from the address bar. The chip is state now, so leaving
+  // the parameter behind would only mean a reload silently re-adding a chip the
+  // user had already dismissed.
+  useEffect(() => {
+    if (!routeProvider) return;
+    inputRef.current?.focus();
+    window.history.replaceState(null, "", window.location.pathname);
+  }, [routeProvider]);
 
   // Below 900px the rail is an overlay (see chat.css), so leaving it open would
   // bury the conversation under it on every mobile load. It stays open by
@@ -711,16 +745,38 @@ export default function QuantumChat({
     setThreadId(null);
     setMessages([]);
     setInput("");
+    setChip(null);
     resetComposerHeight();
     closeRailOnMobile();
     inputRef.current?.focus();
   }
 
+  /** Backspace at the very start of an empty selection is the gesture that would
+   *  eat the character before the caret. There is no character there — there is
+   *  the chip — so it takes the whole chip, all at once. */
+  function onComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    const field = event.currentTarget;
+    if (event.key === "Backspace" && chip && field.selectionStart === 0 && field.selectionEnd === 0) {
+      event.preventDefault();
+      setChip(null);
+      return;
+    }
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      send(input);
+    }
+  }
+
   async function send(text: string) {
-    const message = text.trim();
+    // The chip is the head of the sentence the user is writing, so it is sent
+    // as part of the message and consumed by the send — it is a draft, not a
+    // sticky mode the next message would silently inherit.
+    const rest = text.trim();
+    const message = chip ? [chipText(chip), rest].filter(Boolean).join(": ") : rest;
     if (!message || busy) return;
     setBusy(true);
     setInput("");
+    setChip(null);
     resetComposerHeight();
 
     const userKey = `u-${Date.now()}`;
@@ -948,30 +1004,53 @@ export default function QuantumChat({
 
           {/* composer */}
           <form className={`qc-composer ${busy ? "busy" : ""}`} onSubmit={onSubmit}>
-            <textarea
-              ref={inputRef}
-              value={input}
-              rows={2}
-              placeholder='Describe a job, paste a GitHub repo URL, or ask anything quantum… ("run bell.qasm with 2048 shots")'
-              onChange={(event) => {
-                setInput(event.target.value);
-                event.target.style.height = "auto";
-                event.target.style.height = `${Math.min(event.target.scrollHeight, 180)}px`;
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  send(input);
+            {/* The chip and the textarea share one wrapping row, so the hint
+                reads as the continuation of the chip's sentence rather than as
+                a separate line under it. */}
+            <div className="qc-composer-field">
+              {chip && (
+                <span className="qc-chip">
+                  <span className="qc-chip-text">{chipText(chip)}</span>
+                  <button
+                    type="button"
+                    className="qc-chip-clear"
+                    onClick={() => {
+                      setChip(null);
+                      inputRef.current?.focus();
+                    }}
+                    aria-label={`Remove ${chip}`}
+                    title="Remove"
+                  >
+                    <X size={11} />
+                  </button>
+                </span>
+              )}
+              <textarea
+                ref={inputRef}
+                value={input}
+                rows={2}
+                placeholder={
+                  chip
+                    ? CHIP_PLACEHOLDER
+                    : 'Describe a job, paste a GitHub repo URL, or ask anything quantum… ("run bell.qasm with 2048 shots")'
                 }
-              }}
-              aria-label="Message the QRouter assistant"
-            />
+                onChange={(event) => {
+                  setInput(event.target.value);
+                  event.target.style.height = "auto";
+                  event.target.style.height = `${Math.min(event.target.scrollHeight, 180)}px`;
+                }}
+                onKeyDown={onComposerKeyDown}
+                aria-label="Message the QRouter assistant"
+              />
+            </div>
             {busy ? (
               <button type="button" className="qc-send stop" onClick={() => abortRef.current?.abort()} aria-label="Stop generating">
                 <CircleStop size={16} />
               </button>
             ) : (
-              <button type="submit" className="qc-send" disabled={!input.trim()} aria-label="Send">
+              // With a chip in the composer there is already a sendable message
+              // — "route using IonQ", and the assistant asks for the rest.
+              <button type="submit" className="qc-send" disabled={!input.trim() && !chip} aria-label="Send">
                 <ArrowUp size={16} />
               </button>
             )}

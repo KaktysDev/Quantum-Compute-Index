@@ -1,12 +1,20 @@
+import Link from "next/link";
+
 // One picture of what QRouter is: you talk to one thing, and it talks to all of
 // them. Drawn entirely in SVG rather than as positioned HTML boxes plus an SVG
 // overlay, because the arrows have to land on the box edges exactly — two
 // coordinate systems that have to agree is a bug waiting for the first font or
 // zoom change.
 //
-// Static on purpose. The magnetic field behind it already carries every bit of
-// motion this surface needs, and two things moving at once is where a diagram
-// stops looking considered.
+// Static on purpose, apart from the hover states. The magnetic field behind it
+// already carries every bit of ambient motion this surface needs, and two
+// things moving at once is where a diagram stops looking considered.
+//
+// The provider boxes are real links, not decorations: pressing one drops you
+// into the assistant with that provider already chosen. They are `next/link`
+// anchors living inside the SVG — an SVG <a> is a real focusable link, so this
+// keeps middle-click, right-click and tab order working, which a <g onClick>
+// would not.
 
 /** Box geometry, all in viewBox units. */
 const W = 1000;
@@ -24,7 +32,12 @@ const GAP = 9;
 /** Rounded to two decimals — see the note on `polar` in QciMap. */
 const q = (v: number) => Math.round(v * 100) / 100;
 
-export default function RoutingDiagram({ providers }: { providers: string[] }) {
+export interface DiagramTarget {
+  name: string;
+  href: string;
+}
+
+export default function RoutingDiagram({ providers }: { providers: DiagramTarget[] }) {
   const count = providers.length;
   const stackH = count * TARGET.h + (count - 1) * TARGET_GAP;
   const stackTop = q((H - stackH) / 2);
@@ -36,9 +49,8 @@ export default function RoutingDiagram({ providers }: { providers: string[] }) {
     <svg
       className="rt-diagram"
       viewBox={`0 0 ${W} ${H}`}
-      role="img"
       preserveAspectRatio="xMidYMid meet"
-      aria-label={`You send one request to QRouter, which routes it to ${count} quantum providers: ${providers.join(", ")}.`}
+      aria-label={`You send one request to QRouter, which routes it to ${count} quantum providers. Choose one to start a routing task.`}
     >
       <defs>
         {/* userSpaceOnUse so the head keeps its size regardless of the stroke
@@ -67,7 +79,7 @@ export default function RoutingDiagram({ providers }: { providers: string[] }) {
       />
 
       {/* QRouter → every provider */}
-      {providers.map((name, i) => {
+      {providers.map(({ name }, i) => {
         const cy = q(stackTop + i * (TARGET.h + TARGET_GAP) + TARGET.h / 2);
         return (
           <line
@@ -105,20 +117,30 @@ export default function RoutingDiagram({ providers }: { providers: string[] }) {
         </text>
       </g>
 
-      {providers.map((name, i) => {
+      {providers.map(({ name, href }, i) => {
         const y = q(stackTop + i * (TARGET.h + TARGET_GAP));
+        const mid = q(y + TARGET.h / 2);
         return (
-          <g className="rt-box" key={`box:${name}`}>
-            <rect x={TARGET.x} y={y} width={TARGET.w} height={TARGET.h} rx={10} />
-            <text
-              x={TARGET.x + TARGET.w / 2}
-              y={q(y + TARGET.h / 2)}
-              textAnchor="middle"
-              dominantBaseline="central"
-            >
-              {name}
-            </text>
-          </g>
+          <Link key={`box:${name}`} href={href} className="rt-target" aria-label={`Route a task using ${name}`}>
+            <g className="rt-box">
+              <rect x={TARGET.x} y={y} width={TARGET.w} height={TARGET.h} rx={10} />
+              <text x={TARGET.x + TARGET.w / 2} y={mid} textAnchor="middle" dominantBaseline="central">
+                {name}
+              </text>
+              {/* Only visible on hover or focus — at rest the picture stays a
+                  picture, and the cue arrives exactly when it is useful. */}
+              <text
+                className="rt-target-cue"
+                x={TARGET.x + TARGET.w - 16}
+                y={mid}
+                textAnchor="end"
+                dominantBaseline="central"
+                aria-hidden="true"
+              >
+                →
+              </text>
+            </g>
+          </Link>
         );
       })}
     </svg>

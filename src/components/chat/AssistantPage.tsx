@@ -7,7 +7,12 @@ import QuantumChat from "@/components/chat/QuantumChat";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
-export default async function AssistantPage() {
+export default async function AssistantPage({
+  routeProvider = null,
+}: {
+  /** Provider the user pressed on the routing tab, already validated. */
+  routeProvider?: string | null;
+}) {
   let userName = "developer";
   let balance: number | null = 10;
   // The panel keeps its own localStorage record of a dismissal, so it is safe
@@ -50,7 +55,12 @@ export default async function AssistantPage() {
 
   return (
     <div className="console-page qc-page">
-      <QuantumChat userName={userName} balance={balance} showGetStarted={showGetStarted} />
+      <QuantumChat
+        userName={userName}
+        balance={balance}
+        showGetStarted={showGetStarted}
+        routeProvider={routeProvider}
+      />
     </div>
   );
 }

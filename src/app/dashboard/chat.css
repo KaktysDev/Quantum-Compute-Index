@@ -543,11 +543,30 @@
   transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 .qc-composer:focus-within { border-color: var(--qr-accent); box-shadow: 0 0 0 3px var(--qr-accent-dim); }
+/* The chip and the textarea share one wrapping row so the placeholder reads as
+   the continuation of the chip's sentence. `flex-wrap` rather than a fixed
+   two-column layout: on a narrow composer the hint drops to its own line
+   instead of being squeezed into four characters. */
+.qc-composer-field {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.3rem 0.45rem;
+}
+/* The 46px floor below is two lines of value text and nothing to spare. Beside
+   a chip the field is narrower, so on a phone the hint wraps to a second line
+   and the descenders of that line are what the floor clips. Only the chip case
+   needs the extra room. */
+.qc-composer-field:has(.qc-chip) textarea { min-height: 52px; }
 .qc-composer textarea {
   min-width: 0;
   min-height: 46px;
   max-height: 200px;
-  flex: 1;
+  /* A basis in ch, not 0: with a chip present the textarea keeps enough room
+     for the hint to be worth reading, and wraps below the chip when it cannot. */
+  flex: 1 1 22ch;
   border: 0;
   outline: 0;
   resize: none;
@@ -556,6 +575,57 @@
   font: 0.83rem/1.6 var(--font-sans), sans-serif;
 }
 .qc-composer textarea::placeholder { color: var(--qr-dim); }
+/* The console's blanket focus ring for text fields (console.css) has to be
+   cancelled here. It was invisible for as long as the textarea filled the
+   composer edge to edge — the ring sat exactly under the composer's own
+   `:focus-within` ring — but beside a chip the textarea is narrower than its
+   shell, and the ring draws a second box inside the first. The composer already
+   shows focus for the pair of them. */
+.console-shell .qc-composer textarea:focus { box-shadow: none; }
+
+/* ── The routing chip ─────────────────────────────────────────────────────
+   One provider, held in the composer as a single solid object: it is a sibling
+   of the textarea, not text inside it, so there is no caret position within it
+   and no half of it to select. Backspace against its right edge takes all of
+   it — see the handler in QuantumChat. Blue because it has to read as a thing
+   set into the line rather than as more of the sentence. */
+.qc-chip {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.14rem 0.24rem 0.14rem 0.5rem;
+  border: 1px solid var(--qr-blue-line);
+  border-radius: var(--qr-radius-xs);
+  background: var(--qr-blue-dim);
+  color: var(--qr-blue);
+  font: 520 0.78rem/1.5 var(--font-sans), sans-serif;
+  letter-spacing: -0.006em;
+  white-space: nowrap;
+  user-select: none;
+  animation: qc-chip-in 180ms var(--qr-ease);
+}
+.qc-chip-text { overflow: hidden; text-overflow: ellipsis; }
+.qc-chip-clear {
+  display: grid;
+  width: 17px;
+  height: 17px;
+  flex: none;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity var(--qr-fast) ease, background-color var(--qr-fast) ease;
+}
+.qc-chip-clear:hover { background: var(--qr-blue-soft); opacity: 1; }
+.qc-chip-clear:focus-visible { outline: 2px solid var(--qr-blue); outline-offset: 1px; opacity: 1; }
+@keyframes qc-chip-in {
+  from { opacity: 0; transform: translateY(-3px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
 .qc-send {
   display: grid;
   width: 34px;
@@ -612,6 +682,7 @@
   .qc-ghost-caret,
   .qc-progress-bar::after { animation: none; }
   .qc-progress-bar::after { left: 0; width: 100%; }
+  .qc-chip { animation: none; }
   .qc-ghost,
   .qc-history { transition: none; }
 }
