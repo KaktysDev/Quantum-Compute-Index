@@ -40,6 +40,7 @@ import {
 import LogoMark from "@/components/LogoMark";
 import GetStartedPanel from "@/components/chat/GetStartedPanel";
 import { getBackend } from "@/lib/qrouter/catalog";
+import { splitChatProposals, type ChatProposal } from "@/lib/qrouter/chatProposals";
 import { formatDuration } from "@/lib/qrouter/duration";
 
 /** Backend ids are stable storage keys; show the human name where one exists. */
@@ -62,18 +63,6 @@ interface ChatMsg {
   error?: string;
   startedAt: number;
   thoughtMs?: number;
-}
-
-interface Proposal {
-  name?: string;
-  circuit?: string;
-  repository?: { url: string; ref?: string; path: string };
-  format?: "openqasm2" | "openqasm3";
-  shots?: number;
-  target?: string;
-  routing_mode?: "balanced" | "cost" | "speed" | "quality";
-  constraints?: { maxCost?: number; kind?: "qpu" | "simulator"; minFidelity?: number };
-  note?: string;
 }
 
 const SUGGESTIONS = [
@@ -296,18 +285,6 @@ function Markdown({ text }: { text: string }) {
 
 // ── proposal extraction ─────────────────────────────────────────────────────
 
-function splitProposal(content: string): { body: string; proposal: Proposal | null } {
-  const match = /```qrouter-proposal\s*\n([\s\S]*?)```/.exec(content);
-  if (!match) return { body: content, proposal: null };
-  let proposal: Proposal | null = null;
-  try {
-    proposal = JSON.parse(match[1]) as Proposal;
-  } catch {
-    proposal = null;
-  }
-  return { body: content.replace(match[0], "").trimEnd(), proposal };
-}
-
 // ── job confirmation card ───────────────────────────────────────────────────
 
 interface QuoteState {
@@ -322,7 +299,7 @@ interface QuoteState {
   analysis?: { qubits: number; depth: number; complexity: string };
 }
 
-function JobProposalCard({ proposal, balance }: { proposal: Proposal; balance: number | null }) {
+function JobProposalCard({ proposal, balance }: { proposal: ChatProposal; balance: number | null }) {
   const [quote, setQuote] = useState<QuoteState>({ status: "loading" });
   const [phase, setPhase] = useState<"review" | "running" | "done" | "failed" | "dismissed">("review");
   const [result, setResult] = useState<{ id: string; status: string; backend: string; counts?: Record<string, number>; total?: number } | null>(null);
@@ -977,7 +954,7 @@ export default function QuantumChat({
                       </div>
                     );
                   }
-                  const { body, proposal } = splitProposal(msg.content);
+                  const { body, proposals } = splitChatProposals(msg.content);
                   return (
                     <div key={msg.key} className="qc-msg assistant">
                       <span className="qc-avatar"><LogoMark size={18} /></span>
@@ -988,8 +965,17 @@ export default function QuantumChat({
                         )}
                         {body && <Markdown text={body} />}
                         {msg.status === "streaming" && msg.content && <span className="qc-caret" aria-hidden="true" />}
-                        {proposal && msg.status !== "streaming" && (
-                          <JobProposalCard proposal={proposal} balance={balance} />
+                        {proposals.length > 0 && msg.status !== "streaming" && (
+                          <div className="qc-proposal-list">
+                            {proposals.length > 1 && <p>{proposals.length} job proposals matched from the connected repository.</p>}
+                            {proposals.map((proposal, index) => (
+                              <JobProposalCard
+                                key={`${proposal.repository?.url ?? "inline"}:${proposal.repository?.path ?? proposal.name ?? "task"}:${index}`}
+                                proposal={proposal}
+                                balance={balance}
+                              />
+                            ))}
+                          </div>
                         )}
                         {msg.status === "error" && (
                           <p className="qc-msg-error"><AlertCircle size={13} /> {msg.error}</p>

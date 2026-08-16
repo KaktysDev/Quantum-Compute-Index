@@ -23,9 +23,10 @@ import { createAIChatCompletion } from "@/lib/ai/inference";
 import { canAccessConsole } from "@/lib/access";
 import { analyzeCircuit, CircuitValidationError } from "@/lib/qrouter/analyze";
 import { BACKENDS, withQciSnapshot } from "@/lib/qrouter/catalog";
+import { splitChatProposals } from "@/lib/qrouter/chatProposals";
 import { demoJobs, demoProjects } from "@/lib/qrouter/demo-store";
 import { demoV2Circuits, demoV2Groups } from "@/lib/qrouter/v2-demo-store";
-import { matchGithubQuantumTaskMention, matchGithubRepositoryMention, type GithubQuantumTaskCandidate, type GithubRepo } from "@/lib/qrouter/github";
+import { matchGithubQuantumTaskMention, matchGithubQuantumTaskMentions, matchGithubRepositoryMention, type GithubQuantumTaskCandidate, type GithubRepo } from "@/lib/qrouter/github";
 import { normalizeCircuitPath, normalizeRef, normalizeRepository } from "@/lib/qrouter/repositories";
 import { nextAttemptCandidate, retryDelaySeconds } from "@/lib/qrouter/orchestration";
 import { applyProviderHealth } from "@/lib/qrouter/providerHealth";
@@ -438,10 +439,11 @@ describe("QRouter circuit pipeline", () => {
       language: "OpenQASM",
       description: null,
     });
-    const repositories = [repository("acme/bell-lab"), repository("research/vqe")];
+    const repositories = [repository("acme/bell-lab"), repository("research/vqe"), repository("KaktysDev/quantum-task")];
 
     expect(matchGithubRepositoryMention("run bell-lab with 2048 shots", repositories)?.fullName).toBe("acme/bell-lab");
     expect(matchGithubRepositoryMention("inspect research/vqe", repositories)?.fullName).toBe("research/vqe");
+    expect(matchGithubRepositoryMention("use my GitHub quantum task repo", repositories)?.fullName).toBe("KaktysDev/quantum-task");
     expect(matchGithubRepositoryMention("tell me about routing", repositories)).toBeNull();
   });
 
@@ -484,6 +486,8 @@ describe("QRouter circuit pipeline", () => {
     });
     const tasks: GithubQuantumTaskCandidate[] = [
       { repository: repository("KaktysDev/quantum-task"), path: "01-bell-universal.qasm", size: 120 },
+      { repository: repository("KaktysDev/quantum-task"), path: "02-ibm-native.qasm", size: 180 },
+      { repository: repository("KaktysDev/quantum-task"), path: "03-iqm-native.qasm", size: 200 },
       { repository: repository("KaktysDev/quantum-task"), path: "04-ionq-native.qasm", size: 240 },
       { repository: repository("labs/algorithms"), path: "circuits/vqe.qasm", size: 300 },
     ];
@@ -493,6 +497,29 @@ describe("QRouter circuit pipeline", () => {
       tasks,
     )?.path).toBe("04-ionq-native.qasm");
     expect(matchGithubQuantumTaskMention("just find a quantum task in my GitHub", tasks)).toBeNull();
+    expect(matchGithubQuantumTaskMentions(
+      "find ionq, ibm, iqm, and bell quantum tasks and run all 4",
+      tasks,
+    ).map((task) => task.path)).toEqual([
+      "01-bell-universal.qasm",
+      "02-ibm-native.qasm",
+      "03-iqm-native.qasm",
+      "04-ionq-native.qasm",
+    ]);
+  });
+
+  it("extracts a multi-task proposal array for independent confirmation cards", () => {
+    const payload = [
+      { name: "Bell", repository: { url: "https://github.com/KaktysDev/quantum-task", path: "01-bell-universal.qasm" } },
+      { name: "IBM", repository: { url: "https://github.com/KaktysDev/quantum-task", path: "02-ibm-native.qasm" } },
+      { name: "IQM", repository: { url: "https://github.com/KaktysDev/quantum-task", path: "03-iqm-native.qasm" } },
+      { name: "IonQ", repository: { url: "https://github.com/KaktysDev/quantum-task", path: "04-ionq-native.qasm" } },
+    ];
+    const parsed = splitChatProposals(`Found them.\n\n\`\`\`qrouter-proposal\n${JSON.stringify(payload)}\n\`\`\``);
+
+    expect(parsed.body).toBe("Found them.");
+    expect(parsed.proposals).toHaveLength(4);
+    expect(parsed.proposals.map((proposal) => proposal.repository?.path)).toEqual(payload.map((proposal) => proposal.repository.path));
   });
 
   it("imports and deploys a commit-pinned repository circuit", async () => {
@@ -679,7 +706,7 @@ describe("QRouter circuit pipeline", () => {
     expect(events).toContain("event: done");
   });
 
-  it("discovers a described task from the connected GitHub installation for chat", async () => {
+  it("attaches a spoken repository name and all requested tasks to chat context", async () => {
     process.env.GEMINI_API_KEY = "test-gemini-key";
     process.env.GITHUB_TOKEN = "test-github-token";
     const ionq = bell.replace("h q[0];", "x q[0];");
@@ -711,26 +738,31 @@ describe("QRouter circuit pipeline", () => {
       if (url.includes("/repos/KaktysDev/quantum-task/git/trees/main")) {
         return Response.json({ tree: [
           { path: "01-bell-universal.qasm", type: "blob", sha: "bell-sha", size: bell.length },
+          { path: "02-ibm-native.qasm", type: "blob", sha: "ibm-sha", size: bell.length },
+          { path: "03-iqm-native.qasm", type: "blob", sha: "iqm-sha", size: bell.length },
           { path: "04-ionq-native.qasm", type: "blob", sha: "ionq-sha", size: ionq.length },
         ] });
       }
-      if (url.includes("/contents/04-ionq-native.qasm")) {
+      if (url.includes("/contents/")) {
         return Response.json({
-          content: Buffer.from(ionq).toString("base64"),
+          content: Buffer.from(url.includes("ionq") ? ionq : bell).toString("base64"),
           encoding: "base64",
-          sha: "ionq-sha",
-          size: ionq.length,
-          html_url: "https://github.com/KaktysDev/quantum-task/blob/main/04-ionq-native.qasm",
+          sha: "task-sha",
+          size: bell.length,
+          html_url: `https://github.com/KaktysDev/quantum-task/blob/main/${url.split("/contents/")[1].split("?")[0]}`,
         });
       }
       if (url.includes(":streamGenerateContent?alt=sse")) {
         const body = JSON.parse(String(init?.body));
         const system = body.systemInstruction.parts[0].text as string;
-        expect(system).toContain('"matchedBy": "connected_task"');
-        expect(system).toContain('"matchedTaskPath": "04-ionq-native.qasm"');
-        expect(system).toContain('"path": "04-ionq-native.qasm"');
+        expect(system).toContain('"matchedBy": "connected_name"');
+        expect(system).toContain('"requestedTaskPaths"');
+        for (const path of ["01-bell-universal.qasm", "02-ibm-native.qasm", "03-iqm-native.qasm", "04-ionq-native.qasm"]) {
+          expect(system).toContain(`"${path}"`);
+        }
+        expect(system).toContain("emit one array proposal item for every requested path");
         return new Response([
-          `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: "I found the IonQ task in your connected repository.", thought: false }] } }] })}`,
+          `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: "I found all four tasks in your connected repository.", thought: false }] } }] })}`,
           `data: ${JSON.stringify({ usageMetadata: { totalTokenCount: 55 } })}`,
           "",
         ].join("\n\n"), { headers: { "content-type": "text/event-stream" } });
@@ -742,12 +774,12 @@ describe("QRouter circuit pipeline", () => {
     const response = await createChat(new Request("http://localhost/api/chat", {
       method: "POST",
       headers: { authorization: "Bearer qci_test_local_development", "content-type": "application/json" },
-      body: JSON.stringify({ message: "Go through my GitHub and find the IonQ task, then execute it on QCI Aer CPU." }),
+      body: JSON.stringify({ message: "Route task using QCI Simulator: find ionq, ibm, iqm, and bell quantum tasks, and run all 4 of them from my GitHub quantum task repo" }),
     }));
     const events = await response.text();
 
     expect(response.status).toBe(200);
-    expect(events).toContain("I found the IonQ task in your connected repository.");
+    expect(events).toContain("I found all four tasks in your connected repository.");
   });
 
   it("sends OpenRouter attribution and provider routing options", async () => {

@@ -220,12 +220,28 @@ export function matchGithubRepositoryMention(message: string, repositories: Gith
   const escaped = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const containsToken = (value: string) =>
     new RegExp(`(^|[^A-Za-z0-9_.-])${escaped(value)}(?=$|[^A-Za-z0-9_.-])`, "i").test(message);
+  // People naturally say repository slugs with punctuation as spaces (for
+  // example `quantum-task` becomes “quantum task repo”). Match that spoken
+  // form too, while keeping the same token boundaries and uniqueness rule as
+  // exact slug matching so a private repository is never selected by a loose
+  // substring.
+  const containsSpokenSlug = (value: string) => {
+    const words = value.split(/[._-]+/).filter(Boolean);
+    if (words.length < 2) return false;
+    const phrase = words.map(escaped).join("[\\s._-]+");
+    const qualifier = "repo(?:sitory)?|project";
+    return new RegExp(
+      `(^|[^A-Za-z0-9])(?:${phrase}[\\s._-]+(?:${qualifier})|(?:${qualifier})[\\s._-]+${phrase})(?=$|[^A-Za-z0-9])`,
+      "i",
+    ).test(message);
+  };
 
   const fullNameMatches = repositories.filter((repository) => containsToken(repository.fullName));
   if (fullNameMatches.length === 1) return fullNameMatches[0];
 
   const nameMatches = repositories.filter(
-    (repository) => repository.name.length >= 3 && containsToken(repository.name),
+    (repository) => repository.name.length >= 3 &&
+      (containsToken(repository.name) || containsSpokenSlug(repository.name)),
   );
   return nameMatches.length === 1 ? nameMatches[0] : null;
 }
@@ -262,25 +278,48 @@ export function matchGithubQuantumTaskMention(
   message: string,
   candidates: GithubQuantumTaskCandidate[],
 ): GithubQuantumTaskCandidate | null {
+  const ranked = rankGithubQuantumTasks(message, candidates);
+  if (!ranked[0] || ranked[0].score === 0) return null;
+  if (ranked[1]?.score === ranked[0].score) return null;
+  return ranked[0].candidate;
+}
+
+/**
+ * Find every circuit path independently named in a request. This is the
+ * multi-task counterpart to `matchGithubQuantumTaskMention`: a request such as
+ * “run the IonQ, IBM, IQM and Bell tasks” intentionally has several equally
+ * strong matches, not an ambiguity that should erase repository context.
+ */
+export function matchGithubQuantumTaskMentions(
+  message: string,
+  candidates: GithubQuantumTaskCandidate[],
+): GithubQuantumTaskCandidate[] {
+  const ranked = rankGithubQuantumTasks(message, candidates);
+  const pathMatches = ranked.filter(({ pathScore }) => pathScore > 0);
+  if (pathMatches.length > 0) return pathMatches.map(({ candidate }) => candidate);
+  if (!ranked[0] || ranked[0].score === 0 || ranked[1]?.score === ranked[0].score) return [];
+  return [ranked[0].candidate];
+}
+
+function rankGithubQuantumTasks(message: string, candidates: GithubQuantumTaskCandidate[]) {
   const terms = [...new Set(searchWords(message))];
-  if (!terms.length) return candidates.length === 1 ? candidates[0] : null;
+  if (!terms.length) {
+    return candidates.length === 1 ? [{ candidate: candidates[0], score: 1, pathScore: 1 }] : [];
+  }
 
   const ranked = candidates.map((candidate) => {
     const pathWords = new Set(searchWords(candidate.path));
     const repoWords = new Set(searchWords(`${candidate.repository.fullName} ${candidate.repository.description ?? ""}`));
     const path = candidate.path.toLowerCase();
-    const score = terms.reduce((total, term) => {
+    const pathScore = terms.reduce((total, term) => {
       if (pathWords.has(term)) return total + 8;
-      if (repoWords.has(term)) return total + 4;
       if (path.includes(term)) return total + 2;
       return total;
     }, 0);
-    return { candidate, score };
+    const repoScore = terms.reduce((total, term) => repoWords.has(term) ? total + 4 : total, 0);
+    return { candidate, score: pathScore + repoScore, pathScore };
   }).sort((a, b) => b.score - a.score);
-
-  if (!ranked[0] || ranked[0].score === 0) return null;
-  if (ranked[1]?.score === ranked[0].score) return null;
-  return ranked[0].candidate;
+  return ranked;
 }
 
 interface RawRepo {
