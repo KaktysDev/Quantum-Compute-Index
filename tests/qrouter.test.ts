@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { BraketClient } from "@aws-sdk/client-braket";
 import { POST as createChat } from "@/app/api/chat/route";
 import { POST as createChatQuote } from "@/app/api/chat/quote/route";
+import { POST as getChatProposalStatus } from "@/app/api/chat/proposal-status/route";
 import { GET as listBackends } from "@/app/api/v1/backends/route";
 import { POST as createJob } from "@/app/api/v1/jobs/route";
 import { POST as createRouteAdvice } from "@/app/api/v1/ai/route-advice/route";
@@ -23,7 +24,7 @@ import { createAIChatCompletion } from "@/lib/ai/inference";
 import { canAccessConsole } from "@/lib/access";
 import { analyzeCircuit, CircuitValidationError } from "@/lib/qrouter/analyze";
 import { BACKENDS, withQciSnapshot } from "@/lib/qrouter/catalog";
-import { splitChatProposals } from "@/lib/qrouter/chatProposals";
+import { proposalIdempotencyKey, splitChatProposals } from "@/lib/qrouter/chatProposals";
 import { demoJobs, demoProjects } from "@/lib/qrouter/demo-store";
 import { demoV2Circuits, demoV2Groups } from "@/lib/qrouter/v2-demo-store";
 import { matchGithubQuantumTaskMention, matchGithubQuantumTaskMentions, matchGithubRepositoryMention, type GithubQuantumTaskCandidate, type GithubRepo } from "@/lib/qrouter/github";
@@ -520,6 +521,20 @@ describe("QRouter circuit pipeline", () => {
     expect(parsed.body).toBe("Found them.");
     expect(parsed.proposals).toHaveLength(4);
     expect(parsed.proposals.map((proposal) => proposal.repository?.path)).toEqual(payload.map((proposal) => proposal.repository.path));
+  });
+
+  it("gives each persisted proposal a stable, message-scoped execution key", async () => {
+    expect(proposalIdempotencyKey(481, 0)).toBe("qrouter-chat-481-0");
+    expect(proposalIdempotencyKey(481, 3)).toBe("qrouter-chat-481-3");
+    expect(proposalIdempotencyKey(482, 0)).not.toBe(proposalIdempotencyKey(481, 0));
+    expect(() => proposalIdempotencyKey(481, 10)).toThrow("position");
+
+    const invalid = await getChatProposalStatus(new Request("http://localhost/api/chat/proposal-status", {
+      method: "POST",
+      headers: { authorization: "Bearer qci_test_local_development", "content-type": "application/json" },
+      body: JSON.stringify({ messageId: 481 }),
+    }));
+    expect(invalid.status).toBe(400);
   });
 
   it("imports and deploys a commit-pinned repository circuit", async () => {

@@ -10,6 +10,13 @@ export interface ChatProposal {
   note?: string;
 }
 
+/** Stable per assistant-message position: retries replay, later requests rerun. */
+export function proposalIdempotencyKey(messageId: number, proposalIndex: number): string {
+  if (!Number.isSafeInteger(messageId) || messageId < 1) throw new Error("A persisted assistant message is required.");
+  if (!Number.isInteger(proposalIndex) || proposalIndex < 0 || proposalIndex > 9) throw new Error("Invalid proposal position.");
+  return `qrouter-chat-${messageId}-${proposalIndex}`;
+}
+
 /**
  * Remove the assistant-only proposal fence from visible markdown and normalize
  * both the original single-job payload and the multi-job array payload used by

@@ -40,7 +40,7 @@ import {
 import LogoMark from "@/components/LogoMark";
 import GetStartedPanel from "@/components/chat/GetStartedPanel";
 import { getBackend } from "@/lib/qrouter/catalog";
-import { splitChatProposals, type ChatProposal } from "@/lib/qrouter/chatProposals";
+import { proposalIdempotencyKey, splitChatProposals, type ChatProposal } from "@/lib/qrouter/chatProposals";
 import { formatDuration } from "@/lib/qrouter/duration";
 
 /** Backend ids are stable storage keys; show the human name where one exists. */
@@ -55,6 +55,7 @@ interface ThreadRow {
 }
 
 interface ChatMsg {
+  id?: number;
   key: string;
   role: "user" | "assistant";
   content: string;
@@ -299,11 +300,22 @@ interface QuoteState {
   analysis?: { qubits: number; depth: number; complexity: string };
 }
 
-function JobProposalCard({ proposal, balance }: { proposal: ChatProposal; balance: number | null }) {
+function JobProposalCard({
+  proposal,
+  balance,
+  messageId,
+  proposalIndex,
+}: {
+  proposal: ChatProposal;
+  balance: number | null;
+  messageId?: number;
+  proposalIndex: number;
+}) {
   const [quote, setQuote] = useState<QuoteState>({ status: "loading" });
   const [phase, setPhase] = useState<"review" | "running" | "done" | "failed" | "dismissed">("review");
   const [result, setResult] = useState<{ id: string; status: string; backend: string; counts?: Record<string, number>; total?: number } | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  const [historyChecked, setHistoryChecked] = useState(!messageId);
   // Wall-clock for this run: `runStartedAt` is stamped on confirm, `runMs` is
   // frozen when the job settles so the card keeps reporting the real duration.
   const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
@@ -311,6 +323,7 @@ function JobProposalCard({ proposal, balance }: { proposal: ChatProposal; balanc
   const [tick, setTick] = useState(0);
 
   const shots = proposal.shots ?? 1024;
+  const stableIdempotencyKey = messageId === undefined ? null : proposalIdempotencyKey(messageId, proposalIndex);
 
   // Ticks only while a job is in flight.
   useEffect(() => {
@@ -377,6 +390,52 @@ function JobProposalCard({ proposal, balance }: { proposal: ChatProposal; balanc
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // A proposal card is reconstructed from persisted assistant text whenever a
+  // chat is reopened. Ask the server whether this exact message-position was
+  // already submitted before enabling the confirmation button. The server also
+  // recognizes legacy runs created before stable proposal keys were introduced.
+  useEffect(() => {
+    if (!messageId || !stableIdempotencyKey || quote.status !== "ready" || !quote.circuit) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/chat/proposal-status", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            messageId,
+            idempotencyKey: stableIdempotencyKey,
+            name: proposal.name,
+            circuit: quote.circuit,
+            shots,
+            target: proposal.target ?? "auto",
+            routing_mode: proposal.routing_mode ?? "balanced",
+          }),
+        });
+        if (cancelled) return;
+        if (res.ok) {
+          const data = await res.json();
+          setResult({
+            id: data.id,
+            status: data.status,
+            backend: data.selected_backend_id,
+            counts: data.result?.counts,
+            total: data.quote?.total,
+          });
+          setPhase("done");
+        }
+      } catch {
+        // A status outage must not break chat. The stable idempotency key used
+        // below still prevents a second charge if the user retries.
+      } finally {
+        if (!cancelled) setHistoryChecked(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [messageId, proposal.name, proposal.routing_mode, proposal.target, quote, shots, stableIdempotencyKey]);
+
   async function run() {
     if (quote.status !== "ready" || !quote.circuit) return;
     const startedAt = Date.now();
@@ -387,7 +446,10 @@ function JobProposalCard({ proposal, balance }: { proposal: ChatProposal; balanc
     try {
       const res = await fetch("/api/v1/jobs", {
         method: "POST",
-        headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": stableIdempotencyKey ?? crypto.randomUUID(),
+        },
         body: JSON.stringify({
           name: proposal.name ?? "Assistant task",
           circuit: quote.circuit,
@@ -428,7 +490,15 @@ function JobProposalCard({ proposal, balance }: { proposal: ChatProposal; balanc
       <header>
         <Sparkles size={14} />
         <b>Job proposal</b>
-        <span>requires your confirmation</span>
+        <span>
+          {!historyChecked
+            ? "checking previous run"
+            : phase === "done"
+              ? "already confirmed"
+              : phase === "running"
+                ? "confirmed"
+                : "requires your confirmation"}
+        </span>
       </header>
 
       {proposal.note && <p className="qc-proposal-note">{proposal.note}</p>}
@@ -526,9 +596,13 @@ function JobProposalCard({ proposal, balance }: { proposal: ChatProposal; balanc
             type="button"
             className="qc-run"
             onClick={run}
-            disabled={quote.status !== "ready" || phase === "running" || insufficient}
+            disabled={!historyChecked || quote.status !== "ready" || phase === "running" || insufficient}
           >
-            {phase === "running" ? <><Loader2 size={14} className="spin" /> Routing &amp; executing…</> : <>Confirm &amp; run</>}
+            {!historyChecked
+              ? <><Loader2 size={14} className="spin" /> Checking previous run…</>
+              : phase === "running"
+                ? <><Loader2 size={14} className="spin" /> Routing &amp; executing…</>
+                : <>Confirm &amp; run</>}
           </button>
           <button type="button" className="qc-dismiss" onClick={() => setPhase("dismissed")} disabled={phase === "running"}>
             Dismiss
@@ -658,6 +732,7 @@ export default function QuantumChat({
       setThreadId(id);
       setMessages(
         (data.messages ?? []).map((row: { id: number; role: "user" | "assistant"; content: string; thoughts: string | null }) => ({
+          id: Number(row.id),
           key: `db-${row.id}`,
           role: row.role,
           content: row.content,
@@ -811,7 +886,7 @@ export default function QuantumChat({
             continue;
           }
           if (!line.startsWith("data: ")) continue;
-          let data: { text?: string; threadId?: string; message?: string };
+          let data: { text?: string; threadId?: string; message?: string; assistantMessageId?: number | null };
           try {
             data = JSON.parse(line.slice(6));
           } catch {
@@ -829,6 +904,8 @@ export default function QuantumChat({
               content: msg.content + data.text,
               thoughtMs: msg.content ? msg.thoughtMs : msg.thoughtMs ?? performance.now() - startedAt,
             }));
+          } else if (eventName === "done" && data.assistantMessageId) {
+            patch({ id: Number(data.assistantMessageId) });
           } else if (eventName === "error") {
             throw new Error(data.message ?? "The assistant stream failed.");
           }
@@ -973,6 +1050,8 @@ export default function QuantumChat({
                                 key={`${proposal.repository?.url ?? "inline"}:${proposal.repository?.path ?? proposal.name ?? "task"}:${index}`}
                                 proposal={proposal}
                                 balance={balance}
+                                messageId={msg.id}
+                                proposalIndex={index}
                               />
                             ))}
                           </div>

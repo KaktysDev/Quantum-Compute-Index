@@ -687,6 +687,7 @@ export async function POST(request: Request) {
       let answer = "";
       let thoughts = "";
       let totalTokens = 0;
+      let assistantMessageId: number | null = null;
       try {
         send("meta", { threadId: threadId ?? "local", title, persisted: persist });
         for await (const chunk of streamAssistant({
@@ -713,18 +714,19 @@ export async function POST(request: Request) {
         }
         if (admin && persist && threadId && answer) {
           try {
-            await admin.from("chat_messages").insert({
+            const { data, error } = await admin.from("chat_messages").insert({
               thread_id: threadId,
               role: "assistant",
               content: answer,
               thoughts: thoughts || null,
-            });
+            }).select("id").single();
+            if (!error) assistantMessageId = Number(data.id);
           } catch {
             /* memory is best-effort */
           }
         }
         await recordAssistantTokens(principal, totalTokens);
-        send("done", { ok: true });
+        send("done", { ok: true, assistantMessageId });
       } catch (error) {
         // Upstream AI errors arrive as the provider's own message text, which
         // can be as bare as "Internal server error." — indistinguishable from a
