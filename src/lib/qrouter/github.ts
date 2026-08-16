@@ -230,6 +230,59 @@ export function matchGithubRepositoryMention(message: string, repositories: Gith
   return nameMatches.length === 1 ? nameMatches[0] : null;
 }
 
+export interface GithubQuantumTaskCandidate {
+  repository: GithubRepo;
+  path: string;
+  size: number;
+}
+
+// Source-discovery words should describe the circuit, not the action or the
+// destination backend. This leaves useful identifiers such as ionq, aria,
+// bell, ghz, qaoa and vqe while discarding “run it on qci aer cpu”.
+const TASK_SEARCH_STOP_WORDS = new Set([
+  "about", "access", "account", "again", "against", "all", "also", "and", "any", "ask", "available",
+  "backend", "can", "circuit", "connected", "cpu", "execute", "file", "find", "for", "from", "github",
+  "give", "go", "going", "gpu", "have", "into", "just", "locate", "look", "mine", "my", "name", "need",
+  "please", "project", "pull", "qasm", "qci", "quantum", "repo", "repository", "run", "search", "simulator",
+  "source", "task", "tasks", "tell", "that", "the", "their", "there", "this", "through", "using", "want",
+  "which", "with", "workspace", "would", "you", "your",
+]);
+
+function searchWords(value: string): string[] {
+  return (value.toLowerCase().match(/[a-z0-9]+/g) ?? [])
+    .filter((word) => word.length >= 3 && !TASK_SEARCH_STOP_WORDS.has(word));
+}
+
+/**
+ * Match a natural-language task description against `.qasm` paths across a
+ * connected installation. A unique best score is required so chat never picks
+ * an arbitrary private circuit when the request is ambiguous.
+ */
+export function matchGithubQuantumTaskMention(
+  message: string,
+  candidates: GithubQuantumTaskCandidate[],
+): GithubQuantumTaskCandidate | null {
+  const terms = [...new Set(searchWords(message))];
+  if (!terms.length) return candidates.length === 1 ? candidates[0] : null;
+
+  const ranked = candidates.map((candidate) => {
+    const pathWords = new Set(searchWords(candidate.path));
+    const repoWords = new Set(searchWords(`${candidate.repository.fullName} ${candidate.repository.description ?? ""}`));
+    const path = candidate.path.toLowerCase();
+    const score = terms.reduce((total, term) => {
+      if (pathWords.has(term)) return total + 8;
+      if (repoWords.has(term)) return total + 4;
+      if (path.includes(term)) return total + 2;
+      return total;
+    }, 0);
+    return { candidate, score };
+  }).sort((a, b) => b.score - a.score);
+
+  if (!ranked[0] || ranked[0].score === 0) return null;
+  if (ranked[1]?.score === ranked[0].score) return null;
+  return ranked[0].candidate;
+}
+
 interface RawRepo {
   full_name: string;
   name: string;

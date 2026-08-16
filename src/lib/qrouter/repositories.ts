@@ -135,6 +135,33 @@ export interface RepositoryAccessOptions {
   allowPrivate?: boolean;
 }
 
+function circuitFilesFromTree(tree: Array<{ path: string; type: string; sha: string; size?: number }>): RepositoryFile[] {
+  return tree
+    .filter((item) => item.type === "blob" && /\.qasm$/i.test(item.path))
+    .map((item) => ({ path: item.path, sha: item.sha, size: item.size ?? 0 }))
+    .slice(0, 500);
+}
+
+/**
+ * Build a lightweight task index for an already-authorized repository. Unlike
+ * `inspectRepository`, this deliberately skips metadata and qrouter.json reads:
+ * chat discovery may search several connected repositories and only needs paths
+ * until it has selected one candidate.
+ */
+export async function listRepositoryCircuitFiles(
+  value: string,
+  requestedRef: string,
+  options: RepositoryAccessOptions = {},
+): Promise<RepositoryFile[]> {
+  const repository = normalizeRepository(value);
+  const ref = normalizeRef(requestedRef);
+  const tree = await githubJson<{ tree?: Array<{ path: string; type: string; sha: string; size?: number }> }>(
+    `/repos/${repository}/git/trees/${encodeURIComponent(ref)}?recursive=1`,
+    options.token,
+  );
+  return circuitFilesFromTree(tree.tree ?? []);
+}
+
 function assertRepositoryVisibility(isPrivate: boolean, options: RepositoryAccessOptions) {
   if (isPrivate && options.allowPrivate === false) {
     throw new RepositorySourceError(
@@ -152,10 +179,7 @@ export async function inspectRepository(value: string, requestedRef?: string, op
   assertRepositoryVisibility(metadata.private, options);
   const ref = normalizeRef(requestedRef || metadata.default_branch);
   const tree = await githubJson<{ tree?: Array<{ path: string; type: string; sha: string; size?: number }>; truncated?: boolean }>(`/repos/${repository}/git/trees/${encodeURIComponent(ref)}?recursive=1`, token);
-  const files = (tree.tree ?? [])
-    .filter((item) => item.type === "blob" && /\.qasm$/i.test(item.path))
-    .map((item) => ({ path: item.path, sha: item.sha, size: item.size ?? 0 }))
-    .slice(0, 500);
+  const files = circuitFilesFromTree(tree.tree ?? []);
   let config: Record<string, unknown> | null = null;
   const configPath = (tree.tree ?? []).find((item) => item.type === "blob" && /(^|\/)qrouter\.json$/i.test(item.path))?.path;
   if (configPath) {

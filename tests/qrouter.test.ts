@@ -25,7 +25,7 @@ import { analyzeCircuit, CircuitValidationError } from "@/lib/qrouter/analyze";
 import { BACKENDS, withQciSnapshot } from "@/lib/qrouter/catalog";
 import { demoJobs, demoProjects } from "@/lib/qrouter/demo-store";
 import { demoV2Circuits, demoV2Groups } from "@/lib/qrouter/v2-demo-store";
-import { matchGithubRepositoryMention, type GithubRepo } from "@/lib/qrouter/github";
+import { matchGithubQuantumTaskMention, matchGithubRepositoryMention, type GithubQuantumTaskCandidate, type GithubRepo } from "@/lib/qrouter/github";
 import { normalizeCircuitPath, normalizeRef, normalizeRepository } from "@/lib/qrouter/repositories";
 import { nextAttemptCandidate, retryDelaySeconds } from "@/lib/qrouter/orchestration";
 import { applyProviderHealth } from "@/lib/qrouter/providerHealth";
@@ -70,6 +70,8 @@ describe("QRouter circuit pipeline", () => {
     delete process.env.AI_PROVIDER_ORDER;
     delete process.env.GEMINI_API_KEY;
     delete process.env.GEMINI_MODEL;
+    delete process.env.GITHUB_TOKEN;
+    delete process.env.GITHUB_APP_TOKEN;
     delete process.env.AWS_ACCESS_KEY_ID;
     delete process.env.BRAKET_OUTPUT_BUCKET;
     demoJobs.clear();
@@ -467,6 +469,32 @@ describe("QRouter circuit pipeline", () => {
     expect(matchGithubRepositoryMention("run labs/quantum", repositories)?.fullName).toBe("labs/quantum");
   });
 
+  it("finds a uniquely described quantum task across connected repositories", () => {
+    const repository = (fullName: string): GithubRepo => ({
+      fullName,
+      owner: fullName.split("/")[0],
+      name: fullName.split("/")[1],
+      private: true,
+      defaultBranch: "main",
+      updatedAt: "2026-08-16T00:00:00Z",
+      pushedAt: null,
+      htmlUrl: `https://github.com/${fullName}`,
+      language: "OpenQASM",
+      description: null,
+    });
+    const tasks: GithubQuantumTaskCandidate[] = [
+      { repository: repository("KaktysDev/quantum-task"), path: "01-bell-universal.qasm", size: 120 },
+      { repository: repository("KaktysDev/quantum-task"), path: "04-ionq-native.qasm", size: 240 },
+      { repository: repository("labs/algorithms"), path: "circuits/vqe.qasm", size: 300 },
+    ];
+
+    expect(matchGithubQuantumTaskMention(
+      "go through my repo and find the ionq quantum task and execute it on qci aer cpu",
+      tasks,
+    )?.path).toBe("04-ionq-native.qasm");
+    expect(matchGithubQuantumTaskMention("just find a quantum task in my GitHub", tasks)).toBeNull();
+  });
+
   it("imports and deploys a commit-pinned repository circuit", async () => {
     const repositoryConfig = JSON.stringify({ circuit: "circuits/bell.qasm", shots: 256, routing_mode: "cost", optimization_level: 3 });
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
@@ -649,6 +677,77 @@ describe("QRouter circuit pipeline", () => {
     expect(events).toContain("Use auto routing for this Bell circuit.");
     expect(events).toContain("event: usage");
     expect(events).toContain("event: done");
+  });
+
+  it("discovers a described task from the connected GitHub installation for chat", async () => {
+    process.env.GEMINI_API_KEY = "test-gemini-key";
+    process.env.GITHUB_TOKEN = "test-github-token";
+    const ionq = bell.replace("h q[0];", "x q[0];");
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.includes("/user/repos?")) {
+        return Response.json([{
+          full_name: "KaktysDev/quantum-task",
+          owner: { login: "KaktysDev" },
+          name: "quantum-task",
+          private: true,
+          default_branch: "main",
+          updated_at: "2026-08-16T00:00:00Z",
+          pushed_at: "2026-08-16T00:00:00Z",
+          html_url: "https://github.com/KaktysDev/quantum-task",
+          language: "OpenQASM",
+          description: "Quantum task examples",
+        }]);
+      }
+      if (url.endsWith("/repos/KaktysDev/quantum-task")) {
+        return Response.json({
+          full_name: "KaktysDev/quantum-task",
+          html_url: "https://github.com/KaktysDev/quantum-task",
+          default_branch: "main",
+          private: true,
+          updated_at: "2026-08-16T00:00:00Z",
+        });
+      }
+      if (url.includes("/repos/KaktysDev/quantum-task/git/trees/main")) {
+        return Response.json({ tree: [
+          { path: "01-bell-universal.qasm", type: "blob", sha: "bell-sha", size: bell.length },
+          { path: "04-ionq-native.qasm", type: "blob", sha: "ionq-sha", size: ionq.length },
+        ] });
+      }
+      if (url.includes("/contents/04-ionq-native.qasm")) {
+        return Response.json({
+          content: Buffer.from(ionq).toString("base64"),
+          encoding: "base64",
+          sha: "ionq-sha",
+          size: ionq.length,
+          html_url: "https://github.com/KaktysDev/quantum-task/blob/main/04-ionq-native.qasm",
+        });
+      }
+      if (url.includes(":streamGenerateContent?alt=sse")) {
+        const body = JSON.parse(String(init?.body));
+        const system = body.systemInstruction.parts[0].text as string;
+        expect(system).toContain('"matchedBy": "connected_task"');
+        expect(system).toContain('"matchedTaskPath": "04-ionq-native.qasm"');
+        expect(system).toContain('"path": "04-ionq-native.qasm"');
+        return new Response([
+          `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: "I found the IonQ task in your connected repository.", thought: false }] } }] })}`,
+          `data: ${JSON.stringify({ usageMetadata: { totalTokenCount: 55 } })}`,
+          "",
+        ].join("\n\n"), { headers: { "content-type": "text/event-stream" } });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await createChat(new Request("http://localhost/api/chat", {
+      method: "POST",
+      headers: { authorization: "Bearer qci_test_local_development", "content-type": "application/json" },
+      body: JSON.stringify({ message: "Go through my GitHub and find the IonQ task, then execute it on QCI Aer CPU." }),
+    }));
+    const events = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(events).toContain("I found the IonQ task in your connected repository.");
   });
 
   it("sends OpenRouter attribution and provider routing options", async () => {
