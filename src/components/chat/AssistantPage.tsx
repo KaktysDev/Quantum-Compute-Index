@@ -1,7 +1,6 @@
 // Server wrapper for the console assistant: resolves the user's display name,
 // credit balance, and whether the first-run "Get started" panel has already
-// been dismissed. Shared by /dashboard (the console home) and the legacy
-// /dashboard/submit route.
+// been dismissed. Rendered by the dedicated /dashboard/deploy route.
 
 import QuantumChat from "@/components/chat/QuantumChat";
 import { createClient } from "@/lib/supabase/server";

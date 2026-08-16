@@ -964,7 +964,7 @@ export default function QuantumChat({
                 <h1>{greeting}</h1>
                 {/* The composer placeholder below already says what to type,
                     and the footnote already says nothing runs unconfirmed. */}
-                <p>Describe a job, paste a repository, or ask about hardware and pricing.</p>
+                <p>Describe a job, name a connected repository, or ask about hardware and pricing.</p>
                 <GhostSuggestion items={SUGGESTIONS} onPick={send} disabled={busy} />
               </div>
             ) : (
@@ -1032,7 +1032,7 @@ export default function QuantumChat({
                 placeholder={
                   chip
                     ? CHIP_PLACEHOLDER
-                    : 'Describe a job, paste a GitHub repo URL, or ask anything quantum… ("run bell.qasm with 2048 shots")'
+                    : 'Describe a job, name a connected repo, or paste its URL… ("run bell-lab with 2048 shots")'
                 }
                 onChange={(event) => {
                   setInput(event.target.value);

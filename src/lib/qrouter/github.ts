@@ -209,6 +209,27 @@ export interface GithubRepo {
   description: string | null;
 }
 
+/**
+ * Find one connected repository explicitly named in a chat message.
+ *
+ * Full `owner/name` references always win. A short repository name is accepted
+ * only when it is at least three characters and unique across the installation,
+ * so a message cannot silently select the wrong private source.
+ */
+export function matchGithubRepositoryMention(message: string, repositories: GithubRepo[]): GithubRepo | null {
+  const escaped = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const containsToken = (value: string) =>
+    new RegExp(`(^|[^A-Za-z0-9_.-])${escaped(value)}(?=$|[^A-Za-z0-9_.-])`, "i").test(message);
+
+  const fullNameMatches = repositories.filter((repository) => containsToken(repository.fullName));
+  if (fullNameMatches.length === 1) return fullNameMatches[0];
+
+  const nameMatches = repositories.filter(
+    (repository) => repository.name.length >= 3 && containsToken(repository.name),
+  );
+  return nameMatches.length === 1 ? nameMatches[0] : null;
+}
+
 interface RawRepo {
   full_name: string;
   name: string;

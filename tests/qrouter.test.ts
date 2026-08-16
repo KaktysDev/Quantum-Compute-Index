@@ -25,9 +25,11 @@ import { analyzeCircuit, CircuitValidationError } from "@/lib/qrouter/analyze";
 import { BACKENDS, withQciSnapshot } from "@/lib/qrouter/catalog";
 import { demoJobs, demoProjects } from "@/lib/qrouter/demo-store";
 import { demoV2Circuits, demoV2Groups } from "@/lib/qrouter/v2-demo-store";
+import { matchGithubRepositoryMention, type GithubRepo } from "@/lib/qrouter/github";
 import { normalizeCircuitPath, normalizeRef, normalizeRepository } from "@/lib/qrouter/repositories";
 import { nextAttemptCandidate, retryDelaySeconds } from "@/lib/qrouter/orchestration";
 import { applyProviderHealth } from "@/lib/qrouter/providerHealth";
+import { resolveProviderLabel } from "@/lib/qrouter/providers";
 import { normalizeProviderResult } from "@/lib/qrouter/results";
 import { validateWebhookDestination } from "@/lib/qrouter/webhooks";
 import { buildQuote, routeCircuit } from "@/lib/qrouter/route";
@@ -419,6 +421,50 @@ describe("QRouter circuit pipeline", () => {
     expect(normalizeCircuitPath("circuits/bell.qasm")).toBe("circuits/bell.qasm");
     expect(() => normalizeRef("../main")).toThrow("invalid");
     expect(() => normalizeCircuitPath("../secret.qasm")).toThrow("invalid");
+  });
+
+  it("resolves an unambiguous connected repository name from chat", () => {
+    const repository = (fullName: string): GithubRepo => ({
+      fullName,
+      owner: fullName.split("/")[0],
+      name: fullName.split("/")[1],
+      private: true,
+      defaultBranch: "main",
+      updatedAt: "2026-08-16T00:00:00Z",
+      pushedAt: null,
+      htmlUrl: `https://github.com/${fullName}`,
+      language: "OpenQASM",
+      description: null,
+    });
+    const repositories = [repository("acme/bell-lab"), repository("research/vqe")];
+
+    expect(matchGithubRepositoryMention("run bell-lab with 2048 shots", repositories)?.fullName).toBe("acme/bell-lab");
+    expect(matchGithubRepositoryMention("inspect research/vqe", repositories)?.fullName).toBe("research/vqe");
+    expect(matchGithubRepositoryMention("tell me about routing", repositories)).toBeNull();
+  });
+
+  it("accepts only real provider labels in Deploy route handoffs", () => {
+    expect(resolveProviderLabel("ibm quantum")).toBe("IBM Quantum");
+    expect(resolveProviderLabel("IonQ")).toBe("IonQ");
+    expect(resolveProviderLabel("not-a-provider")).toBeNull();
+  });
+
+  it("requires owner/name when connected repository names are ambiguous", () => {
+    const base = {
+      private: true,
+      defaultBranch: "main",
+      updatedAt: "2026-08-16T00:00:00Z",
+      pushedAt: null,
+      language: null,
+      description: null,
+    };
+    const repositories: GithubRepo[] = [
+      { ...base, fullName: "acme/quantum", owner: "acme", name: "quantum", htmlUrl: "https://github.com/acme/quantum" },
+      { ...base, fullName: "labs/quantum", owner: "labs", name: "quantum", htmlUrl: "https://github.com/labs/quantum" },
+    ];
+
+    expect(matchGithubRepositoryMention("run quantum", repositories)).toBeNull();
+    expect(matchGithubRepositoryMention("run labs/quantum", repositories)?.fullName).toBe("labs/quantum");
   });
 
   it("imports and deploys a commit-pinned repository circuit", async () => {

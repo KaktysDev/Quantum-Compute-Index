@@ -38,31 +38,30 @@ const SPACING = 26;
     separate marks rather than as a hatched fill. */
 const LEN = 8;
 /** How far the pointer reaches. */
-const RADIUS = 210;
+const RADIUS = 230;
 /** Per-frame easing toward the target orientation — the swing, not a snap.
     Low enough that the flow field reads as something the cells are being
     carried by rather than something they are tracking exactly. */
-const EASE = 0.09;
+const EASE = 0.11;
 
-/** Resting brightness, and the ceiling the pointer lifts a cell to. The gap
-    between them is the "spotlight", kept narrow on purpose — the motion is what
-    this field is for, and a bright halo tracking the cursor competes with the
-    diagram sitting on top of it. */
-const BASE_ALPHA = 0.13;
-const PEAK_ALPHA = 0.3;
+/** Resting brightness, and the ceiling the pointer lifts a cell to. The halo is
+    deliberately brighter than the ambient field but stays local to the cursor,
+    so it reads through translucent cards without flattening the foreground. */
+const BASE_ALPHA = 0.12;
+const PEAK_ALPHA = 0.48;
 /** How much of that headroom the resting shimmer is allowed to use, so the
     field breathes without ever approaching the pointer's brightness. */
-const AMBIENT_LIFT = 0.3;
-const BUCKETS = 8;
+const AMBIENT_LIFT = 0.26;
+const BUCKETS = 10;
 
 /** Flow field: spatial frequency of each wave (radians per pixel) and how fast
     its phase drifts (radians per second). Wavelengths ~910px / ~670px /
     ~1370px against drift periods of ~11s / ~17s / ~8.5s — three motions slow
     enough to read individually and coprime enough not to beat. */
 const WAVE = [
-  { fx: 0.0069, fy: 0.0033, speed: 0.55, amp: 0.72 },
-  { fx: -0.0027, fy: 0.0094, speed: -0.38, amp: 0.52 },
-  { fx: 0.0046, fy: 0.0046, speed: 0.74, amp: 0.36 },
+  { fx: 0.0069, fy: 0.0033, speed: 0.66, amp: 0.72 },
+  { fx: -0.0027, fy: 0.0094, speed: -0.46, amp: 0.52 },
+  { fx: 0.0046, fy: 0.0046, speed: 0.88, amp: 0.36 },
 ] as const;
 
 interface Cell {
@@ -103,6 +102,12 @@ export default function MagnetField() {
     let px = Number.NEGATIVE_INFINITY;
     let py = Number.NEGATIVE_INFINITY;
     let pointerInside = false;
+    // Recent pointer velocity makes the field lean into a fast cursor, then
+    // settle back into pointing at it. This is deliberately transient: the
+    // background feels responsive without turning into a second UI layer.
+    let pointerVx = 0;
+    let pointerVy = 0;
+    let pointerAt = 0;
     let frame = 0;
     let visible = true;
     /** Seconds since the first animated frame. Held outside `draw` so the
@@ -166,7 +171,10 @@ export default function MagnetField() {
 
       // One path per alpha bucket — see the note at the top of the file.
       const paths: Array<Array<number>> = Array.from({ length: BUCKETS }, () => []);
-      const half = LEN / 2;
+      const pointerSpeed = Math.hypot(pointerVx, pointerVy);
+      const motion = Math.min(1, pointerSpeed / 850);
+      const motionX = pointerSpeed > 0.001 ? pointerVx / pointerSpeed : 0;
+      const motionY = pointerSpeed > 0.001 ? pointerVy / pointerSpeed : 0;
 
       for (const cell of cells) {
         // The resting state is the flow, not a flat line, so every cell is
@@ -184,17 +192,27 @@ export default function MagnetField() {
           const ddx = px - cell.x;
           const ddy = py - cell.y;
           const dist = Math.hypot(ddx, ddy);
-          if (dist < RADIUS) {
+          const reach = RADIUS + motion * 70;
+          if (dist < reach) {
             // Squared falloff: a linear one leaves the whole radius faintly
             // disturbed, which reads as a wobble rather than as a magnet.
-            const t = 1 - dist / RADIUS;
-            boost = t * t;
+            const t = 1 - dist / reach;
+            // A shallow travelling pulse keeps the lit area alive even when
+            // the pointer pauses. It modulates the halo; it never flashes it.
+            const ripple = 0.9 + 0.1 * Math.sin(clock * 5.5 - dist * 0.045);
+            boost = Math.max(0, t * t * ripple);
             if (dist > 0.001) {
               // Blend off the flow toward the pointer rather than off a fixed
               // baseline, so a cell entering the radius bends out of the
               // current it was already in.
               tx += (ddx / dist - tx) * boost;
               ty += (ddy / dist - ty) * boost;
+              // When the pointer is moving, nearby marks briefly inherit some
+              // of that direction. The trail decays below, so they curl back
+              // toward the pointer rather than staying combed flat.
+              const sweep = boost * motion * 0.28;
+              tx += (motionX - tx) * sweep;
+              ty += (motionY - ty) * sweep;
               const m = Math.hypot(tx, ty) || 1;
               tx /= m;
               ty /= m;
@@ -218,6 +236,7 @@ export default function MagnetField() {
         // ever raises it.
         const level = Math.max(boost, AMBIENT_LIFT * (0.5 + 0.5 * swell));
         const bucket = Math.min(BUCKETS - 1, Math.round(level * (BUCKETS - 1)));
+        const half = (LEN * (1 + boost * (0.55 + motion * 0.35))) / 2;
         paths[bucket].push(
           cell.x - cell.dx * half,
           cell.y - cell.dy * half,
@@ -251,17 +270,31 @@ export default function MagnetField() {
         return;
       }
       clock = (now - originMs) / 1000;
+      pointerVx *= 0.9;
+      pointerVy *= 0.9;
       draw();
     };
 
     const onPointerMove = (event: PointerEvent) => {
       const rect = canvas.getBoundingClientRect();
-      px = event.clientX - rect.left;
-      py = event.clientY - rect.top;
+      const nextX = event.clientX - rect.left;
+      const nextY = event.clientY - rect.top;
+      const now = performance.now();
+      if (pointerInside && pointerAt > 0) {
+        const dt = Math.max(8, now - pointerAt) / 1000;
+        const instantVx = (nextX - px) / dt;
+        const instantVy = (nextY - py) / dt;
+        pointerVx += (instantVx - pointerVx) * 0.42;
+        pointerVy += (instantVy - pointerVy) * 0.42;
+      }
+      px = nextX;
+      py = nextY;
+      pointerAt = now;
       pointerInside = true;
     };
     const onPointerLeave = () => {
       pointerInside = false;
+      pointerAt = 0;
     };
 
     readInk();

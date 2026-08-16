@@ -66,7 +66,7 @@ export default function ProviderCatalog({ backends, initialQuery = "" }: { backe
     </aside>
 
     <main className="provider-catalog-main">
-      <div className="provider-catalog-heading"><div><h1>Providers</h1></div><Link href="/dashboard/github/deploy">Deploy workload <ArrowRight size={13} /></Link></div>
+      <div className="provider-catalog-heading"><div><h1>Providers</h1></div><Link href="/dashboard/deploy">Deploy workload <ArrowRight size={13} /></Link></div>
       <div className="provider-catalog-toolbar">
         <label><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search providers, targets, and gates..." /></label>
         <div className="catalog-sort"><ArrowUpDown size={13} /><select value={sort} onChange={(event) => setSort(event.target.value)}><option value="price">Lowest price</option><option value="queue">Shortest queue</option><option value="fidelity">Highest fidelity</option><option value="capacity">Most qubits</option></select></div>

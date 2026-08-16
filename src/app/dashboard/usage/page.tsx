@@ -215,7 +215,7 @@ export default async function UsagePage({
           <div className="console-empty">
             <Activity />
             <p>No jobs in this period</p>
-            <Link href="/dashboard">Run your first job</Link>
+            <Link href="/dashboard/deploy">Run your first job</Link>
           </div>
         ) : (
           <div className="usage-chart" role="img" aria-label={`Jobs per day over the last ${days} days`}>

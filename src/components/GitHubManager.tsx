@@ -1,26 +1,16 @@
 "use client";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Repository import.
+// Repository access is intentionally one flow:
+//   connect GitHub once → search or paste a repository → scan → import.
 //
-// Two paths in, ordered by how many of them actually work out of the box:
-//
-//   1. Paste a repository URL. This needs NO configuration — the inspect
-//      endpoint reads public repositories through the anonymous GitHub API —
-//      so it leads the page. It used to sit below a full-height "no repository
-//      source connected" empty state, which made the whole tab look broken.
-//   2. Pick from a list of your repositories. This needs a GitHub App
-//      installation (or a local GITHUB_TOKEN), so it is presented as an
-//      optional upgrade with a link to the setup guide, not as a failure.
-//
-// Anonymous GitHub reads are rate-limited per IP (60/hour), which on shared
-// hosting is a real failure mode — `hint` below turns that into an explanation
-// instead of a bare "GitHub rejected the request".
-// ─────────────────────────────────────────────────────────────────────────────
+// Connected repositories and pasted URLs share the same input. That keeps the
+// mental model small and also mirrors Deploy, where a connected repository can
+// be referenced by name instead of requiring its URL every time.
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ArrowRight,
   ArrowUpRight,
   Check,
   ChevronDown,
@@ -32,12 +22,14 @@ import {
   Plus,
   RefreshCw,
   Search,
+  ShieldCheck,
   Trash2,
   Unplug,
 } from "lucide-react";
+import MagnetField from "@/components/routing/MagnetField";
 import type { QRouterProject, RepositoryInspection } from "@/lib/qrouter/repositories";
 
-const PLACEHOLDER_REPOSITORY = "Qiskit/qiskit";
+const PLACEHOLDER_REPOSITORY = "Search repositories or paste a GitHub URL";
 
 interface GithubStatus {
   configured: boolean;
@@ -56,13 +48,12 @@ interface GithubRepo {
   description: string | null;
 }
 
-/** Turns the raw API message into something a user can act on. */
 function hint(message: string): string {
   if (/rate limit/i.test(message)) {
-    return `${message} Anonymous GitHub reads are capped at 60 per hour — connect the GitHub App or set GITHUB_TOKEN to raise it.`;
+    return `${message} Connect GitHub to use your installation's higher API limit.`;
   }
   if (/not found/i.test(message)) {
-    return `${message} Check the owner/name spelling, and note that private repositories need a GitHub App connection.`;
+    return `${message} Check the name, or connect GitHub before scanning a private repository.`;
   }
   return message;
 }
@@ -76,100 +67,141 @@ export default function GitHubManager() {
   const [github, setGithub] = useState<GithubStatus | null>(null);
   const [repos, setRepos] = useState<GithubRepo[]>([]);
   const [repoSource, setRepoSource] = useState<"app" | "token" | "none">("none");
-  const [repoQuery, setRepoQuery] = useState("");
-  const [browserOpen, setBrowserOpen] = useState(false);
-  const [busy, setBusy] = useState<"load" | "repos" | "inspect" | "import" | null>("load");
+  const [showAllRepos, setShowAllRepos] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<"repos" | "inspect" | "import" | "disconnect" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const loadProjects = useCallback(async () => {
-    setBusy("load");
-    try {
-      const response = await fetch("/api/v1/projects", { cache: "no-store" });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error?.message ?? "Could not load projects.");
-      setProjects(data.data);
-    } catch (value) {
-      setError(value instanceof Error ? hint(value.message) : "Could not load projects.");
-    } finally {
-      setBusy(null);
-    }
+    const response = await fetch("/api/v1/projects", { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message ?? "Could not load projects.");
+    setProjects(data.data);
   }, []);
 
   const loadGithub = useCallback(async () => {
-    try {
-      const response = await fetch("/api/v1/integrations/github", { cache: "no-store" });
-      if (response.ok) setGithub((await response.json()) as GithubStatus);
-    } catch {
-      setGithub(null);
-    }
+    const response = await fetch("/api/v1/integrations/github", { cache: "no-store" });
+    if (!response.ok) throw new Error("Could not load the GitHub connection.");
+    setGithub((await response.json()) as GithubStatus);
   }, []);
 
-  const loadRepos = useCallback(async () => {
-    setBusy("repos");
+  const loadRepos = useCallback(async (showBusy = false) => {
+    if (showBusy) setBusy("repos");
     try {
       const response = await fetch("/api/v1/repositories", { cache: "no-store" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error?.message ?? "Could not load repositories.");
       setRepos(data.data as GithubRepo[]);
       setRepoSource(data.source as "app" | "token" | "none");
-      // Only auto-expand the picker when it has something to show.
-      if ((data.data as GithubRepo[]).length > 0) setBrowserOpen(true);
-    } catch (value) {
-      setError(value instanceof Error ? hint(value.message) : "Could not load repositories.");
     } finally {
-      setBusy(null);
+      if (showBusy) setBusy(null);
     }
   }, []);
 
   useEffect(() => {
-    loadProjects();
-    loadGithub();
-    loadRepos();
+    let active = true;
+    Promise.all([loadProjects(), loadGithub(), loadRepos()])
+      .catch((value) => {
+        if (active) setError(value instanceof Error ? hint(value.message) : "Could not load repositories.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("connected") === "github") {
+      setNotice("GitHub connected. Your selected repositories are ready to use in QRouter.");
+    }
+    if (params.get("error") === "github_app_not_configured") {
+      setError("The GitHub App still needs to be configured on this QRouter deployment.");
+    } else if (params.get("error") === "github_connection_failed") {
+      setError("GitHub could not be connected. Try again or review the GitHub App setup.");
+    }
+
+    return () => {
+      active = false;
+    };
   }, [loadGithub, loadProjects, loadRepos]);
 
+  const connected = Boolean(github?.connected || repoSource === "token" || (repoSource === "app" && repos.length > 0));
+  const query = repository.trim().toLowerCase();
   const filteredRepos = useMemo(() => {
-    const term = repoQuery.trim().toLowerCase();
-    if (!term) return repos;
+    if (!query || /^https?:\/\//.test(query)) return repos;
     return repos.filter((repo) =>
-      `${repo.fullName} ${repo.description ?? ""} ${repo.language ?? ""}`.toLowerCase().includes(term),
+      `${repo.fullName} ${repo.description ?? ""} ${repo.language ?? ""}`.toLowerCase().includes(query),
     );
-  }, [repos, repoQuery]);
+  }, [query, repos]);
+  const visibleRepos = showAllRepos ? filteredRepos : filteredRepos.slice(0, 6);
 
   async function disconnectGithub() {
-    const response = await fetch("/api/v1/integrations/github", { method: "DELETE" });
-    if (!response.ok) {
-      const data = await response.json();
-      setError(data.error?.message ?? "Could not disconnect GitHub.");
-      return;
+    setBusy("disconnect");
+    setError(null);
+    try {
+      const response = await fetch("/api/v1/integrations/github", { method: "DELETE" });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error?.message ?? "Could not disconnect GitHub.");
+      }
+      setRepos([]);
+      setRepoSource("none");
+      setRepository("");
+      setInspection(null);
+      await Promise.all([loadGithub(), loadRepos()]);
+      setNotice("GitHub disconnected. Imported project settings remain in your workspace.");
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "Could not disconnect GitHub.");
+    } finally {
+      setBusy(null);
     }
-    setRepos([]);
-    setBrowserOpen(false);
-    await Promise.all([loadGithub(), loadRepos()]);
+  }
+
+  function resolveRepositoryInput(value: string): { repository: string; ref?: string } {
+    const input = value.trim();
+    if (!input) throw new Error("Choose a repository or paste its GitHub URL.");
+    if (/^https?:\/\//i.test(input) || input.includes("/")) return { repository: input };
+
+    const exactName = repos.filter((repo) => repo.name.toLowerCase() === input.toLowerCase());
+    if (exactName.length === 1) {
+      return { repository: exactName[0].fullName, ref: exactName[0].defaultBranch };
+    }
+    if (filteredRepos.length === 1) {
+      return { repository: filteredRepos[0].fullName, ref: filteredRepos[0].defaultBranch };
+    }
+    if (exactName.length > 1) throw new Error("More than one connected repository has that name. Choose the owner/name below.");
+    throw new Error("Choose a matching repository below, or enter it as owner/name.");
   }
 
   function selectRepo(repo: GithubRepo) {
     setRepository(repo.fullName);
     setRef(repo.defaultBranch);
-    inspect(repo.fullName, repo.defaultBranch);
+    void inspect(repo.fullName, repo.defaultBranch);
   }
 
   async function inspect(overrideRepo?: string, overrideRef?: string) {
-    const targetRepo = (overrideRepo ?? repository).trim();
-    const targetRef = (overrideRef ?? ref).trim();
-    if (!targetRepo) {
-      setError("Enter a repository as owner/name, or paste its GitHub URL.");
+    let target: { repository: string; ref?: string };
+    try {
+      target = overrideRepo
+        ? { repository: overrideRepo, ref: overrideRef }
+        : resolveRepositoryInput(repository);
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "Choose a repository.");
       return;
     }
+
+    const targetRef = (overrideRef ?? target.ref ?? ref).trim();
     setBusy("inspect");
     setError(null);
     setNotice(null);
     setInspection(null);
     try {
-      const query = new URLSearchParams({ repository: targetRepo, ...(targetRef ? { ref: targetRef } : {}) });
-      const response = await fetch(`/api/v1/repositories/inspect?${query}`, { cache: "no-store" });
+      const params = new URLSearchParams({
+        repository: target.repository,
+        ...(targetRef ? { ref: targetRef } : {}),
+      });
+      const response = await fetch(`/api/v1/repositories/inspect?${params}`, { cache: "no-store" });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error?.message ?? "Repository inspection failed.");
+      if (!response.ok) throw new Error(data.error?.message ?? "Repository scan failed.");
       const next = data as RepositoryInspection;
       setInspection(next);
       setRepository(next.repository.fullName);
@@ -177,10 +209,10 @@ export default function GitHubManager() {
       const configured = typeof next.config?.circuit === "string" ? next.config.circuit : "";
       setCircuitPath(next.files.some((file) => file.path === configured) ? configured : next.files[0]?.path ?? "");
       if (!next.files.length) {
-        setError(`No .qasm circuit files were found in ${next.repository.fullName}@${targetRef || next.repository.defaultBranch}.`);
+        setError(`No .qasm quantum tasks were found in ${next.repository.fullName}.`);
       }
     } catch (value) {
-      setError(value instanceof Error ? hint(value.message) : "Repository inspection failed.");
+      setError(value instanceof Error ? hint(value.message) : "Repository scan failed.");
     } finally {
       setBusy(null);
     }
@@ -211,7 +243,7 @@ export default function GitHubManager() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error?.message ?? "Project import failed.");
-      setNotice(`${inspection.repository.fullName} imported. Open Deployments to run it.`);
+      setNotice(`${inspection.repository.fullName} is ready. You can now reference it by name in Deploy.`);
       setInspection(null);
       setCircuitPath("");
       await loadProjects();
@@ -232,261 +264,203 @@ export default function GitHubManager() {
     setProjects((current) => current.filter((project) => project.id !== id));
   }
 
-  const sourceLabel = github?.connection
+  const accountLabel = github?.connection
     ? `${github.connection.account_login} · ${github.connection.account_type}`
     : repoSource === "token"
-      ? "Server token · lists this account's repositories"
-      : "Public repositories · no connection required";
+      ? "Local GitHub account"
+      : "GitHub";
 
   return (
-    <div className="repo-import-layout">
-      {/* ── Source status ─────────────────────────────────────────────────── */}
-      <section className="github-connection-bar">
-        <div>
-          <GitBranch size={15} />
-          <span>
-            <b>GitHub source</b>
-            <small>{sourceLabel}</small>
-          </span>
-        </div>
-        {github?.connection ? (
-          <button onClick={disconnectGithub}>
-            <Unplug size={13} /> Disconnect
-          </button>
-        ) : github?.configured ? (
-          <a href="/api/integrations/github/connect">
-            <GitBranch size={13} /> Connect GitHub
-          </a>
-        ) : (
-          <Link href="/docs#github">Set up private repo access</Link>
-        )}
-      </section>
+    <section className="repo-stage">
+      <MagnetField />
+      <div className="repo-stage-content">
+        <header className="repo-lede">
+          <span className="repo-kicker"><GitBranch size={13} /> GitHub integration</span>
+          <h2>Connect once. Route from any repository.</h2>
+          <p>
+            Give QRouter access to the repositories you choose. Private source stays private, and in Deploy
+            you can refer to a connected repository by name instead of pasting its URL.
+          </p>
+        </header>
 
-      {/* ── 1. Paste a repository — always available ──────────────────────── */}
-      <section className="console-panel repo-import-panel">
-        <div className="panel-title">
-          <Plus size={16} />
-          <div>
-            <h2>Import a repository</h2>
-            <small>Paste any public GitHub URL — no connection needed</small>
+        <section className={`repo-connect-card ${connected ? "connected" : ""}`}>
+          <div className="repo-connect-icon">{connected ? <Check size={20} /> : <GitBranch size={20} />}</div>
+          <div className="repo-connect-copy">
+            <b>{connected ? accountLabel : "Connect your GitHub account"}</b>
+            <span>
+              {connected
+                ? `${repos.length} repos available · private repository access enabled`
+                : "Choose exactly which repositories QRouter can read. You can revoke access at any time."}
+            </span>
           </div>
-        </div>
-        <div className="repo-import-form">
-          <label>
-            <span>Repository</span>
-            <div className="terminal-input">
-              <b>github.com/</b>
+          {connected ? (
+            <button className="repo-disconnect" onClick={disconnectGithub} disabled={busy === "disconnect"}>
+              {busy === "disconnect" ? <Loader2 className="spin" size={14} /> : <Unplug size={14} />}
+              Disconnect
+            </button>
+          ) : (
+            <a className="console-primary repo-connect-button" href="/api/integrations/github/connect">
+              <GitBranch size={15} /> Connect GitHub
+            </a>
+          )}
+        </section>
+
+        {!connected && github && !github.configured && (
+          <p className="repo-setup-note">
+            <ShieldCheck size={13} /> This deployment still needs GitHub App credentials. <Link href="/docs#github">Open setup guide</Link>
+          </p>
+        )}
+
+        {(error || notice) && (
+          <div className={`repo-feedback ${error ? "error" : "success"}`} role={error ? "alert" : "status"}>
+            {error ?? notice}
+          </div>
+        )}
+
+        <section className="console-panel repo-picker-panel">
+          <div className="panel-title">
+            <Search size={16} />
+            <div>
+              <h2>Find a quantum task</h2>
+              <small>{connected ? "Search your GitHub repos or paste any URL" : "Public GitHub URLs work without a connection"}</small>
+            </div>
+            {connected && (
+              <button className="terminal-icon-button" onClick={() => loadRepos(true)} disabled={busy === "repos"} title="Refresh repositories">
+                {busy === "repos" ? <Loader2 className="spin" size={13} /> : <RefreshCw size={13} />}
+              </button>
+            )}
+          </div>
+
+          <div className="repo-picker-body">
+            <div className="repo-command">
+              <Search size={17} />
               <input
                 value={repository}
                 placeholder={PLACEHOLDER_REPOSITORY}
+                aria-label="Repository name or GitHub URL"
                 spellCheck={false}
-                onChange={(event) => setRepository(event.target.value)}
+                onChange={(event) => {
+                  setRepository(event.target.value);
+                  setInspection(null);
+                  setShowAllRepos(false);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault();
-                    inspect();
+                    void inspect();
                   }
                 }}
               />
+              <button onClick={() => inspect()} disabled={Boolean(busy) || !repository.trim()}>
+                {busy === "inspect" ? <Loader2 className="spin" size={14} /> : <ArrowRight size={14} />}
+                Scan repository
+              </button>
             </div>
-          </label>
-          <label>
-            <span>Production branch</span>
-            <div className="terminal-input">
-              <GitBranch size={13} />
-              <input
-                value={ref}
-                placeholder="default branch"
-                spellCheck={false}
-                onChange={(event) => setRef(event.target.value)}
-              />
-            </div>
-          </label>
-          <button className="console-secondary" onClick={() => inspect()} disabled={Boolean(busy)}>
-            {busy === "inspect" ? <Loader2 className="spin" size={14} /> : <RefreshCw size={14} />} Inspect repository
-          </button>
 
-          {inspection && (
-            <div className="repo-inspection">
-              <div>
-                <Check size={14} />
-                <span>
-                  <b>{inspection.repository.fullName}</b>
-                  <small>
-                    {inspection.repository.private ? "Private via connection" : "Public repository"} ·{" "}
-                    {inspection.files.length} circuit{inspection.files.length === 1 ? "" : "s"}
-                  </small>
-                </span>
-              </div>
-              <label>
-                <span>Entrypoint circuit</span>
-                <select value={circuitPath} onChange={(event) => setCircuitPath(event.target.value)}>
-                  {inspection.files.map((file) => (
-                    <option key={file.sha} value={file.path}>
-                      {file.path}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {inspection.config && (
-                <p>
-                  <FileCode2 size={12} /> qrouter.json detected and defaults loaded
-                </p>
-              )}
-              <button className="console-primary" onClick={importProject} disabled={Boolean(busy) || !circuitPath}>
-                {busy === "import" ? <Loader2 className="spin" size={14} /> : <Plus size={14} />} Import project
-              </button>
-            </div>
-          )}
-          {error && <p className="form-error">{error}</p>}
-          {notice && <p className="form-message">{notice}</p>}
-        </div>
-      </section>
-
-      {/* ── 2. Browse your repositories — needs a connection ──────────────── */}
-      <section className="console-panel repo-browser-panel">
-        <div className="panel-title">
-          <FolderGit2 size={16} />
-          <div>
-            <h2>Your repositories</h2>
-            <small>
-              {repoSource === "app"
-                ? `${repos.length} from the GitHub App installation`
-                : repoSource === "token"
-                  ? `${repos.length} from the server token`
-                  : "Connect GitHub to browse and import private repositories"}
-            </small>
-          </div>
-          {repoSource === "none" ? null : (
-            <>
-              <button
-                className="terminal-icon-button"
-                onClick={loadRepos}
-                disabled={busy === "repos"}
-                title="Refresh repositories"
-              >
-                {busy === "repos" ? <Loader2 className="spin" size={13} /> : <RefreshCw size={13} />}
-              </button>
-              <button
-                className="terminal-icon-button"
-                onClick={() => setBrowserOpen((open) => !open)}
-                aria-expanded={browserOpen}
-                title={browserOpen ? "Collapse" : "Expand"}
-              >
-                <ChevronDown size={13} style={browserOpen ? { transform: "rotate(180deg)" } : undefined} />
-              </button>
-            </>
-          )}
-        </div>
-        {repoSource === "none" ? (
-          /* The panel subtitle above already states what a connection buys;
-             repeating it here in two lines only delayed the one link that
-             actually does something. */
-          <div className="repo-source-hint">
-            <Link className="console-secondary" href="/docs#github">
-              How to connect GitHub <ArrowUpRight size={13} />
-            </Link>
-          </div>
-        ) : browserOpen ? (
-          <>
-            <label className="repo-search">
-              <Search size={13} />
-              <input
-                value={repoQuery}
-                onChange={(event) => setRepoQuery(event.target.value)}
-                placeholder="Search repositories..."
-              />
-            </label>
-            <div className="repo-browser-list">
-              {busy === "repos" ? (
-                <div className="console-empty">
-                  <Loader2 className="spin" />
+            {connected && repos.length > 0 && !/^https?:\/\//i.test(repository.trim()) && !inspection && (
+              <div className="repo-results">
+                <div className="repo-results-label">
+                  <span>{query ? `${filteredRepos.length} matches` : "Recently updated"}</span>
+                  <small>Click a repository to scan it</small>
                 </div>
-              ) : filteredRepos.length === 0 ? (
-                <div className="console-empty">
-                  <Search />
-                  <p>No repositories match</p>
-                </div>
-              ) : (
-                filteredRepos.map((repo) => (
-                  <button
-                    className="repo-browser-row"
-                    key={repo.fullName}
-                    onClick={() => selectRepo(repo)}
-                    disabled={Boolean(busy)}
-                  >
-                    <span className="repo-mark">{repo.name.slice(0, 2).toUpperCase()}</span>
-                    <span className="repo-browser-meta">
-                      <b>
-                        {repo.fullName}
-                        {repo.private && <Lock size={10} />}
-                      </b>
-                      <small>{repo.description || `${repo.language ?? "—"} · ${repo.defaultBranch}`}</small>
-                    </span>
-                    {repository === repo.fullName ? <Check size={14} /> : <Plus size={14} />}
+                {visibleRepos.length === 0 ? (
+                  <div className="repo-no-results">No connected repositories match “{repository}”.</div>
+                ) : (
+                  <div className="repo-result-grid">
+                    {visibleRepos.map((repo) => (
+                      <button key={repo.fullName} onClick={() => selectRepo(repo)} disabled={Boolean(busy)}>
+                        <span className="repo-result-mark">{repo.name.slice(0, 2).toUpperCase()}</span>
+                        <span>
+                          <b>{repo.fullName}{repo.private && <Lock size={10} />}</b>
+                          <small>{repo.description || `${repo.language ?? "Repository"} · ${repo.defaultBranch}`}</small>
+                        </span>
+                        <ArrowRight size={13} />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {filteredRepos.length > 6 && (
+                  <button className="repo-show-more" onClick={() => setShowAllRepos((current) => !current)}>
+                    {showAllRepos ? "Show fewer" : `Show all ${filteredRepos.length}`} <ChevronDown size={12} />
                   </button>
-                ))
-              )}
-            </div>
-          </>
-        ) : null}
-      </section>
+                )}
+              </div>
+            )}
 
-      {/* ── 3. Imported projects ──────────────────────────────────────────── */}
-      <section className="console-panel repo-projects-panel">
-        <div className="panel-title">
-          <GitBranch size={16} />
-          <div>
-            <h2>Workspace projects</h2>
-            <small>Connected deployment sources</small>
+            <details className="repo-options">
+              <summary>Branch or ref <ChevronDown size={12} /></summary>
+              <label>
+                <span>Optional — leave empty to use the default branch</span>
+                <div className="terminal-input">
+                  <GitBranch size={13} />
+                  <input value={ref} placeholder="default branch" spellCheck={false} onChange={(event) => setRef(event.target.value)} />
+                </div>
+              </label>
+            </details>
+
+            {inspection && (
+              <div className="repo-inspection-card">
+                <div className="repo-inspection-head">
+                  <span><Check size={15} /></span>
+                  <div>
+                    <b>{inspection.repository.fullName}</b>
+                    <small>
+                      {inspection.repository.private ? "Private repository" : "Public repository"} · {inspection.files.length} quantum task{inspection.files.length === 1 ? "" : "s"} found
+                    </small>
+                  </div>
+                  <a href={inspection.repository.htmlUrl} target="_blank" rel="noreferrer" title="Open on GitHub"><ArrowUpRight size={14} /></a>
+                </div>
+                {inspection.files.length > 0 && (
+                  <>
+                    <label>
+                      <span>Quantum task</span>
+                      <select value={circuitPath} onChange={(event) => setCircuitPath(event.target.value)}>
+                        {inspection.files.map((file) => <option key={file.sha} value={file.path}>{file.path}</option>)}
+                      </select>
+                    </label>
+                    {inspection.config && <p><FileCode2 size={12} /> qrouter.json defaults detected</p>}
+                    <button className="console-primary" onClick={importProject} disabled={Boolean(busy) || !circuitPath}>
+                      {busy === "import" ? <Loader2 className="spin" size={14} /> : <Plus size={14} />}
+                      Add to QRouter
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
-          <span>{projects.length} total</span>
-        </div>
-        <div className="repo-project-head">
-          <span>Project</span>
-          <span>Entrypoint</span>
-          <span>Production</span>
-          <span>Last deploy</span>
-          <span />
-        </div>
-        {busy === "load" ? (
-          <div className="console-empty">
-            <Loader2 className="spin" />
+        </section>
+
+        <section className="console-panel repo-projects-panel repo-ready-panel">
+          <div className="panel-title">
+            <FolderGit2 size={16} />
+            <div><h2>Ready in QRouter</h2><small>Imported repository tasks</small></div>
+            <span>{projects.length}</span>
           </div>
-        ) : projects.length === 0 ? (
-          <div className="console-empty">
-            <GitBranch />
-            <p>No repositories imported</p>
-            <small>Inspect a repository above to create the first project.</small>
-          </div>
-        ) : (
-          projects.map((project) => (
-            <div className="repo-project-row" key={project.id}>
-              <span>
-                <b>{project.name}</b>
-                <small>{project.repository}</small>
-              </span>
-              <span>
-                <FileCode2 size={12} />
-                {project.circuit_path}
-              </span>
-              <span>
-                <GitBranch size={12} />
-                {project.production_branch}
-              </span>
-              <span>{project.last_deployed_at ? new Date(project.last_deployed_at).toLocaleString() : "Never"}</span>
-              <span>
-                <a href={project.repository_url} target="_blank" rel="noreferrer" title="Open repository">
-                  <ArrowUpRight size={13} />
-                </a>
-                <button onClick={() => remove(project.id)} title="Remove project">
-                  <Trash2 size={13} />
-                </button>
-              </span>
+          {loading ? (
+            <div className="console-empty"><Loader2 className="spin" /></div>
+          ) : projects.length === 0 ? (
+            <div className="repo-ready-empty">
+              <GitBranch size={18} />
+              <div><b>No repository tasks yet</b><span>Scan a repository above and choose a .qasm entrypoint.</span></div>
             </div>
-          ))
-        )}
-      </section>
-    </div>
+          ) : (
+            <div className="repo-ready-list">
+              {projects.map((project) => (
+                <div className="repo-ready-row" key={project.id}>
+                  <span className="repo-result-mark">{project.name.slice(0, 2).toUpperCase()}</span>
+                  <span className="repo-ready-name"><b>{project.repository}</b><small>{project.circuit_path}</small></span>
+                  <span className="repo-ready-branch"><GitBranch size={12} /> {project.production_branch}</span>
+                  <span className="repo-ready-actions">
+                    <Link href="/dashboard/github/deploy">Deploy <ArrowRight size={12} /></Link>
+                    <a href={project.repository_url} target="_blank" rel="noreferrer" title="Open repository"><ArrowUpRight size={13} /></a>
+                    <button onClick={() => remove(project.id)} title="Remove project"><Trash2 size={13} /></button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+    </section>
   );
 }

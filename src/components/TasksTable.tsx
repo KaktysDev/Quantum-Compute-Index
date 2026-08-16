@@ -146,7 +146,7 @@ export default function TasksTable() {
         <div className="console-empty">
           <Clock />
           <p>No tasks yet</p>
-          <a href="/dashboard">Deploy your first job</a>
+          <a href="/dashboard/deploy">Deploy your first job</a>
         </div>
       ) : (
         jobs.map((job) => {

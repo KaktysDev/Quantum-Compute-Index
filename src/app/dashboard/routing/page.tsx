@@ -21,7 +21,7 @@ export const metadata = { title: "QRouter Console — Routing" };
 /** Pressing a provider opens the assistant with that provider preselected. */
 const TARGETS = ROUTABLE_PROVIDERS.map((name) => ({
   name,
-  href: `/dashboard?route=${encodeURIComponent(name)}`,
+  href: `/dashboard/deploy?route=${encodeURIComponent(name)}`,
 }));
 
 export default function RoutingPage() {
@@ -46,7 +46,7 @@ export default function RoutingPage() {
             <Link className="rt-btn rt-btn-quiet" href="/docs">
               <BookOpen size={15} /> Read docs
             </Link>
-            <Link className="rt-btn rt-btn-loud" href="/dashboard">
+            <Link className="rt-btn rt-btn-loud" href="/dashboard/deploy">
               Start routing <ArrowRight size={15} />
             </Link>
           </div>

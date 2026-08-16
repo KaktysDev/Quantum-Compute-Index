@@ -42,17 +42,17 @@ import { THEME_STORAGE_KEY } from "@/components/ThemeToggle";
 type NavItem = { href: string; label: string; icon: typeof Cpu; exact?: boolean };
 type NavGroup = { label: string; items: NavItem[] };
 
-// `exact` marks routes that must not match as a prefix — /dashboard is the
-// assistant and would otherwise light up for every child route.
+// `exact` marks routes that must not match as a prefix. Deploy is a leaf route;
+// Routing owns the stable `/dashboard` landing redirect.
 const GROUPS: NavGroup[] = [
   {
     label: "Workspace",
     items: [
-      { href: "/dashboard", label: "Deploy", icon: MessagesSquare, exact: true },
-      { href: "/dashboard/tasks", label: "Activity", icon: Activity },
-      { href: "/dashboard/github", label: "Repositories", icon: GitBranch },
-      { href: "/dashboard/providers", label: "Providers", icon: Cpu },
       { href: "/dashboard/routing", label: "Routing", icon: Route },
+      { href: "/dashboard/deploy", label: "Deploy", icon: MessagesSquare, exact: true },
+      { href: "/dashboard/github", label: "Repositories", icon: GitBranch },
+      { href: "/dashboard/tasks", label: "Activity", icon: Activity },
+      { href: "/dashboard/providers", label: "Providers", icon: Cpu },
       { href: "/dashboard/qci", label: "QCI Index", icon: LineChart },
     ],
   },
@@ -79,6 +79,7 @@ const EXTRA_TITLES: Record<string, string> = {
   "/dashboard/instances": "Instances",
   "/dashboard/requests": "Requests",
   "/dashboard/submit": "Deploy",
+  "/dashboard": "Routing",
 };
 
 function useSectionTitle(pathname: string): string {
@@ -146,7 +147,7 @@ export default function ConsoleShell({
 
   const isActive = (item: NavItem) =>
     item.exact
-      ? pathname === item.href || pathname === "/dashboard/submit"
+      ? pathname === item.href || (item.href === "/dashboard/deploy" && pathname === "/dashboard/submit")
       : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
   // ⌘K / Ctrl-K focuses search; Escape closes the mobile drawer.
@@ -191,13 +192,21 @@ export default function ConsoleShell({
         </div>
 
         <form className="console-search" action="/dashboard/providers" role="search">
-          <Search size={13} />
+          <button type="submit" className="console-search-submit" aria-label="Search providers">
+            <Search size={13} />
+          </button>
           <input
             ref={searchRef}
             name="q"
             placeholder="Search providers"
             aria-label="Search quantum providers"
             autoComplete="off"
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
           />
           <kbd>⌘K</kbd>
         </form>

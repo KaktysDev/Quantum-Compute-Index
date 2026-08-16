@@ -333,7 +333,7 @@ Quote  $2.14 · 1024 shots · ~4 min queue`}</i>{`
 
         <section className="docs-section" id="github">
           <div className="docs-section-title"><Route size={17} /><div><h2>Connecting GitHub</h2><p>Public repositories need no setup at all. A connection is only required to list your own repositories and to read private ones.</p></div></div>
-          <p className="docs-copy-text"><b>Public repositories work immediately.</b> In <Link href="/dashboard/github">Console → Repositories</Link>, paste any GitHub URL (<code>https://github.com/owner/name</code> or just <code>owner/name</code>), click <b>Inspect repository</b>, pick the <code>.qasm</code> entrypoint, and import. QRouter reads the repository through the anonymous GitHub API, which is rate-limited to <b>60 requests per hour per IP</b> — if inspection starts failing with a rate-limit error, that is the cause, and either option below removes the cap.</p>
+          <p className="docs-copy-text"><b>Public repositories work immediately.</b> In <Link href="/dashboard/github">Console → Repositories</Link>, paste any GitHub URL (<code>https://github.com/owner/name</code> or just <code>owner/name</code>), click <b>Scan repository</b>, pick the <code>.qasm</code> entrypoint, and add it to QRouter. QRouter reads the repository through the anonymous GitHub API, which is rate-limited to <b>60 requests per hour per IP</b> — if scanning starts failing with a rate-limit error, that is the cause, and either option below removes the cap.</p>
           <h3 className="docs-subhead">Option A — GitHub App (production, per-organization)</h3>
           <p className="docs-copy-text">This is the path that supports private repositories and scopes access to each workspace separately. Register an App at <a href="https://github.com/settings/apps/new" target="_blank" rel="noreferrer">github.com/settings/apps/new <ExternalLink size={11} /></a> with:</p>
           <div className="docs-schema">
@@ -349,7 +349,7 @@ GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\\n...\\n-----END RSA PRI
 GITHUB_APP_CLIENT_ID=Iv1.xxxxxxxxxxxx
 GITHUB_APP_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 GITHUB_OAUTH_STATE_SECRET=$(openssl rand -base64 32)`}</code></pre>
-          <p className="docs-copy-text">All three of <code>GITHUB_APP_ID</code>, <code>GITHUB_APP_SLUG</code> and <code>GITHUB_APP_PRIVATE_KEY</code> must be present or the console reports the App as not configured and hides the <b>Connect GitHub</b> button. Once they are set, click <b>Connect GitHub</b> in Repositories, install the App on the accounts and repositories you want QRouter to see, and your repositories appear in the picker.</p>
+          <p className="docs-copy-text">All three of <code>GITHUB_APP_ID</code>, <code>GITHUB_APP_SLUG</code> and <code>GITHUB_APP_PRIVATE_KEY</code> must be present or the console reports that the App still needs server configuration. Once they are set, click <b>Connect GitHub</b> in Repositories, install the App on the accounts and repositories you want QRouter to see, and those repositories become searchable by name in both Repositories and Deploy.</p>
           <h3 className="docs-subhead">Option B — personal token (local development only)</h3>
           <p className="docs-copy-text">For running the console on your own machine, a classic or fine-grained personal access token with <code>repo</code> read access is enough:</p>
           <pre className="docs-inline-code"><code>{`# .env.local\nGITHUB_TOKEN=github_pat_xxxxxxxxxxxxxxxxxxxx`}</code></pre>

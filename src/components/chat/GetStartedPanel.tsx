@@ -23,7 +23,7 @@ const DISMISS_KEY = "qrouter.getStartedDismissed";
 // as documentation pinned above an empty chat — the point is orientation, and
 // orientation is three nouns and a promise, not three paragraphs.
 const STEPS = [
-  { icon: GitBranch, title: "Point at a repo", body: "Paste a public GitHub URL." },
+  { icon: GitBranch, title: "Point at a repo", body: "Use a URL or connected repo name." },
   { icon: FileCode2, title: "Say what to run", body: "Plain language, or raw OpenQASM." },
   { icon: ShieldCheck, title: "Approve the quote", body: "Nothing runs until you confirm." },
 ];
