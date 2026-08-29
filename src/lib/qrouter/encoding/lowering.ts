@@ -110,14 +110,18 @@ function rx(theta: number) {
   return [[c(c0, 0), c(0, -s)], [c(0, -s), c(c0, 0)]];
 }
 
-function ry(theta: number) {
-  const c0 = Math.cos(theta / 2);
-  const s = Math.sin(theta / 2);
-  return [[c(c0, 0), c(-s, 0)], [c(s, 0), c(c0, 0)]];
-}
-
 function u1(lambda: number) {
   return [[c(1, 0), c(0, 0)], [c(0, 0), expITheta(lambda)]];
+}
+
+/** OpenQASM / qelib1 U3(θ,φ,λ), not the Bloch RZ(φ) RY(θ) RZ(λ) product. */
+function u3(theta: number, phi: number, lambda: number) {
+  const c0 = Math.cos(theta / 2);
+  const s = Math.sin(theta / 2);
+  return [
+    [c(c0, 0), c(-s * Math.cos(lambda), -s * Math.sin(lambda))],
+    [c(s * Math.cos(phi), s * Math.sin(phi)), c(c0 * Math.cos(phi + lambda), c0 * Math.sin(phi + lambda))],
+  ];
 }
 
 function controlled(targetOn1: Array<Array<{ re: number; im: number }>>) {
@@ -212,10 +216,8 @@ export function referenceUnitary(rule: LoweringRule): Array<Array<{ re: number; 
       return controlled(Y);
     case "ch":
       return controlled(H);
-    case "cu3": {
-      const u3 = matMul(rz(p2), matMul(ry(p0), rz(p1)));
-      return controlled(u3);
-    }
+    case "cu3":
+      return controlled(u3(p0, p1, p2));
     case "csx":
       return controlled([[c(0.5, 0.5), c(0.5, -0.5)], [c(0.5, -0.5), c(0.5, 0.5)]]);
     default:

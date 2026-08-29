@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { analyzeCircuit } from "@/lib/qrouter/analyze";
+import { expandDialects } from "@/lib/qrouter/dialects";
 import { BACKENDS } from "@/lib/qrouter/catalog";
 import { overlayExecute } from "@/lib/qrouter/encoding";
 import {
@@ -47,13 +48,32 @@ describe("G5 lowering proofs", () => {
     expect(result.counts["11"] ?? 0).toBe(0);
   });
 
-  it.each(LOWERING_RULES.filter((rule) => rule.id !== "cu3"))("matches the reference unitary for $id", (rule) => {
+  it.each(LOWERING_RULES)("matches the reference unitary for $id", (rule) => {
     const error = maxUnitaryError(expandedUnitary(rule), referenceUnitary(rule), rule.phase_exact);
     expect(error).toBeLessThan(1e-9);
   });
 
-  it("keeps cu3 in the lowerable set even though qelib1 cu3 is not a phase-aligned controlled-U3", () => {
-    expect(LOWERING_RULES.some((rule) => rule.id === "cu3")).toBe(true);
+  it("marks cu3 as not phase-exact until it is used under a modifier (C1.1)", () => {
+    const cu3 = LOWERING_RULES.find((rule) => rule.id === "cu3");
+    expect(cu3?.phase_exact).toBe(false);
+  });
+});
+
+describe("frontend policy (D12, D14, D17)", () => {
+  it("does not reject identifiers or comments that mention control-flow words", () => {
+    const source = `${HEADER}// waiting for the measurement\nqreg input_state[1];\ncreg c[1];\nh input_state[0];\nmeasure input_state -> c;`;
+    expect(() => analyzeCircuit(source, "openqasm2")).not.toThrow();
+  });
+
+  it("rejects a filesystem include before the worker is reached", () => {
+    expect(() => analyzeCircuit(`${HEADER}include "../../etc/passwd";\nqreg q[1];\nh q[0];`, "openqasm2")).toThrow(/allow-list/);
+  });
+
+  it("expands provider-native gates inside user-defined gate bodies", () => {
+    const expanded = expandDialects(`${HEADER}gate myecr a,b { ecr a,b; }\nqreg q[2];\nmyecr q[0],q[1];`);
+    expect(expanded).toMatch(/gate myecr a,b/);
+    expect(expanded).toMatch(/rzx|h q|cx /);
+    expect(expanded).not.toMatch(/\becr\b/);
   });
 });
 

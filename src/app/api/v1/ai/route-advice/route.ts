@@ -33,6 +33,8 @@ function publicCandidates(decision: ReturnType<typeof routeCircuit>) {
     score: candidate.score,
     estimatedProviderCost: candidate.estimatedProviderCost,
     estimatedNqh: candidate.estimatedNqh,
+    quoteBinding: candidate.quoteBinding,
+    compiled: candidate.compiled,
   }));
 }
 

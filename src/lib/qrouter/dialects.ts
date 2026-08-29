@@ -198,9 +198,9 @@ const GATE_CALL = /^([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(([^)]*)\))?\s+(.+)$/s;
 
 /**
  * Rewrites provider-native and extended gates in an OpenQASM 2 program into the
- * core qelib1 set. Register declarations, includes, measure, barrier, reset and
- * user-defined `gate` blocks pass through untouched; calls to user-defined
- * gates are left as-is. Unknown gates raise DialectError.
+ * core qelib1 set. Register declarations, includes, measure, barrier, and reset
+ * pass through. User-defined `gate` bodies are expanded (D14); calls to those
+ * gates stay as-is. Unknown gates raise DialectError.
  */
 export function expandDialects(source: string): string {
   const text = stripComments(source);

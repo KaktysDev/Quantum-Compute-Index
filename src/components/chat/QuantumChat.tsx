@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 import LogoMark from "@/components/LogoMark";
 import GetStartedPanel from "@/components/chat/GetStartedPanel";
-import { EncodingStageStrip, overlayExecute } from "@/components/encoding/EncodingProcess";
+import { EncodingDeepDive, EncodingStageStrip, overlayExecute, type EncodingCandidate } from "@/components/encoding/EncodingProcess";
 import { getBackend } from "@/lib/qrouter/catalog";
 import { proposalIdempotencyKey, splitChatProposals, type ChatProposal } from "@/lib/qrouter/chatProposals";
 import { formatDuration } from "@/lib/qrouter/duration";
@@ -300,6 +300,8 @@ interface QuoteState {
   total?: number;
   analysis?: { qubits: number; depth: number; complexity: string };
   encoding?: import("@/lib/qrouter/encoding/types").EncodingTrace;
+  explanation?: string[];
+  candidates?: EncodingCandidate[];
 }
 
 function JobProposalCard({
@@ -381,6 +383,8 @@ function JobProposalCard({
           total: data.quote.total,
           analysis: data.analysis,
           encoding: data.encoding ?? data.decision?.encoding,
+          explanation: data.decision?.explanation,
+          candidates: data.decision?.candidates,
         });
       } catch (error) {
         if (!cancelled)
@@ -557,7 +561,19 @@ function JobProposalCard({
       )}
 
       {quote.status === "ready" && quote.encoding && phase === "review" && (
-        <EncodingStageStrip stages={overlayExecute(quote.encoding.stages)} compact />
+        <div className="qc-encoding">
+          <EncodingStageStrip stages={overlayExecute(quote.encoding.stages)} compact />
+          <details className="qc-encoding-detail">
+            <summary>Explore encoding &amp; routing</summary>
+            <EncodingDeepDive
+              encoding={quote.encoding}
+              stages={overlayExecute(quote.encoding.stages)}
+              candidates={quote.candidates}
+              explanation={quote.explanation}
+              selectedId={quote.backendId}
+            />
+          </details>
+        </div>
       )}
 
       {/* Live processing readout — stages come from the real encoding trace. */}
