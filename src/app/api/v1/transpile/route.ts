@@ -32,6 +32,8 @@ export async function POST(request: Request) {
       qciSnapshotId: snapshot.id,
       qciTimestamp: snapshot.ts,
       optimizationLevel: input.optimization_level,
+      source: input.circuit,
+      format: input.format,
     });
     const transpilation = publicTranspilation(result.transpilation);
     return NextResponse.json({
@@ -41,6 +43,7 @@ export async function POST(request: Request) {
       transpilation,
       route: result.decision,
       quote: result.quote,
+      encoding: result.encoding,
     });
   } catch (error) {
     return apiError(error);

@@ -115,6 +115,8 @@ export async function POST(request: Request) {
       qciSnapshotId: snapshot.id,
       qciTimestamp: snapshot.ts,
       optimizationLevel: input.optimization_level,
+      source: input.circuit,
+      format: input.format,
     });
     const { decision, quote } = prepared;
     const candidates = publicCandidates(decision);
@@ -168,7 +170,9 @@ export async function POST(request: Request) {
         },
         explanation: decision.explanation,
         candidates,
+        encoding: decision.encoding,
       },
+      encoding: prepared.encoding,
       quote,
     });
   } catch (error) {

@@ -156,10 +156,18 @@ export async function dispatchJob(admin: AdminClient, job: OrchestratedJob) {
 
   try {
     const executionAnalysis = await executionAnalysisFor(admin, job, candidate.backend.id);
-    const submission = await submitToProvider(candidate.backend.id, executionAnalysis, job.shots, attemptToken);
+    const selectedBundle = job.route_decision.encoding?.selected_bundle;
+    const decodeMap = selectedBundle?.decode_map;
+    const submission = await submitToProvider(
+      candidate.backend.id,
+      executionAnalysis,
+      job.shots,
+      attemptToken,
+      selectedBundle?.payload ? { media_type: selectedBundle.media_type, payload: selectedBundle.payload } : undefined,
+    );
     const status = submission.status === "completed" ? "completed" : "submitted";
     const now = new Date().toISOString();
-    const normalizedResult = submission.result ? normalizeProviderResult(candidate.backend.id, submission.result, job.shots) : undefined;
+    const normalizedResult = submission.result ? normalizeProviderResult(candidate.backend.id, submission.result, job.shots, decodeMap) : undefined;
     await admin.from("job_attempts").update({
       provider_job_id: submission.providerJobId,
       status,
@@ -213,7 +221,8 @@ export async function pollJob(admin: AdminClient, job: OrchestratedJob) {
     }
     const provider = await getProviderStatus(job.selected_backend_id, job.provider_job_id);
     const terminal = ["completed", "failed", "cancelled"].includes(provider.status);
-    const normalizedResult = provider.status === "completed" ? normalizeProviderResult(job.selected_backend_id, provider.result, job.shots) : undefined;
+    const decodeMap = job.route_decision.encoding?.selected_bundle?.decode_map;
+    const normalizedResult = provider.status === "completed" ? normalizeProviderResult(job.selected_backend_id, provider.result, job.shots, decodeMap) : undefined;
     await admin.from("job_attempts").update({
       status: provider.status,
       response: normalizedResult ?? provider.result ?? {},

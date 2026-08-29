@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import LogoMark from "@/components/LogoMark";
 import GetStartedPanel from "@/components/chat/GetStartedPanel";
+import { EncodingStageStrip, overlayExecute } from "@/components/encoding/EncodingProcess";
 import { getBackend } from "@/lib/qrouter/catalog";
 import { proposalIdempotencyKey, splitChatProposals, type ChatProposal } from "@/lib/qrouter/chatProposals";
 import { formatDuration } from "@/lib/qrouter/duration";
@@ -298,6 +299,7 @@ interface QuoteState {
   queueSeconds?: number;
   total?: number;
   analysis?: { qubits: number; depth: number; complexity: string };
+  encoding?: import("@/lib/qrouter/encoding/types").EncodingTrace;
 }
 
 function JobProposalCard({
@@ -378,6 +380,7 @@ function JobProposalCard({
           queueSeconds: data.decision.selected.queueSeconds,
           total: data.quote.total,
           analysis: data.analysis,
+          encoding: data.encoding ?? data.decision?.encoding,
         });
       } catch (error) {
         if (!cancelled)
@@ -553,12 +556,15 @@ function JobProposalCard({
         <p className="qc-proposal-error"><AlertCircle size={13} /> {runError}</p>
       )}
 
-      {/* Live processing readout — the only thing on this card that moves. */}
+      {quote.status === "ready" && quote.encoding && phase === "review" && (
+        <EncodingStageStrip stages={overlayExecute(quote.encoding.stages)} compact />
+      )}
+
+      {/* Live processing readout — stages come from the real encoding trace. */}
       {phase === "running" && (
         <div className="qc-progress">
           <span className="qc-elapsed running"><Loader2 size={12} className="spin" /> {formatDuration(liveMs)}</span>
-          <span className="qc-progress-bar" role="progressbar" aria-label="Routing and executing" />
-          <span className="qc-progress-stage">routing → transpiling → executing</span>
+          <EncodingStageStrip stages={overlayExecute(quote.status === "ready" ? quote.encoding?.stages : undefined, "dispatching")} compact />
         </div>
       )}
       {phase === "failed" && runMs !== null && (

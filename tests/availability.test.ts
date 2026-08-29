@@ -2,6 +2,7 @@ import { beforeEach, afterEach, describe, expect, it } from "vitest";
 import { analyzeCircuit } from "@/lib/qrouter/analyze";
 import { BackendUnavailableError } from "@/lib/qrouter/availability";
 import { apiError } from "@/lib/qrouter/http";
+import { BACKENDS } from "@/lib/qrouter/catalog";
 import { routeCircuit } from "@/lib/qrouter/route";
 import type { CircuitAnalysis } from "@/lib/qrouter/types";
 
@@ -40,11 +41,26 @@ describe("unavailable backend routing", () => {
   });
 
   it("distinguishes a capability gap from a missing credential", () => {
+    const backends = BACKENDS.map((backend) => (
+      backend.id === "xanadu-borealis"
+        ? { ...backend, available: false, capabilityNote: "photonic backend requires a native-input bridge; gate-model circuits cannot be translated automatically" }
+        : backend
+    ));
+    try {
+      routeCircuit({ analysis, shots: 1024, target: "xanadu-borealis", mode: "balanced", backends });
+      expect.unreachable("expected the photonic backend to be rejected");
+    } catch (error) {
+      expect((error as BackendUnavailableError).reason.code).toBe("capability_mismatch");
+    }
+  });
+
+  it("treats an unconfigured photonic backend as a missing credential once encoding exists", () => {
     try {
       route("xanadu-borealis");
       expect.unreachable("expected the photonic backend to be rejected");
     } catch (error) {
-      expect((error as BackendUnavailableError).reason.code).toBe("capability_mismatch");
+      expect(error).toBeInstanceOf(BackendUnavailableError);
+      expect((error as BackendUnavailableError).reason.code).toBe("credentials_missing");
     }
   });
 
@@ -133,6 +149,14 @@ describe("health reporting for the always-local simulator", () => {
     expect(compiler?.reachable).toBe(true);
     expect(compiler?.configured).toBe(true);
     expect(compiler?.detail).toContain("in-process");
+  });
+
+  it("records partner backend ids so the health breaker can open on those QPUs", async () => {
+    const { checkProviderConnections } = await import("@/lib/qrouter/providerHealth");
+    const providers = await checkProviderConnections();
+    expect(providers.find((item) => item.backendIds.includes("qi-starmon-5"))?.backendIds).toEqual(["qi-starmon-5"]);
+    expect(providers.find((item) => item.backendIds.includes("xanadu-borealis"))?.backendIds).toEqual(["xanadu-borealis"]);
+    expect(providers.find((item) => item.backendIds.includes("quandela-mosaiq"))?.backendIds).toEqual(["quandela-mosaiq"]);
   });
 
   it("keeps qci-aer-gpu routable under an open circuit breaker elsewhere", async () => {

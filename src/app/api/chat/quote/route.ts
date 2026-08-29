@@ -38,6 +38,8 @@ export async function POST(request: Request) {
       qciSnapshotId: snapshot.id,
       qciTimestamp: snapshot.ts,
       optimizationLevel: input.optimization_level,
+      source: input.circuit,
+      format: input.format,
     });
     const { decision, quote } = prepared;
 
@@ -48,6 +50,7 @@ export async function POST(request: Request) {
         gates: analysis.gates,
         twoQubitGates: analysis.twoQubitGates,
         complexity: analysis.complexity,
+        workloadKind: analysis.workloadKind,
       },
       compiledAnalysis: prepared.executionAnalysis,
       transpilation: publicTranspilation(prepared.transpilation),
@@ -60,7 +63,9 @@ export async function POST(request: Request) {
           queueSeconds: decision.selected.queueSeconds,
         },
         explanation: decision.explanation,
+        encoding: decision.encoding,
       },
+      encoding: prepared.encoding,
       quote,
     });
   } catch (error) {

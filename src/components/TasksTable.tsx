@@ -8,8 +8,10 @@
 // this been processing" signal the console previously only implied through a
 // status word.
 
-import { useCallback, useEffect, useState } from "react";
-import { AlertCircle, ChevronDown, Clock, Download, FileCode2, Loader2, RotateCw, Square } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertCircle, ChevronDown, Clock, FileCode2, Loader2, RotateCw, Square } from "lucide-react";
+import { EncodingDeepDive, overlayExecute } from "@/components/encoding/EncodingProcess";
+import type { EncodingTrace } from "@/lib/qrouter/encoding/types";
 import { getBackend } from "@/lib/qrouter/catalog";
 import { elapsedMs, formatDuration, isTerminal, statusTone } from "@/lib/qrouter/duration";
 
@@ -26,9 +28,25 @@ interface Job {
     qubits: number;
     depth: number;
     complexity: string;
-    transpilation?: { before: { depth: number; gates: number }; after: { depth: number; gates: number }; equivalent: boolean | null };
+    encoding?: EncodingTrace;
+    transpilation?: { before: { depth: number; gates: number }; after: { depth: number; gates: number }; equivalent: boolean | null; verificationStatus?: string };
   };
-  attempts?: Array<{ attempt: number; backend_id: string; status: string }>;
+  route_decision?: {
+    selected?: { id: string; displayName: string };
+    explanation?: string[];
+    encoding?: EncodingTrace;
+    candidates?: Array<{
+      backend: { id: string; displayName: string; kind: string; provider?: string };
+      compatible: boolean;
+      score: number;
+      estimatedProviderCost?: number;
+      rejectionReasons: string[];
+      quoteBinding?: string;
+      compiled?: boolean;
+    }>;
+  };
+  attempts?: Array<{ attempt: number; backend_id: string; status: string; error?: { message?: string } | null; started_at?: string | null; finished_at?: string | null }>;
+  events?: Array<{ type?: string; from_status?: string; to_status?: string; created_at?: string; payload?: Record<string, unknown> }>;
   result?: { counts?: Record<string, number> };
   error?: { message?: string };
   created_at: string;
@@ -53,6 +71,9 @@ export default function TasksTable() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  // `?job=` must open once. Polling every 5s must not re-toggle the inspector.
+  const openedFromQuery = useRef<string | null>(null);
+  const openRef = useRef<string | null>(null);
   // Drives the live duration column. Held in state so the whole table advances
   // on one timer rather than one per row.
   const [now, setNow] = useState(() => Date.now());
@@ -64,6 +85,11 @@ export default function TasksTable() {
       if (!response.ok) throw new Error(data.error?.message ?? "Could not load tasks.");
       setJobs(data.data);
       setError(null);
+      const openId = openRef.current;
+      if (openId) {
+        const detail = await fetch(`/api/v1/jobs/${openId}`, { cache: "no-store" }).then((item) => item.json()).catch(() => null);
+        if (detail?.id) setJobs((current) => current.map((item) => (item.id === openId ? { ...item, ...detail } : item)));
+      }
     } catch (value) {
       setError(value instanceof Error ? value.message : "Could not load tasks.");
     } finally {
@@ -85,11 +111,8 @@ export default function TasksTable() {
     return () => clearInterval(timer);
   }, [anyRunning]);
 
-  async function toggle(job: Job) {
-    if (open === job.id) {
-      setOpen(null);
-      return;
-    }
+  const openJob = useCallback(async (job: Job) => {
+    openRef.current = job.id;
     setOpen(job.id);
     try {
       const response = await fetch(`/api/v1/jobs/${job.id}`, { cache: "no-store" });
@@ -98,7 +121,25 @@ export default function TasksTable() {
     } catch {
       /* polling will retry */
     }
+  }, []);
+
+  async function toggle(job: Job) {
+    if (open === job.id) {
+      openRef.current = null;
+      setOpen(null);
+      return;
+    }
+    await openJob(job);
   }
+
+  useEffect(() => {
+    const jobId = new URLSearchParams(window.location.search).get("job");
+    if (!jobId || openedFromQuery.current === jobId) return;
+    const job = jobs.find((item) => item.id === jobId);
+    if (!job) return;
+    openedFromQuery.current = jobId;
+    void openJob(job);
+  }, [jobs, openJob]);
 
   async function cancel(id: string) {
     const response = await fetch(`/api/v1/jobs/${id}/cancel`, { method: "POST" });
@@ -184,51 +225,20 @@ export default function TasksTable() {
                 <ChevronDown size={15} className={open === job.id ? "rotate" : ""} />
               </button>
               {open === job.id && (
-                <div className="task-detail">
-                  <div>
-                    <span>Task configuration</span>
-                    <dl>
-                      <div>
-                        <dt>Shots</dt>
-                        <dd>{job.shots.toLocaleString()}</dd>
-                      </div>
-                      <div>
-                        <dt>Complexity</dt>
-                        <dd>{job.analysis?.complexity ?? "—"}</dd>
-                      </div>
-                      <div>
-                        <dt>Backend</dt>
-                        <dd>{backendLabel(job.selected_backend_id)}</dd>
-                      </div>
-                      <div>
-                        <dt>Attempts</dt>
-                        <dd>{job.attempts?.length ?? 0}</dd>
-                      </div>
-                      <div>
-                        <dt>Started</dt>
-                        <dd>{job.started_at ? new Date(job.started_at).toLocaleTimeString() : "not yet"}</dd>
-                      </div>
-                      <div>
-                        <dt>{running ? "Elapsed" : "Duration"}</dt>
-                        <dd>{formatDuration(duration)}</dd>
-                      </div>
-                      {job.analysis?.transpilation && (
-                        <>
-                          <div>
-                            <dt>Compiled depth</dt>
-                            <dd>
-                              {job.analysis.transpilation.before.depth} → {job.analysis.transpilation.after.depth}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt>Compiled gates</dt>
-                            <dd>
-                              {job.analysis.transpilation.before.gates} → {job.analysis.transpilation.after.gates}
-                            </dd>
-                          </div>
-                        </>
-                      )}
-                    </dl>
+                <div className="task-detail task-encoding">
+                  <EncodingDeepDive
+                    encoding={job.route_decision?.encoding ?? job.analysis?.encoding}
+                    stages={overlayExecute(job.route_decision?.encoding?.stages ?? job.analysis?.encoding?.stages, job.status)}
+                    candidates={job.route_decision?.candidates}
+                    explanation={job.route_decision?.explanation}
+                    selectedId={job.selected_backend_id}
+                    events={job.events}
+                    attempts={job.attempts}
+                    counts={job.result?.counts}
+                    error={job.error?.message}
+                    jobId={job.id}
+                  />
+                  <div className="task-encoding-actions">
                     {running && (
                       <button className="console-danger" onClick={() => cancel(job.id)}>
                         <Square size={13} />
@@ -239,25 +249,6 @@ export default function TasksTable() {
                       <FileCode2 size={14} />
                       Compiled QASM
                     </a>
-                  </div>
-                  <div>
-                    <span>Result</span>
-                    {job.result?.counts ? (
-                      <div className="mini-counts">
-                        {Object.entries(job.result.counts).map(([state, count]) => (
-                          <div key={state}>
-                            <code>|{state}⟩</code>
-                            <b>{count}</b>
-                          </div>
-                        ))}
-                        <a href={`/api/v1/jobs/${job.id}/result`}>
-                          <Download size={14} />
-                          Download JSON
-                        </a>
-                      </div>
-                    ) : (
-                      <p className="muted">{job.error?.message ?? "Result will unlock when execution completes."}</p>
-                    )}
                   </div>
                 </div>
               )}

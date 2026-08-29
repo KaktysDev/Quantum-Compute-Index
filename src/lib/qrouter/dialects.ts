@@ -5,8 +5,9 @@
  * qelib1 gate set every downstream consumer understands (analysis, local
  * simulation, the Qiskit compiler worker, and per-provider program builders).
  *
- * Every decomposition in this file is verified numerically against reference
- * unitaries (up to global phase) in tests/qrouter.test.ts.
+ * G5 (tests/encoding.test.ts) proves every lowering rule against a reference
+ * operator. State-vector spot checks also live in tests/dialects.test.ts.
+ * A comment is not a proof — the CI gate is.
  */
 
 const PI = Math.PI;
@@ -140,9 +141,9 @@ const DECOMPOSITIONS: Record<string, (params: number[], args: string[]) => State
   },
   zz: ([turns], [a, b]) => [stmt("rzz", [2 * PI * turns], [a, b])],
   cu1: ([theta], [a, b]) => [
-    stmt("rz", [theta / 2], [a]),
-    stmt("cx", [], [a, b]), stmt("rz", [-theta / 2], [b]), stmt("cx", [], [a, b]),
-    stmt("rz", [theta / 2], [b]),
+    stmt("u1", [theta / 2], [a]),
+    stmt("cx", [], [a, b]), stmt("u1", [-theta / 2], [b]), stmt("cx", [], [a, b]),
+    stmt("u1", [theta / 2], [b]),
   ],
   iswap: (_p, [a, b]) => [
     stmt("s", [], [a]), stmt("s", [], [b]), stmt("h", [], [a]),
@@ -153,10 +154,10 @@ const DECOMPOSITIONS: Record<string, (params: number[], args: string[]) => State
     stmt("rz", [theta / 2], [b]), stmt("cx", [], [a, b]), stmt("rz", [-theta / 2], [b]), stmt("cx", [], [a, b]),
   ],
   cy: (_p, [a, b]) => [stmt("sdg", [], [b]), stmt("cx", [], [a, b]), stmt("s", [], [b])],
-  ch: (_p, [a, b]) => [stmt("ry", [-PI / 4], [b]), stmt("cx", [], [a, b]), stmt("ry", [PI / 4], [b])],
+  ch: (_p, [a, b]) => [stmt("ry", [PI / 4], [b]), stmt("cx", [], [a, b]), stmt("ry", [-PI / 4], [b])],
   cu3: ([theta, phi, lambda], [a, b]) => [
-    stmt("rz", [(lambda + phi) / 2], [a]),
-    stmt("rz", [(lambda - phi) / 2], [b]),
+    stmt("u1", [(lambda + phi) / 2], [a]),
+    stmt("u1", [(lambda - phi) / 2], [b]),
     stmt("cx", [], [a, b]),
     stmt("u3", [-theta / 2, 0, -(phi + lambda) / 2], [b]),
     stmt("cx", [], [a, b]),
@@ -216,7 +217,7 @@ export function expandDialects(source: string): string {
     const semicolon = text.indexOf(";", cursor);
     const brace = text.indexOf("{", cursor);
     if (brace !== -1 && (semicolon === -1 || brace < semicolon)) {
-      // A `gate name(...) args { ... }` definition: copy the whole block verbatim.
+      // Expand provider-native gates inside user-defined `gate` bodies (D14).
       let depth = 0;
       let end = brace;
       for (; end < text.length; end += 1) {
@@ -224,7 +225,10 @@ export function expandDialects(source: string): string {
         if (text[end] === "}") { depth -= 1; if (depth === 0) break; }
       }
       if (depth !== 0) throw new DialectError("Unbalanced braces in gate definition.");
-      output.push(text.slice(cursor, end + 1));
+      const header = text.slice(cursor, brace).trim();
+      const inner = text.slice(brace + 1, end);
+      const expandedBody = expandDialects(inner);
+      output.push(`${header} {\n${expandedBody}\n}`);
       cursor = end + 1;
       continue;
     }

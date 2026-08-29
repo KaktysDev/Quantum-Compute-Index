@@ -1,6 +1,9 @@
 import { BraketClient, CancelQuantumTaskCommand, CreateQuantumTaskCommand, GetQuantumTaskCommand } from "@aws-sdk/client-braket";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { getBackend } from "./catalog";
 import { evaluateParam } from "./dialects";
+import { nativeProgramFor } from "./encoding/native";
+import type { ExecutionBundle } from "./encoding/types";
 import { simulateCircuit } from "./simulator";
 import type { CircuitAnalysis } from "./types";
 
@@ -21,6 +24,14 @@ const providerTimeout = () => AbortSignal.timeout(Number(process.env.QROUTER_PRO
  * gate `cnot`, while the standard-library dialect (stdgates.inc, used by IBM)
  * keeps `cx` — so the rename is dialect-specific.
  */
+const BRAKET_GATE_NAMES: Record<string, string> = {
+  cx: "cnot", cnot: "cnot",
+  sdg: "si", si: "si",
+  tdg: "ti", ti: "ti",
+  ccx: "ccnot", toffoli: "ccnot", ccnot: "ccnot",
+  id: "i",
+};
+
 export function qasm2ToQasm3(source: string, dialect: "braket" | "stdgates" = "braket") {
   let output = source
     .replace(/OPENQASM\s+2\.0\s*;/i, "OPENQASM 3.0;")
@@ -30,7 +41,10 @@ export function qasm2ToQasm3(source: string, dialect: "braket" | "stdgates" = "b
     .replace(/measure\s+(\w+)\s*->\s*(\w+)\s*;/g, "$2 = measure $1;")
     .replace(/measure\s+(\w+)\[(\d+)]\s*->\s*(\w+)\[(\d+)]\s*;/g, "$3[$4] = measure $1[$2];");
   if (dialect === "braket") {
-    output = output.replace(/^\s*include\s+"stdgates\.inc"\s*;\s*$/im, "").replace(/\bcx\b/g, "cnot");
+    output = output.replace(/^\s*include\s+"stdgates\.inc"\s*;\s*$/im, "");
+    output = output.replace(/\b(cx|cnot|sdg|si|tdg|ti|ccx|toffoli|ccnot|id)\b/g, (name) => BRAKET_GATE_NAMES[name] ?? name);
+    output = output.replace(/\bu1\s*\(([^)]+)\)/g, "rz($1)");
+    output = output.replace(/\bu2\s*\(([^,]+),([^)]+)\)/g, (_, phi, lambda) => `rz(${lambda.trim()}); ry(pi/2); rz(${phi.trim()})`);
   }
   return output;
 }
@@ -66,15 +80,32 @@ async function submitBraket(backendId: string, analysis: CircuitAnalysis, shots:
   return { providerJobId: response.quantumTaskArn, status: "submitted" };
 }
 
-async function submitIbm(analysis: CircuitAnalysis, shots: number): Promise<Submission> {
+async function submitIbm(backendId: string, analysis: CircuitAnalysis, shots: number, bundle?: Pick<ExecutionBundle, "media_type" | "payload">): Promise<Submission> {
   const token = process.env.IBM_QUANTUM_TOKEN;
   if (!token) throw new Error("IBM Quantum is not configured.");
+  const routed = getBackend(backendId);
+  const backendName = routed?.backendName ?? process.env.IBM_QUANTUM_BACKEND ?? "ibm_brisbane";
+  const workerUrl = process.env.QROUTER_COMPILER_URL ?? process.env.VULTR_SIMULATOR_URL;
+  const qpy = bundle?.media_type === "application/qpy" ? bundle.payload : null;
+  if (workerUrl && qpy) {
+    const parsed = JSON.parse(qpy) as { data?: string };
+    const response = await fetch(`${workerUrl.replace(/\/$/, "")}/v1/providers/ibm/jobs`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${process.env.QROUTER_COMPILER_TOKEN ?? process.env.VULTR_SIMULATOR_TOKEN ?? ""}` },
+      body: JSON.stringify({ qpy: parsed.data ?? qpy, shots, backend_name: backendName }),
+      signal: providerTimeout(),
+    });
+    if (!response.ok) throw new Error(`IBM Quantum (compiler worker) rejected the job (${response.status}): ${await response.text()}`);
+    const data = await response.json() as { id?: string };
+    if (!data.id) throw new Error("IBM Quantum did not return a job ID.");
+    return { providerJobId: data.id, status: "submitted" };
+  }
   const [hub, group, project] = (process.env.IBM_QUANTUM_INSTANCE ?? "ibm-q/open/main").split("/");
   const response = await fetch("https://api.quantum-computing.ibm.com/runtime/jobs", {
     method: "POST",
     headers: { accept: "application/json", authorization: `Bearer ${token}`, "content-type": "application/json" },
     body: JSON.stringify({
-      program_id: "sampler", backend: process.env.IBM_QUANTUM_BACKEND ?? "ibm_brisbane", hub, group, project,
+      program_id: "sampler", backend: backendName, hub, group, project,
       params: { pubs: [[qasm2ToQasm3(analysis.normalizedQasm2, "stdgates")]], options: { default_shots: shots }, version: 2 },
     }),
     signal: providerTimeout(),
@@ -132,7 +163,8 @@ export function qasm2ToIonqCircuit(source: string) {
   for (const rawStatement of text.split(";")) {
     const statement = rawStatement.trim();
     if (!statement) continue;
-    if (/^(OPENQASM|include|qreg|creg|measure|barrier)\b/i.test(statement)) continue;
+    if (/^(OPENQASM|include|qreg|creg|barrier)\b/i.test(statement)) continue;
+    if (/^measure\b/i.test(statement)) continue;
     if (/^if\s*\(/.test(statement)) throw new Error("IonQ conversion failed: classically-controlled gates are not supported.");
     const match = /^([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(([^)]*)\))?\s+(.+)$/s.exec(statement);
     if (!match) throw new Error(`IonQ conversion failed: could not parse "${statement.slice(0, 60)}".`);
@@ -151,6 +183,8 @@ export function qasm2ToIonqCircuit(source: string) {
         if (["h", "x", "y", "z", "s", "t"].includes(name)) single(name, a);
         else if (name === "sdg") single("si", a);
         else if (name === "tdg") single("ti", a);
+        else if (name === "sx" || name === "v") single("v", a);
+        else if (name === "sxdg" || name === "vi") single("vi", a);
         else if (name === "id") continue;
         else if (["rx", "ry", "rz"].includes(name)) single(name, a, params[0]);
         else if (name === "u1" || name === "p") single("rz", a, params[0]);
@@ -172,7 +206,39 @@ export function qasm2ToIonqCircuit(source: string) {
   return gates;
 }
 
+/** Classical mapping that qasm2ToIonqCircuit must not drop (D5). */
+export function ionqMeasurementMap(source: string) {
+  const text = source.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, "");
+  const qOffsets = new Map<string, { offset: number; size: number }>();
+  const cOffsets = new Map<string, { offset: number; size: number }>();
+  let qTotal = 0;
+  let cTotal = 0;
+  for (const match of text.matchAll(/\bqreg\s+([A-Za-z_][A-Za-z0-9_]*)\s*\[(\d+)]/g)) {
+    qOffsets.set(match[1], { offset: qTotal, size: Number(match[2]) });
+    qTotal += Number(match[2]);
+  }
+  for (const match of text.matchAll(/\bcreg\s+([A-Za-z_][A-Za-z0-9_]*)\s*\[(\d+)]/g)) {
+    cOffsets.set(match[1], { offset: cTotal, size: Number(match[2]) });
+    cTotal += Number(match[2]);
+  }
+  const map: Array<{ qubit: number; clbit: number }> = [];
+  for (const match of text.matchAll(/\bmeasure\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\[(\d+)])?\s*->\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:\[(\d+)])?\s*;/g)) {
+    const q = qOffsets.get(match[1]);
+    const c = cOffsets.get(match[3]);
+    if (!q || !c) throw new Error(`IonQ conversion failed: measurement map is missing a register in "${match[0]}".`);
+    if (match[2] !== undefined && match[4] !== undefined) {
+      map.push({ qubit: q.offset + Number(match[2]), clbit: c.offset + Number(match[4]) });
+    } else {
+      const width = Math.min(q.size, c.size);
+      for (let index = 0; index < width; index += 1) map.push({ qubit: q.offset + index, clbit: c.offset + index });
+    }
+  }
+  if (!map.length) throw new Error("IonQ conversion failed: the measurement map is empty; a circuit is never submitted without its classical mapping.");
+  return map;
+}
+
 async function submitIonq(analysis: CircuitAnalysis, shots: number, jobId: string): Promise<Submission> {
+  const measurement_map = ionqMeasurementMap(analysis.normalizedQasm2);
   const response = await fetch("https://api.ionq.co/v0.4/jobs", {
     method: "POST",
     headers: ionqHeaders(),
@@ -180,11 +246,12 @@ async function submitIonq(analysis: CircuitAnalysis, shots: number, jobId: strin
       name: jobId,
       type: "ionq.circuit.v1",
       shots,
-      metadata: { qrouter_qubits: String(analysis.qubits), qrouter_job_id: jobId },
+      metadata: { qrouter_qubits: String(analysis.qubits), qrouter_job_id: jobId, qrouter_measurement_map: JSON.stringify(measurement_map) },
       input: {
         qubits: analysis.qubits,
         gateset: "qis",
         circuit: qasm2ToIonqCircuit(analysis.normalizedQasm2),
+        registers: { meas: { qubits: measurement_map.map((item) => item.qubit) } },
       },
     }),
     signal: providerTimeout(),
@@ -195,11 +262,157 @@ async function submitIonq(analysis: CircuitAnalysis, shots: number, jobId: strin
   return { providerJobId: data.id, status: "submitted" };
 }
 
-export async function submitToProvider(backendId: string, analysis: CircuitAnalysis, shots: number, jobId: string): Promise<Submission> {
+const EXECUTION_BRIDGES: Record<string, { name: string; url: () => string | undefined; token: () => string | undefined }> = {
+  "xanadu-borealis": { name: "Xanadu", url: () => process.env.XANADU_EXECUTION_URL, token: () => process.env.XANADU_API_KEY },
+  "quandela-mosaiq": { name: "Quandela", url: () => process.env.QUANDELA_EXECUTION_URL, token: () => process.env.QUANDELA_API_KEY },
+  "qi-starmon-5": { name: "Quantum Inspire", url: () => process.env.QI_EXECUTION_URL, token: () => process.env.QI_API_KEY },
+};
+
+function bridgeAuth(backendId: string) {
+  const bridge = EXECUTION_BRIDGES[backendId];
+  if (!bridge) return null;
+  const url = bridge.url()?.replace(/\/$/, "");
+  const token = bridge.token();
+  if (!url || !token) return null;
+  return { name: bridge.name, url, token };
+}
+
+async function submitExecutionBridge(backendId: string, analysis: CircuitAnalysis, shots: number, idempotencyKey: string): Promise<Submission> {
+  const bridge = bridgeAuth(backendId);
+  if (!bridge) throw new Error(`${EXECUTION_BRIDGES[backendId]?.name ?? backendId} is not configured.`);
+  const backend = { id: backendId, provider: backendId === "qi-starmon-5" ? "quantum-inspire" : backendId === "xanadu-borealis" ? "xanadu" : "quandela", displayName: bridge.name };
+  const encoding = nativeProgramFor(backend, analysis.normalizedQasm2);
+  const response = await fetch(`${bridge.url}/v1/jobs`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${bridge.token}`, "idempotency-key": idempotencyKey },
+    body: JSON.stringify({ qasm: analysis.normalizedQasm2, shots, backend_id: backendId, encoding }),
+    signal: providerTimeout(),
+  });
+  if (!response.ok) throw new Error(`${bridge.name} rejected the job (${response.status}): ${await response.text()}`);
+  const data = await response.json() as { id?: string; providerJobId?: string; result?: Record<string, unknown> };
+  const providerJobId = data.id ?? data.providerJobId;
+  if (!providerJobId) throw new Error(`${bridge.name} did not return a job ID.`);
+  return { providerJobId, status: data.result ? "completed" : "submitted", result: data.result };
+}
+
+async function getExecutionBridgeStatus(backendId: string, providerJobId: string): Promise<ProviderStatus> {
+  const bridge = bridgeAuth(backendId);
+  if (!bridge) throw new Error(`${EXECUTION_BRIDGES[backendId]?.name ?? backendId} is not configured.`);
+  const response = await fetch(`${bridge.url}/v1/jobs/${encodeURIComponent(providerJobId)}`, {
+    headers: { authorization: `Bearer ${bridge.token}` }, signal: providerTimeout(),
+  });
+  if (!response.ok) throw new Error(`${bridge.name} status request failed (${response.status}).`);
+  return response.json() as Promise<ProviderStatus>;
+}
+
+async function cancelExecutionBridge(backendId: string, providerJobId: string) {
+  const bridge = bridgeAuth(backendId);
+  if (!bridge) throw new Error(`${EXECUTION_BRIDGES[backendId]?.name ?? backendId} is not configured.`);
+  const response = await fetch(`${bridge.url}/v1/jobs/${encodeURIComponent(providerJobId)}`, {
+    method: "DELETE", headers: { authorization: `Bearer ${bridge.token}` }, signal: providerTimeout(),
+  });
+  if (!response.ok) throw new Error(`${bridge.name} cancellation failed (${response.status}).`);
+}
+
+function qiBase() {
+  return (process.env.QI_API_BASE ?? "https://api.quantum-inspire.com").replace(/\/$/, "");
+}
+
+function qiHeaders() {
+  const token = process.env.QI_API_KEY;
+  if (!token) throw new Error("Quantum Inspire is not configured.");
+  return { accept: "application/json", "content-type": "application/json", authorization: `Token ${token}` };
+}
+
+async function qiFetch(path: string, init: RequestInit = {}) {
+  const response = await fetch(`${qiBase()}${path}`, { ...init, headers: { ...qiHeaders(), ...(init.headers ?? {}) }, signal: providerTimeout() });
+  if (!response.ok) throw new Error(`Quantum Inspire request failed (${response.status}): ${await response.text()}`);
+  if (response.status === 204) return null;
+  return response.json() as Promise<unknown>;
+}
+
+function qiList<T>(payload: unknown): T[] {
+  if (Array.isArray(payload)) return payload as T[];
+  if (payload && typeof payload === "object" && Array.isArray((payload as { results?: unknown }).results)) {
+    return (payload as { results: T[] }).results;
+  }
+  return [];
+}
+
+function qiJobId(value: unknown) {
+  if (typeof value === "number") return String(value);
+  if (typeof value === "string") {
+    const match = /\/(\d+)\/?$/.exec(value);
+    return match ? match[1] : value;
+  }
+  return "";
+}
+
+type QiBackendType = { url?: string; name?: string; is_hardware_backend?: boolean };
+type QiEntity = { url?: string; id?: number | string };
+
+async function submitQuantumInspire(analysis: CircuitAnalysis, shots: number, jobId: string): Promise<Submission> {
+  const encoding = nativeProgramFor({ id: "qi-starmon-5", provider: "quantum-inspire", displayName: "Starmon-5" }, analysis.normalizedQasm2);
+  const wanted = (process.env.QI_BACKEND ?? "Starmon-5").toLowerCase();
+  const backends = qiList<QiBackendType>(await qiFetch("/backendtypes/"));
+  const backend = backends.find((item) => (item.name ?? "").toLowerCase() === wanted)
+    ?? backends.find((item) => /starmon/i.test(item.name ?? ""));
+  if (!backend?.url) throw new Error(`Quantum Inspire has no backend matching "${process.env.QI_BACKEND ?? "Starmon-5"}".`);
+  const project = await qiFetch("/projects/", {
+    method: "POST",
+    body: JSON.stringify({ name: `qrouter-${jobId}`.slice(0, 80), backend_type: backend.url, default_number_of_shots: shots }),
+  }) as QiEntity;
+  if (!project.url) throw new Error("Quantum Inspire did not return a project URL.");
+  const asset = await qiFetch("/assets/", {
+    method: "POST",
+    body: JSON.stringify({ name: "circuit", project: project.url, content: encoding.format === "cqasm-1.0" ? encoding.source : analysis.normalizedQasm2 }),
+  }) as QiEntity;
+  if (!asset.url) throw new Error("Quantum Inspire did not return an asset URL.");
+  const job = await qiFetch("/jobs/", {
+    method: "POST",
+    body: JSON.stringify({ name: jobId, input: asset.url, backend_type: backend.url, number_of_shots: shots }),
+  }) as QiEntity & { url?: string };
+  const providerJobId = qiJobId(job.id) || qiJobId(job.url);
+  if (!providerJobId) throw new Error("Quantum Inspire did not return a job ID.");
+  return { providerJobId, status: "submitted" };
+}
+
+function qiStatusFrom(raw: string): ProviderStatus["status"] {
+  const status = raw.toLowerCase();
+  if (["complete", "completed", "success"].includes(status)) return "completed";
+  if (["failed", "error", "execution_failed", "cancelled_due_to_failed"].includes(status)) return "failed";
+  if (["cancelled", "canceled"].includes(status)) return "cancelled";
+  if (["running", "executing", "processing"].includes(status)) return "processing";
+  return "submitted";
+}
+
+async function getQuantumInspireStatus(providerJobId: string): Promise<ProviderStatus> {
+  const job = await qiFetch(`/jobs/${encodeURIComponent(providerJobId)}/`) as {
+    status?: string; results?: string; failure_reason?: string; error?: string;
+  };
+  const status = qiStatusFrom(job.status ?? "submitted");
+  if (status === "failed") return { status, error: job.failure_reason ?? job.error ?? "Quantum Inspire job failed." };
+  if (status !== "completed") return { status };
+  const resultUrl = typeof job.results === "string" ? job.results : `${qiBase()}/jobs/${encodeURIComponent(providerJobId)}/result/`;
+  const path = resultUrl.startsWith("http") ? new URL(resultUrl).pathname : resultUrl;
+  const result = await qiFetch(path.startsWith("/") ? path : `/${path}`) as {
+    histogram?: Record<string, number>;
+    histogram_qubit_count?: number;
+  };
+  return { status: "completed", result: { probabilities: result.histogram ?? {}, metadata: { histogramQubitCount: result.histogram_qubit_count } } };
+}
+
+async function cancelQuantumInspire(providerJobId: string) {
+  await qiFetch(`/jobs/${encodeURIComponent(providerJobId)}/`, { method: "DELETE" });
+}
+
+export async function submitToProvider(backendId: string, analysis: CircuitAnalysis, shots: number, jobId: string, bundle?: Pick<ExecutionBundle, "media_type" | "payload">): Promise<Submission> {
   if (backendId === "qci-aer-gpu") return submitVultr(analysis, shots, jobId);
-  if (backendId === "ibm-brisbane") return submitIbm(analysis, shots);
+  if (backendId === "ibm-brisbane" || backendId.startsWith("ibm-")) return submitIbm(backendId, analysis, shots, bundle);
   if (backendId === "ionq-aria-1" && process.env.IONQ_API_KEY) return submitIonq(analysis, shots, jobId);
   if (BRAKET_DEVICES[backendId]) return submitBraket(backendId, analysis, shots, jobId);
+  if (bridgeAuth(backendId)) return submitExecutionBridge(backendId, analysis, shots, jobId);
+  if (backendId === "qi-starmon-5" && process.env.QI_API_KEY) return submitQuantumInspire(analysis, shots, jobId);
   throw new Error(`Execution adapter for ${backendId} is not enabled.`);
 }
 
@@ -274,6 +487,8 @@ export async function getProviderStatus(backendId: string, providerJobId: string
     return { status: ["running", "executing"].includes(raw) ? "processing" : "submitted" };
   }
   if (backendId === "ionq-aria-1" && !providerJobId.startsWith("arn:aws:braket:")) return getIonqStatus(providerJobId);
+  if (bridgeAuth(backendId)) return getExecutionBridgeStatus(backendId, providerJobId);
+  if (backendId === "qi-starmon-5" && process.env.QI_API_KEY) return getQuantumInspireStatus(providerJobId);
   const device = BRAKET_DEVICES[backendId];
   if (device) {
     const client = new BraketClient({ region: device.region });
@@ -308,6 +523,14 @@ export async function cancelProviderJob(backendId: string, providerJobId: string
   if (backendId === "ionq-aria-1" && !providerJobId.startsWith("arn:aws:braket:")) {
     const response = await fetch(`https://api.ionq.co/v0.4/jobs/${encodeURIComponent(providerJobId)}`, { method: "DELETE", headers: ionqHeaders(), signal: providerTimeout() });
     if (!response.ok) throw new Error(`IonQ cancellation failed (${response.status}).`);
+    return;
+  }
+  if (bridgeAuth(backendId)) {
+    await cancelExecutionBridge(backendId, providerJobId);
+    return;
+  }
+  if (backendId === "qi-starmon-5" && process.env.QI_API_KEY) {
+    await cancelQuantumInspire(providerJobId);
     return;
   }
   const device = BRAKET_DEVICES[backendId];

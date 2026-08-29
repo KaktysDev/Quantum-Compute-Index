@@ -5,6 +5,7 @@ import { logRedactedError } from "@/lib/security/log";
 import { AuthenticationError, RateLimitError } from "./auth";
 import { BackendUnavailableError, resolutionFor } from "./availability";
 import { CircuitValidationError } from "./analyze";
+import { EncodingError } from "./encoding/types";
 import { RepositorySourceError } from "./repositories";
 import { TranspilerUnavailableError } from "./transpiler";
 
@@ -31,6 +32,9 @@ export function apiError(error: unknown, requestIdValue?: string) {
   }
   if (error instanceof CircuitValidationError) {
     return NextResponse.json({ error: { type: "invalid_circuit", message: error.message, details: error.details } }, { status: 422, headers });
+  }
+  if (error instanceof EncodingError) {
+    return NextResponse.json({ error: { type: "unsupported_encoding", message: error.message } }, { status: 422, headers });
   }
   if (error instanceof RepositorySourceError) {
     return NextResponse.json({ error: { type: error.type, message: error.message } }, { status: error.status, headers });

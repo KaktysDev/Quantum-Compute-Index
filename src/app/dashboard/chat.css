@@ -491,7 +491,9 @@
    The only place the assistant earns colour: amber while a job is executing,
    green when it settles, red when it fails. */
 
-.qc-progress { display: flex; align-items: center; gap: 0.5rem; padding: 0.7rem 0.9rem; border-top: 1px solid var(--qr-line); }
+.qc-proposal .enc-strip { margin: 0.15rem 0.9rem 0.55rem; }
+.qc-progress { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.7rem 0.9rem; border-top: 1px solid var(--qr-line); }
+.qc-progress .enc-strip { margin: 0; flex: 1 1 100%; }
 .qc-progress-bar { position: relative; height: 3px; min-width: 0; flex: 1; overflow: hidden; border-radius: 2px; background: var(--qr-line); }
 .qc-progress-bar::after {
   content: "";

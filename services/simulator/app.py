@@ -10,7 +10,7 @@ import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from typing import Literal, Optional
 
 import numpy as np
@@ -35,11 +35,16 @@ JOB_DB_PATH = os.environ.get("JOB_DB_PATH", "/tmp/qrouter-simulator/jobs.sqlite3
 STARTED_AT = time.time()
 
 
+@contextmanager
 def database():
     os.makedirs(os.path.dirname(JOB_DB_PATH) or ".", exist_ok=True)
     connection = sqlite3.connect(JOB_DB_PATH, timeout=30)
     connection.row_factory = sqlite3.Row
-    return connection
+    try:
+        yield connection
+        connection.commit()
+    finally:
+        connection.close()
 
 
 def initialize_database():
@@ -142,6 +147,7 @@ class TranspileInput(BaseModel):
 class IbmJobInput(BaseModel):
     qpy: str = Field(min_length=1, max_length=2_000_000)
     shots: int = Field(default=1024, ge=1, le=MAX_SHOTS)
+    backend_name: Optional[str] = None
 
 
 def authorize(authorization: Optional[str] = Header(default=None)):
@@ -328,16 +334,27 @@ def compile_circuit(payload: TranspileInput):
 def serialize_runtime_result(result):
     publications = []
     for publication in result:
-        counts = {}
+        registers = {}
         data = getattr(publication, "data", None)
         if data is not None:
             for name in data.keys():
                 value = getattr(data, name)
                 if hasattr(value, "get_counts"):
-                    for state, count in value.get_counts().items():
-                        counts[state] = counts.get(state, 0) + int(count)
-        publications.append({"counts": counts, "metadata": getattr(publication, "metadata", {})})
-    return {"publications": publications, "counts": publications[0]["counts"] if publications else {}}
+                    registers[name] = {str(state): int(count) for state, count in value.get_counts().items()}
+        # One classical register keeps the historical `counts` key. Multiple
+        # registers stay named so "00" from meas is never added to "00" from alpha.
+        counts = next(iter(registers.values())) if len(registers) == 1 else {}
+        publications.append({
+            "counts": counts,
+            "registers": registers,
+            "metadata": getattr(publication, "metadata", {}),
+        })
+    first = publications[0] if publications else {"counts": {}, "registers": {}}
+    return {
+        "publications": publications,
+        "counts": first["counts"],
+        "registers": first["registers"],
+    }
 
 
 def execute(job_id: str, payload: JobInput):
@@ -439,7 +456,7 @@ def create_ibm_job(payload: IbmJobInput):
         circuits = qpy.load(io.BytesIO(base64.b64decode(payload.qpy, validate=True)))
         if len(circuits) != 1:
             raise ValueError("Exactly one compiled circuit is required")
-        backend = ibm_backend(os.environ.get("IBM_QUANTUM_BACKEND", "ibm_brisbane"))
+        backend = ibm_backend(payload.backend_name or os.environ.get("IBM_QUANTUM_BACKEND", "ibm_brisbane"))
         job = SamplerV2(mode=backend).run(circuits, shots=payload.shots)
         return {"id": job.job_id(), "status": "submitted"}
     except Exception as error:

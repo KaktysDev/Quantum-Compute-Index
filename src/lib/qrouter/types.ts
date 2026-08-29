@@ -27,6 +27,8 @@ export interface CircuitAnalysis {
   gateCounts: Record<string, number>;
   complexity: "light" | "medium" | "heavy";
   normalizedQasm2: string;
+  /** Present when the encoding frontend classified the program (qee/1). */
+  workloadKind?: "gate" | "dynamic" | "timed" | "analog" | "annealing" | "photonic" | "primitive" | "estimation";
 }
 
 export interface Backend {
@@ -72,6 +74,9 @@ export interface RouteCandidate {
   score: number;
   estimatedProviderCost: number;
   estimatedNqh: number;
+  quoteBinding?: "binding" | "indicative";
+  satisfaction?: { ok: boolean; notes?: string[]; failures?: Array<{ code: string; message: string }> };
+  compiled?: boolean;
 }
 
 export interface RouteDecision {
@@ -81,6 +86,7 @@ export interface RouteDecision {
   explanation: string[];
   qciSnapshotId?: number | null;
   qciTimestamp?: string;
+  encoding?: import("./encoding/types").EncodingTrace;
 }
 
 export interface Quote {
@@ -105,7 +111,7 @@ export interface TranspilationMetrics {
 export interface TranspilationResult {
   qasm: string;
   artifactQasm?: string;
-  providerProgram?: string;
+  providerProgram?: { format: string; data: string } | string;
   backendId: string;
   compiler: "local" | "qiskit";
   optimizationLevel: number;
@@ -114,6 +120,7 @@ export interface TranspilationResult {
   after: TranspilationMetrics;
   layout: Record<string, unknown> | null;
   equivalent: boolean | null;
+  verificationStatus?: "proved" | "checked" | "provider_validated" | "partial" | "unsupported" | "failed";
   verificationNote?: string;
   improvement: {
     depthPercent: number;

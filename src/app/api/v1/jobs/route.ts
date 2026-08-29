@@ -59,9 +59,12 @@ export async function POST(request: Request) {
       qciSnapshotId: snapshot.id,
       qciTimestamp: snapshot.ts,
       optimizationLevel: input.optimization_level,
+      source: input.circuit,
+      format: input.format,
+      failover: { enabled: input.failover, max_attempts: input.max_attempts },
     });
     const { decision, quote, executionAnalysis } = prepared;
-    const analysis = { ...originalAnalysis, transpilation: publicTranspilation(prepared.transpilation) };
+    const analysis = { ...originalAnalysis, transpilation: publicTranspilation(prepared.transpilation), encoding: prepared.encoding };
     const idempotencyKey = request.headers.get("idempotency-key")?.trim() || null;
     const requestId = request.headers.get("x-request-id")?.trim() || randomUUID();
     const now = new Date().toISOString();
@@ -81,7 +84,7 @@ export async function POST(request: Request) {
       };
       demoJobs.set(jobId, base);
       try {
-        const submission = await submitToProvider(decision.selected.id, executionAnalysis, input.shots, jobId);
+        const submission = await submitToProvider(decision.selected.id, executionAnalysis, input.shots, jobId, prepared.bundles[0]);
         base.status = submission.status === "completed" ? "completed" : "submitted";
         base.result = submission.result ?? null;
         base.updated_at = new Date().toISOString();

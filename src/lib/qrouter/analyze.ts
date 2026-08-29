@@ -1,5 +1,6 @@
 import QuantumCircuit from "quantum-circuit";
 import { DialectError, expandDialects } from "./dialects";
+import { EncodingError, assertIncludePolicy, classifyWorkload, parseGateProgram, sourceMetrics } from "./encoding";
 import type { CircuitAnalysis, InputFormat } from "./types";
 
 const MAX_SOURCE_BYTES = 256_000;
@@ -12,11 +13,21 @@ export class CircuitValidationError extends Error {
   }
 }
 
+/** Statement-scoped: identifiers like `input_state` and comments are not constructs (D12). */
+const QASM3_STATEMENT = /^(?:def|defcal|cal|while|for|switch|input|output|duration|stretch)\b/i;
+
+function qasm3NeedsSemanticIr(source: string) {
+  const stripped = source.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, "");
+  return stripped.split(";").some((statement) => QASM3_STATEMENT.test(statement.trim()));
+}
+
 export function toOpenQasm2(source: string, format: InputFormat): string {
   if (format === "openqasm2") return source;
 
-  if (/\b(def|defcal|cal|while|for|switch|input|output|duration|stretch)\b/.test(source)) {
-    throw new CircuitValidationError("This OpenQASM 3 program uses constructs not yet supported by the universal transpiler.");
+  if (qasm3NeedsSemanticIr(source)) {
+    throw new CircuitValidationError(
+      "This OpenQASM 3 program uses dynamic or timed constructs. The encoding layer parsed them; execution is gated by backend capability.",
+    );
   }
 
   let qasm = source
@@ -82,6 +93,29 @@ export function analyzeCircuit(source: string, format: InputFormat): CircuitAnal
     throw new CircuitValidationError("Circuit source exceeds the 256 KB limit.");
   }
 
+  try {
+    assertIncludePolicy(source);
+  } catch (error) {
+    if (error instanceof EncodingError) throw new CircuitValidationError(error.message);
+    throw error;
+  }
+
+  if (format === "openqasm3" && qasm3NeedsSemanticIr(source)) {
+    try {
+      const program = parseGateProgram(source, format);
+      const kind = classifyWorkload(program);
+      const metrics = sourceMetrics(program);
+      return {
+        ...metrics,
+        normalizedQasm2: source,
+        workloadKind: kind,
+      };
+    } catch (error) {
+      if (error instanceof EncodingError) throw new CircuitValidationError(error.message);
+      throw error;
+    }
+  }
+
   let normalizedQasm2: string;
   try {
     normalizedQasm2 = expandDialects(toOpenQasm2(source, format));
@@ -122,6 +156,7 @@ export function analyzeCircuit(source: string, format: InputFormat): CircuitAnal
     depth: circuit.numCols(), gates, twoQubitGates, measurements, gateCounts,
     complexity: weighted < 80 ? "light" : weighted < 500 ? "medium" : "heavy",
     normalizedQasm2,
+    workloadKind: "gate",
   };
 }
 

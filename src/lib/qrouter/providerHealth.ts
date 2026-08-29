@@ -66,17 +66,35 @@ export async function checkProviderConnections() {
       if (!response.ok) throw new Error(`IonQ returned ${response.status}.`);
       return `${backend} reachable.`;
     }),
-    ...[
-      ["Quandela bridge", process.env.QUANDELA_EXECUTION_URL, process.env.QUANDELA_API_KEY],
-      ["Xanadu bridge", process.env.XANADU_EXECUTION_URL, process.env.XANADU_API_KEY],
-      ["Quantum Inspire bridge", process.env.QI_EXECUTION_URL, process.env.QI_API_KEY],
-    ].map(([name, url, token]) => probe(name!, [], Boolean(url && token), async () => {
-      const response = await fetch(`${url!.replace(/\/$/, "")}/health`, {
-        headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000),
+    probe("Quandela bridge", ["quandela-mosaiq"], Boolean(process.env.QUANDELA_EXECUTION_URL && process.env.QUANDELA_API_KEY), async () => {
+      const response = await fetch(`${process.env.QUANDELA_EXECUTION_URL!.replace(/\/$/, "")}/health`, {
+        headers: { authorization: `Bearer ${process.env.QUANDELA_API_KEY}` }, signal: AbortSignal.timeout(10_000),
       });
-      if (!response.ok) throw new Error(`${name} returned ${response.status}.`);
+      if (!response.ok) throw new Error(`Quandela bridge returned ${response.status}.`);
       return "Execution bridge reachable.";
-    })),
+    }),
+    probe("Xanadu bridge", ["xanadu-borealis"], Boolean(process.env.XANADU_EXECUTION_URL && process.env.XANADU_API_KEY), async () => {
+      const response = await fetch(`${process.env.XANADU_EXECUTION_URL!.replace(/\/$/, "")}/health`, {
+        headers: { authorization: `Bearer ${process.env.XANADU_API_KEY}` }, signal: AbortSignal.timeout(10_000),
+      });
+      if (!response.ok) throw new Error(`Xanadu bridge returned ${response.status}.`);
+      return "Execution bridge reachable.";
+    }),
+    probe("Quantum Inspire", ["qi-starmon-5"], Boolean(process.env.QI_API_KEY), async () => {
+      if (process.env.QI_EXECUTION_URL) {
+        const response = await fetch(`${process.env.QI_EXECUTION_URL.replace(/\/$/, "")}/health`, {
+          headers: { authorization: `Bearer ${process.env.QI_API_KEY}` }, signal: AbortSignal.timeout(10_000),
+        });
+        if (!response.ok) throw new Error(`Quantum Inspire bridge returned ${response.status}.`);
+        return "Execution bridge reachable.";
+      }
+      const base = (process.env.QI_API_BASE ?? "https://api.quantum-inspire.com").replace(/\/$/, "");
+      const response = await fetch(`${base}/backendtypes/`, {
+        headers: { authorization: `Token ${process.env.QI_API_KEY}` }, signal: AbortSignal.timeout(10_000),
+      });
+      if (!response.ok) throw new Error(`Quantum Inspire returned ${response.status}.`);
+      return "Quantum Inspire API reachable.";
+    }),
   ]);
 }
 
