@@ -702,7 +702,7 @@ begin
   update public.circuits
      set released_at=coalesce(released_at,now()),
          source='',
-         analysis=(coalesce(analysis,'{}'::jsonb) - 'normalizedQasm2' - 'transpilation') || jsonb_build_object('released',true),
+         analysis=(coalesce(analysis,'{}'::jsonb) - 'normalizedQasm2' - 'transpilation' - 'encoding') || jsonb_build_object('released',true),
          updated_at=now()
    where id=p_circuit_id;
 
@@ -710,7 +710,9 @@ begin
    where circuit_id=p_circuit_id and organization_id=p_organization_id;
 
   update public.jobs
-     set source='',result=null,analysis=jsonb_build_object('released',true),updated_at=now()
+     set source='',result=null,analysis=jsonb_build_object('released',true),
+         route_decision=case when route_decision is null then null else route_decision #- '{encoding,selected_bundle,payload}' end,
+         updated_at=now()
    where id=any(job_ids);
 
   -- request/response hold the submitted program and the raw provider result.

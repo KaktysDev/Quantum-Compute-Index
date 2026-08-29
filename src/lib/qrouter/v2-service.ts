@@ -43,14 +43,28 @@ function groupResource(group: DemoGroup): ExecutionGroup {
 }
 
 /**
- * Keeps the derived metrics (qubits, depth, gate counts) and drops the two keys
+ * Keeps the derived metrics (qubits, depth, gate counts) and drops the keys
  * that are the circuit itself. Mirrors the jsonb subtraction in
  * purge_circuit_data so demo and SQL purge to the same shape.
  */
 function releasedAnalysis(analysis: unknown): Record<string, unknown> {
   const source = (analysis ?? {}) as Record<string, unknown>;
-  const kept = Object.fromEntries(Object.entries(source).filter(([key]) => key !== "normalizedQasm2" && key !== "transpilation"));
+  const kept = Object.fromEntries(Object.entries(source).filter(([key]) => key !== "normalizedQasm2" && key !== "transpilation" && key !== "encoding"));
   return { ...kept, released: true };
+}
+
+function releasedRouteDecision(decision: unknown): unknown {
+  if (!decision || typeof decision !== "object" || Array.isArray(decision)) return decision;
+  const row = { ...(decision as Record<string, unknown>) };
+  if (!row.encoding || typeof row.encoding !== "object" || Array.isArray(row.encoding)) return row;
+  const encoding = { ...(row.encoding as Record<string, unknown>) };
+  if (encoding.selected_bundle && typeof encoding.selected_bundle === "object" && !Array.isArray(encoding.selected_bundle)) {
+    const bundle = { ...(encoding.selected_bundle as Record<string, unknown>) };
+    delete bundle.payload;
+    encoding.selected_bundle = bundle;
+  }
+  row.encoding = encoding;
+  return row;
 }
 
 function circuitResource(row: DbRow): CircuitResource {
@@ -167,11 +181,13 @@ export async function releaseCircuitResource(principal: Principal, circuitId: st
         if (job) {
           job.source = "";
           job.result = null;
-          job.analysis = { ...job.analysis, normalizedQasm2: "", transpilation: undefined };
+          job.analysis = releasedAnalysis(job.analysis);
+          job.route_decision = releasedRouteDecision(job.route_decision) as StoredJob["route_decision"];
         }
         // The execution summary holds its own copy of the analysis, so the
         // transpiled QASM survives here even after the job row is cleared.
         execution.analysis = releasedAnalysis(execution.analysis);
+        execution.route_decision = releasedRouteDecision(execution.route_decision);
         execution.result_available = false;
       }
     }

@@ -7,7 +7,8 @@ export { advertisedCapabilities, adapterFor, encodeForBackend, profileBackend } 
 export { qasm2ToCqasm, qasm2ToPhotonicProgram, nativeProgramFor, usesNativeEncoder, NATIVE_ENCODER_PROVIDERS } from "./native";
 export { buildEnvelope, buildBundle, verificationStatusOf } from "./bundle";
 export { decodeProviderResult, largestRemainderCounts, normalizeBitOrder, resultSetToNormalized, rewriteStates } from "./decode";
-export { applySatisfaction, buildExecutionEnvelope, compileTargets, encodeBundles, encodingTrace, liveStages, satisfactionFailures } from "./compose";
+export { applySatisfaction, buildExecutionEnvelope, cacheKey, cachedTranspile, compileTargets, encodeBundles, encodingTrace, liveStages, satisfactionFailures } from "./compose";
+export { overlayExecute } from "./stages";
 export { RECIPES, getRecipe, productionRecipes } from "./recipes";
 export { EncodingError, PLATFORM_BIT_ORDER } from "./types";
 export type {

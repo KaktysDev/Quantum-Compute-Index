@@ -95,22 +95,18 @@ const aer: EncodingAdapter = {
     result_types: ["counts", "probabilities"],
   }),
   validate: (env, cap) => satisfies(env.requirements, cap),
-  encode: (input) => {
-    const qasm = input.transpilation?.qasm ?? input.analysis.normalizedQasm2;
-    const native = nativeProgramFor(input.backend, qasm);
-    return buildBundle({
+  encode: (input) => buildBundle({
     envelope: input.envelope,
     backendId: input.backend.id,
-    payload: native.format === "cqasm-1.0" ? native.source : JSON.stringify(native),
-    mediaType: native.format === "cqasm-1.0" ? "text/cqasm" : "application/json",
+    payload: input.transpilation?.qasm ?? input.analysis.normalizedQasm2,
+    mediaType: "text/qasm2",
     decodeMap: decodeMapFor(programOf(input.envelope), "q0_right", layoutFrom(input.transpilation)),
     capability: input.capability,
     compiler: compilerOf(input.transpilation),
     verification: verificationFromTranspile(input.transpilation, input.capability),
     metrics: metricsFrom(input.transpilation, input.analysis),
     quoteBinding: input.quoteBinding,
-  });
-  },
+  }),
 };
 
 const ibm: EncodingAdapter = {

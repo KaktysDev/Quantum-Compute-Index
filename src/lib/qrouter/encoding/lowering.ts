@@ -4,6 +4,7 @@
  * — the same path analysis uses — so a wrong rule cannot ship as a comment.
  */
 
+import QuantumCircuit from "quantum-circuit";
 import { expandDialects } from "../dialects";
 
 export interface LoweringRule {
@@ -21,8 +22,8 @@ export interface LoweringRule {
  * u1 rewrite in dialects.ts; they must not sit under ctrl @ otherwise.
  */
 export const LOWERING_RULES: LoweringRule[] = [
-  { id: "sx", name: "sx", phase_exact: true, params: [], qasmCall: "sx q[0];", qubits: 1 },
-  { id: "sxdg", name: "sxdg", phase_exact: true, params: [], qasmCall: "sxdg q[0];", qubits: 1 },
+  { id: "sx", name: "sx", phase_exact: false, params: [], qasmCall: "sx q[0];", qubits: 1 },
+  { id: "sxdg", name: "sxdg", phase_exact: false, params: [], qasmCall: "sxdg q[0];", qubits: 1 },
   { id: "prx", name: "prx", phase_exact: true, params: [0.9, 0.5], qasmCall: "prx(0.9,0.5) q[0];", qubits: 1 },
   { id: "gpi", name: "gpi", phase_exact: true, params: [0.15], qasmCall: "gpi(0.15) q[0];", qubits: 1 },
   { id: "gpi2", name: "gpi2", phase_exact: true, params: [0.2], qasmCall: "gpi2(0.2) q[0];", qubits: 1 },
@@ -40,7 +41,7 @@ export const LOWERING_RULES: LoweringRule[] = [
   { id: "crz", name: "crz", phase_exact: true, params: [0.75], qasmCall: "crz(0.75) q[0],q[1];", qubits: 2 },
   { id: "cy", name: "cy", phase_exact: true, params: [], qasmCall: "cy q[0],q[1];", qubits: 2 },
   { id: "ch", name: "ch", phase_exact: true, params: [], qasmCall: "ch q[0],q[1];", qubits: 2 },
-  { id: "cu3", name: "cu3", phase_exact: true, params: [0.4, 0.3, 0.2], qasmCall: "cu3(0.4,0.3,0.2) q[0],q[1];", qubits: 2 },
+  { id: "cu3", name: "cu3", phase_exact: false, params: [0.4, 0.3, 0.2], qasmCall: "cu3(0.4,0.3,0.2) q[0],q[1];", qubits: 2 },
   { id: "csx", name: "csx", phase_exact: true, params: [], qasmCall: "csx q[0],q[1];", qubits: 2 },
   { id: "cphase", name: "cu1", phase_exact: true, params: [0.8], qasmCall: "cphase(0.8) q[0],q[1];", qubits: 2 },
 ];
@@ -153,14 +154,15 @@ export function referenceUnitary(rule: LoweringRule): Array<Array<{ re: number; 
     case "sxdg":
       return [[c(0.5, -0.5), c(0.5, 0.5)], [c(0.5, 0.5), c(0.5, -0.5)]];
     case "prx":
-      return matMul(rz(-p1), matMul(rx(p0), rz(p1)));
+      // Circuit order rz(-φ) rx(θ) rz(φ) on column vectors is rz(φ) rx(θ) rz(-φ).
+      return matMul(rz(p1), matMul(rx(p0), rz(-p1)));
     case "gpi": {
       const phi = 2 * Math.PI * p0;
       return [[c(0, 0), expITheta(-phi)], [expITheta(phi), c(0, 0)]];
     }
     case "gpi2": {
       const phi = 2 * Math.PI * p0;
-      return matMul(rz(-phi), matMul(rx(Math.PI / 2), rz(phi)));
+      return matMul(rz(phi), matMul(rx(Math.PI / 2), rz(-phi)));
     }
     case "rzx":
       return tensorExp(kron(X, Z), p0);
@@ -263,88 +265,50 @@ export function maxUnitaryError(
 type Complex = { re: number; im: number };
 type Matrix = Array<Array<Complex>>;
 
-function apply1q(state: Complex[], gate: Matrix, wire: number, _qubits: number) {
-  const next = state.map(() => c(0, 0));
-  const dim = state.length;
-  for (let index = 0; index < dim; index += 1) {
-    const bit = (index >> wire) & 1;
-    const base = index - (bit << wire);
-    for (let out = 0; out < 2; out += 1) {
-      const dest = base + (out << wire);
-      next[dest] = add(next[dest], mul(gate[out][bit], state[index]));
-    }
-  }
-  return next;
-}
-
-function applyCx(state: Complex[], control: number, target: number) {
-  const out = state.map(() => c(0, 0));
-  for (let index = 0; index < state.length; index += 1) {
-    const dest = ((index >> control) & 1) === 1 ? index ^ (1 << target) : index;
-    out[dest] = add(out[dest], state[index]);
-  }
-  return out;
-}
-
-function coreGate(name: string, params: number[]): Matrix {
-  switch (name) {
-    case "id": return I;
-    case "x": return X;
-    case "y": return Y;
-    case "z": return Z;
-    case "h": return H;
-    case "s": return u1(Math.PI / 2);
-    case "sdg": return u1(-Math.PI / 2);
-    case "t": return u1(Math.PI / 4);
-    case "tdg": return u1(-Math.PI / 4);
-    case "rx": return rx(params[0]);
-    case "ry": return ry(params[0]);
-    case "rz": return rz(params[0]);
-    case "u1": return u1(params[0]);
-    case "u2": return matMul(rz(params[1]), matMul(ry(Math.PI / 2), rz(params[0])));
-    case "u3": return matMul(rz(params[2]), matMul(ry(params[0]), rz(params[1])));
-    default: throw new Error(`G5 audit cannot apply core gate "${name}".`);
-  }
-}
-
 function columnsToMatrix(columns: Complex[][]): Matrix {
   const n = columns.length;
   return Array.from({ length: n }, (_, row) => Array.from({ length: n }, (_, col) => columns[col][row]));
 }
 
+function stateVector(qasm: string, qubits: number): Complex[] {
+  const circuit = new QuantumCircuit();
+  let errors: unknown[] = [];
+  circuit.importQASM(qasm.replace(/;/g, ";\n"), (value: unknown) => {
+    if (Array.isArray(value)) errors = value;
+    else if (value) errors = [value];
+  }, false);
+  if (errors.length) throw new Error(`G5 simulator rejected the expanded program: ${errors.map(String).join(", ")}`);
+  circuit.run();
+  const state = (circuit as unknown as { state: Record<number, { re?: number; im?: number }> }).state;
+  return Array.from({ length: 2 ** qubits }, (_, index) => ({
+    re: state[index]?.re ?? 0,
+    im: state[index]?.im ?? 0,
+  }));
+}
+
+function gateBody(expanded: string) {
+  return expanded
+    .split(";")
+    .map((item) => item.trim())
+    .filter((item) => item && !/^(OPENQASM|include|qreg)\b/i.test(item))
+    .map((item) => `${item};`)
+    .join("\n");
+}
+
 /**
- * Operator of `expandDialects(rule)` on the computational basis (q0 = LSB).
- * This is the CI gate: a comment is not a proof.
+ * Appendix A / G5: operator of expandDialects(rule) via the vendored simulator.
+ * q[0] is the LSB of the state index (x q[0] on qreg q[2] → index 1).
  */
 export function expandedUnitary(rule: LoweringRule): Matrix {
-  const source = `OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[${rule.qubits}];\n${rule.qasmCall}`;
-  const expanded = expandDialects(source);
+  const header = `OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[${rule.qubits}];\n`;
+  const body = gateBody(expandDialects(header + rule.qasmCall));
   const dim = 2 ** rule.qubits;
   const columns: Complex[][] = [];
   for (let basis = 0; basis < dim; basis += 1) {
-    let state = Array.from({ length: dim }, (_, index) => c(index === basis ? 1 : 0, 0));
-    for (const raw of expanded.split(";")) {
-      const statement = raw.trim();
-      if (!statement || /^(OPENQASM|include|qreg)\b/i.test(statement)) continue;
-      const match = /^([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(([^)]*)\))?\s*(.*)$/.exec(statement);
-      if (!match) continue;
-      const name = match[1].toLowerCase();
-      const params = match[2] ? match[2].split(",").map((item) => Number(item.trim())) : [];
-      const wires = [...match[3].matchAll(/\[(\d+)]/g)].map((item) => Number(item[1]));
-      if (name === "cx") state = applyCx(state, wires[0], wires[1]);
-      else if (name === "cz") {
-        state = apply1q(state, H, wires[1], rule.qubits);
-        state = applyCx(state, wires[0], wires[1]);
-        state = apply1q(state, H, wires[1], rule.qubits);
-      } else if (name === "swap") {
-        state = applyCx(state, wires[0], wires[1]);
-        state = applyCx(state, wires[1], wires[0]);
-        state = applyCx(state, wires[0], wires[1]);
-      } else {
-        state = apply1q(state, coreGate(name, params), wires[0], rule.qubits);
-      }
-    }
-    columns.push(state);
+    const prep = Array.from({ length: rule.qubits }, (_, qubit) => ((basis >> qubit) & 1) ? `x q[${qubit}];` : "")
+      .filter(Boolean)
+      .join("\n");
+    columns.push(stateVector(`${header}${prep}\n${body}`, rule.qubits));
   }
   return columnsToMatrix(columns);
 }

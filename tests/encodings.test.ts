@@ -230,7 +230,7 @@ describe("route + compile + submit for every catalog family", () => {
     process.env.XANADU_API_KEY = "xanadu-token";
     process.env.QUANDELA_EXECUTION_URL = "https://quandela-bridge.example.com";
     process.env.QUANDELA_API_KEY = "quandela-token";
-    const fetchMock = vi.fn().mockResolvedValue(Response.json({ id: "bridge-job" }, { status: 202 }));
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(Response.json({ id: "bridge-job" }, { status: 202 })));
     vi.stubGlobal("fetch", fetchMock);
 
     await submitToProvider("xanadu-borealis", analysis, 8, "job-xanadu");
