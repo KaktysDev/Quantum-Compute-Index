@@ -261,7 +261,7 @@ describe("D10 v2 test keys", () => {
       environment: "test",
       scopes: ["jobs:write"],
     };
-    const created = await createCircuitResource(principal, { circuit: BELL, format: "openqasm2" }, crypto.randomUUID());
+    const created = await createCircuitResource(principal, { name: undefined, circuit: BELL, format: "openqasm2" }, crypto.randomUUID());
     await expect(createExecutionGroup(principal, {
       circuit_id: created.circuit.id,
       metadata: {},

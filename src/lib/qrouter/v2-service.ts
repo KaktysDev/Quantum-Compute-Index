@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import { analyzeCircuit, CircuitValidationError } from "./analyze";
 import { deleteJobArtifacts, storeArtifact, loadArtifact } from "./artifacts";
 import { mapWithConcurrency } from "./concurrency";
-import { demoJobs, type StoredJob } from "./demo-store";
+import { demoJobs, type StoredJob, type StoredJobAnalysis } from "./demo-store";
 import { submitToProvider } from "./execution";
 import { cancelProviderJob } from "./execution";
 import { prepareExecution } from "./pipeline";
@@ -47,10 +47,10 @@ function groupResource(group: DemoGroup): ExecutionGroup {
  * that are the circuit itself. Mirrors the jsonb subtraction in
  * purge_circuit_data so demo and SQL purge to the same shape.
  */
-function releasedAnalysis(analysis: unknown): Record<string, unknown> {
+function releasedAnalysis(analysis: unknown): StoredJobAnalysis {
   const source = (analysis ?? {}) as Record<string, unknown>;
   const kept = Object.fromEntries(Object.entries(source).filter(([key]) => key !== "normalizedQasm2" && key !== "transpilation" && key !== "encoding"));
-  return { ...kept, released: true };
+  return { ...kept, released: true } as StoredJobAnalysis;
 }
 
 function releasedRouteDecision(decision: unknown): unknown {
@@ -346,11 +346,15 @@ async function createDemoGroup(principal: Principal, circuit: DemoCircuit, input
   const groupId = newV2Id();
   const executions = await mapWithConcurrency(prepared, EXECUTION_FANOUT_LIMIT, async (item) => {
     const id = newV2Id();
-    const analysis = { ...(circuit.analysis as object), transpilation: publicTranspilation(item.transpilation), encoding: item.encoding };
+    const analysis: StoredJobAnalysis = {
+      ...(circuit.analysis as unknown as StoredJobAnalysis),
+      transpilation: publicTranspilation(item.transpilation),
+      encoding: item.encoding,
+    };
     const job: StoredJob = {
       id, organization_id: principal.organizationId, name: null, input_format: circuit.format, source: circuit.source,
       shots: item.shots, target: item.target, routing_mode: item.routing_mode, status: "submitted",
-      selected_backend_id: item.decision.selected.id, analysis: analysis as StoredJob["analysis"], route_decision: item.decision,
+      selected_backend_id: item.decision.selected.id, analysis, route_decision: item.decision,
       quote: item.quote, result: null, error: null, created_at: now, updated_at: now, completed_at: null,
     };
     demoJobs.set(id, job);

@@ -114,6 +114,13 @@ export function staticProfile(backend: Backend, adapterName: string, extra?: Par
   const tokens = [...new Set([...backend.basisGates, ...backend.nativeGates])];
   const now = new Date().toISOString();
   const gateCapable = kinds.includes("gate");
+  const {
+    schema_version: _schemaVersion,
+    backend_id: _backendId,
+    adapter: _adapter,
+    fingerprint: _fingerprint,
+    ...overrides
+  } = extra ?? {};
   const base: Omit<CapabilityProfile, "fingerprint"> = {
     schema_version: CAP_SCHEMA,
     backend_id: backend.id,
@@ -136,10 +143,7 @@ export function staticProfile(backend: Backend, adapterName: string, extra?: Par
     provider_schema_version: "static/1",
     routable: extra?.routable ?? backend.available,
     routing_note: extra?.routing_note ?? backend.capabilityNote,
-    ...extra,
-    schema_version: CAP_SCHEMA,
-    backend_id: backend.id,
-    adapter: { name: adapterName, version: ADAPTER_VERSION },
+    ...overrides,
   };
   // fetched_at is telemetry, not capability. Hashing it made every profile
   // unique and the compile cache unreachable across quote → confirm.
