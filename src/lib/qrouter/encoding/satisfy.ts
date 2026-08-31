@@ -141,7 +141,9 @@ export function staticProfile(backend: Backend, adapterName: string, extra?: Par
     backend_id: backend.id,
     adapter: { name: adapterName, version: ADAPTER_VERSION },
   };
-  return { ...base, fingerprint: jcsHash({ ...base, fingerprint: undefined }) };
+  // fetched_at is telemetry, not capability. Hashing it made every profile
+  // unique and the compile cache unreachable across quote → confirm.
+  return { ...base, fingerprint: jcsHash({ ...base, fetched_at: undefined, fingerprint: undefined }) };
 }
 
 function canLowerTo(opid: string, cap: CapabilityProfile): boolean {

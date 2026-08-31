@@ -212,6 +212,12 @@ describe("JCS + pipeline", () => {
     expect(JSON.stringify(prepared.encoding.stages)).not.toMatch(/envelope /);
   });
 
+  it("keeps capability fingerprints stable across fetches", () => {
+    const first = profileBackend(catalog("qci-aer-gpu"));
+    const second = profileBackend(catalog("qci-aer-gpu"));
+    expect(first.fingerprint).toBe(second.fingerprint);
+  });
+
   it("reuses a compile when the source hash matches, not the timestamped envelope id", async () => {
     const input = {
       backends: [catalog("qci-aer-gpu")],
