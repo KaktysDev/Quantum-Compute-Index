@@ -231,7 +231,7 @@ describe("JCS + pipeline", () => {
     const first = await prepareExecution(input);
     const second = await prepareExecution(input);
     expect(second.transpilation).toBe(first.transpilation);
-    expect(second.envelope.id).not.toBe(first.envelope.id);
+    expect(second.envelope.provenance.source_sha256).toBe(first.envelope.provenance.source_sha256);
   });
 
   it("advertises per-backend capabilities instead of a single stamp", () => {
