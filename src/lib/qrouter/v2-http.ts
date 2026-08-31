@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { logRedactedError } from "@/lib/security/log";
 import { AuthenticationError, RateLimitError } from "./auth";
+import { EncodingError } from "./encoding/types";
 
 export class V2ApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
@@ -22,6 +23,7 @@ export function v2Problem(request: Request, requestIdValue: string, error: unkno
   if (error instanceof V2ApiError) ({ status, code, message: detail } = error);
   else if (error instanceof AuthenticationError) { status = 401; code = "authentication_error"; detail = error.message; }
   else if (error instanceof RateLimitError) { status = 429; code = "rate_limit_error"; detail = error.message; headers["retry-after"] = String(error.retryAfterSeconds); }
+  else if (error instanceof EncodingError) { status = 422; code = "unsupported_encoding"; detail = error.message; }
   else logRedactedError(`v2 unhandled error (request ${requestIdValue})`, error);
   return NextResponse.json({
     type: `https://api.qrouter.dev/problems/${code}`,

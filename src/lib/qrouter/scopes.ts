@@ -76,3 +76,13 @@ export function assertTargetAllowed(principal: Principal, target: string, backen
     `Test-environment API keys can only run on simulators. "${target}" is a QPU — target a simulator, use "auto", or issue a live key.`,
   );
 }
+
+/** `assertTargetAllowed` for /api/v2 handlers, whose error writer only maps `V2ApiError`. */
+export function assertTargetAllowedV2(principal: Principal, target: string, backends: Backend[]): void {
+  try {
+    assertTargetAllowed(principal, target, backends);
+  } catch (error) {
+    if (error instanceof AuthorizationError) throw new V2ApiError(error.status, error.type, error.message);
+    throw error;
+  }
+}

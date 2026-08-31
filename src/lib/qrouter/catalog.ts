@@ -69,30 +69,35 @@ export const BACKENDS: Backend[] = [
   },
   {
     id: "xanadu-borealis", provider: "xanadu", displayName: "Xanadu Borealis", kind: "qpu",
-    status: "degraded", qubits: 216, nativeGates: same(["squeezing", "displacement", "beamsplitter", "measure"]),
-    basisGates: same(["squeezing", "displacement", "beamsplitter", "measure"]),
-    connectivity: "custom",
+    status: "online", qubits: 216, nativeGates: same(["squeezing", "displacement", "beamsplitter", "measure"]),
+    // Logical gate-model set the dual-rail encoder (and Qiskit) understand.
+    // Hardware native operations stay on nativeGates for the catalog UI.
+    basisGates: same(["x", "y", "z", "h", "s", "sdg", "t", "tdg", "rx", "ry", "rz", "cx", "cz", "swap", "measure"]),
+    connectivity: "all-to-all",
     queueSeconds: 1800, fidelity: 0.94, reliability: 0.91, pricePerShot: 0.002,
-    pricePerTask: 1, description: "Photonic quantum processor", available: false,
-    capabilityNote: "photonic backend requires a native-input bridge; gate-model circuits cannot be translated automatically",
+    pricePerTask: 1, description: "Photonic quantum processor",
+    available: Boolean(process.env.XANADU_EXECUTION_URL && process.env.XANADU_API_KEY),
   },
   {
     id: "quandela-mosaiq", provider: "quandela", displayName: "Quandela MosaiQ", kind: "qpu",
-    status: "degraded", qubits: 12, nativeGates: same(["phase", "beamsplitter", "measure"]),
-    basisGates: same(["phase", "beamsplitter", "measure"]),
-    connectivity: "custom",
+    status: "online", qubits: 12, nativeGates: same(["phase", "beamsplitter", "measure"]),
+    basisGates: same(["x", "y", "z", "h", "s", "sdg", "t", "tdg", "rx", "ry", "rz", "cx", "cz", "swap", "measure"]),
+    connectivity: "all-to-all",
     queueSeconds: 960, fidelity: 0.96, reliability: 0.93, pricePerShot: 0.0015,
-    pricePerTask: 0.5, description: "Photonic cloud QPU", available: false,
-    capabilityNote: "photonic backend requires a native-input bridge; gate-model circuits cannot be translated automatically",
+    pricePerTask: 0.5, description: "Photonic cloud QPU",
+    available: Boolean(process.env.QUANDELA_EXECUTION_URL && process.env.QUANDELA_API_KEY),
   },
   {
     id: "qi-starmon-5", provider: "quantum-inspire", displayName: "Starmon-5", kind: "qpu",
     backendName: "starmon-5",
-    status: "degraded", qubits: 5, nativeGates: same(["x", "y", "z", "h", "rx", "ry", "rz", "cz", "measure"]),
+    status: "online", qubits: 5, nativeGates: same(["x", "y", "z", "h", "rx", "ry", "rz", "cz", "measure"]),
     basisGates: same(["x", "y", "z", "h", "rx", "ry", "rz", "cz", "measure"]),
+    // Plus-shaped chip: Q2 is the hub connected to Q0, Q1, Q3, Q4.
     connectivity: "custom",
+    couplingMap: [[0, 2], [2, 0], [1, 2], [2, 1], [2, 3], [3, 2], [2, 4], [4, 2]],
     queueSeconds: 300, fidelity: 0.97, reliability: 0.94, pricePerShot: 0.0005,
-    pricePerTask: 0.1, description: "Five-qubit superconducting QPU", available: false,
+    pricePerTask: 0.1, description: "Five-qubit superconducting QPU",
+    available: Boolean(process.env.QI_API_KEY),
   },
 ];
 

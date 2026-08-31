@@ -114,6 +114,24 @@ class CompilerTest(unittest.TestCase):
         self.assertEqual(response.status_code, 429)
         self.assertEqual(response.headers["retry-after"], "5")
 
+    def test_compiles_starmon_cz_basis_on_the_plus_topology(self):
+        result = compile_circuit(TranspileInput(
+            qasm=BELL,
+            target=TranspileTarget(
+                backend_id="qi-starmon-5",
+                provider="quantum-inspire",
+                num_qubits=5,
+                basis_gates=["x", "y", "z", "h", "rx", "ry", "rz", "cz", "measure"],
+                connectivity="custom",
+                coupling_map=[[0, 2], [2, 0], [1, 2], [2, 1], [2, 3], [3, 2], [2, 4], [4, 2]],
+            ),
+            optimization_level=1,
+        ))
+        self.assertGreaterEqual(result["after"]["qubits"], 2)
+        operations = result["after"]["operations"]
+        self.assertIn("cz", operations)
+        self.assertNotIn("cx", operations)
+
     def test_compiles_to_coupling_map_and_round_trips_qpy(self):
         result = compile_circuit(TranspileInput(
             qasm=BELL,

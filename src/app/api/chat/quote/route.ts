@@ -9,6 +9,7 @@ import { resolvePrincipal } from "@/lib/qrouter/auth";
 import { apiError } from "@/lib/qrouter/http";
 import { prepareExecution } from "@/lib/qrouter/pipeline";
 import { loadRoutingContext } from "@/lib/qrouter/routingContext";
+import { publicEncoding, slimTranspilation } from "@/lib/qrouter/encoding";
 import { publicTranspilation } from "@/lib/qrouter/transpiler";
 import { createJobSchema } from "@/lib/qrouter/validation";
 
@@ -38,6 +39,8 @@ export async function POST(request: Request) {
       qciSnapshotId: snapshot.id,
       qciTimestamp: snapshot.ts,
       optimizationLevel: input.optimization_level,
+      source: input.circuit,
+      format: input.format,
     });
     const { decision, quote } = prepared;
 
@@ -48,9 +51,10 @@ export async function POST(request: Request) {
         gates: analysis.gates,
         twoQubitGates: analysis.twoQubitGates,
         complexity: analysis.complexity,
+        workloadKind: analysis.workloadKind,
       },
       compiledAnalysis: prepared.executionAnalysis,
-      transpilation: publicTranspilation(prepared.transpilation),
+      transpilation: slimTranspilation(publicTranspilation(prepared.transpilation)),
       decision: {
         selected: {
           id: decision.selected.id,
@@ -60,7 +64,23 @@ export async function POST(request: Request) {
           queueSeconds: decision.selected.queueSeconds,
         },
         explanation: decision.explanation,
+        encoding: decision.encoding ? publicEncoding(decision.encoding) : decision.encoding,
+        candidates: decision.candidates.map((candidate) => ({
+          backend: {
+            id: candidate.backend.id,
+            displayName: candidate.backend.displayName,
+            kind: candidate.backend.kind,
+            provider: candidate.backend.provider,
+          },
+          compatible: candidate.compatible,
+          score: candidate.score,
+          estimatedProviderCost: candidate.estimatedProviderCost,
+          rejectionReasons: candidate.rejectionReasons,
+          quoteBinding: candidate.quoteBinding,
+          compiled: candidate.compiled,
+        })),
       },
+      encoding: publicEncoding(prepared.encoding),
       quote,
     });
   } catch (error) {

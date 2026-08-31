@@ -24,8 +24,8 @@ const MID_Y = 280;
 const YOU = { x: 26, y: 232, w: 150, h: 96 };
 const HUB = { x: 358, y: 214, w: 190, h: 132 };
 
-const TARGET = { x: 748, w: 226, h: 62 };
-const TARGET_GAP = 26;
+const TARGET = { x: 748, w: 226, h: 52 };
+const TARGET_GAP = 16;
 /** Clearance between an arrow's tip or tail and the box it touches. */
 const GAP = 9;
 

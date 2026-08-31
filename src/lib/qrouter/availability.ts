@@ -35,7 +35,7 @@ const PROVIDER_CREDENTIALS: Record<string, string> = {
   "aws-braket": "AWS_ACCESS_KEY_ID and BRAKET_OUTPUT_BUCKET",
   xanadu: "XANADU_EXECUTION_URL and XANADU_API_KEY",
   quandela: "QUANDELA_EXECUTION_URL and QUANDELA_API_KEY",
-  "quantum-inspire": "QI_EXECUTION_URL and QI_API_KEY",
+  "quantum-inspire": "QI_API_KEY (and optionally QI_EXECUTION_URL for an approved execution bridge)",
 };
 
 export function resolutionFor(backend: Backend, reason: UnavailabilityReason): string {

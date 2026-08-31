@@ -7,7 +7,9 @@ import { submitToProvider } from "./execution";
 import { cancelProviderJob } from "./execution";
 import { prepareExecution } from "./pipeline";
 import { loadRoutingContext } from "./routingContext";
+import { assertTargetAllowedV2, backendsForPrincipal } from "./scopes";
 import { publicTranspilation } from "./transpiler";
+import type { InputFormat } from "./types";
 import { normalizeProviderResult } from "./results";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Principal } from "./auth";
@@ -41,14 +43,28 @@ function groupResource(group: DemoGroup): ExecutionGroup {
 }
 
 /**
- * Keeps the derived metrics (qubits, depth, gate counts) and drops the two keys
+ * Keeps the derived metrics (qubits, depth, gate counts) and drops the keys
  * that are the circuit itself. Mirrors the jsonb subtraction in
  * purge_circuit_data so demo and SQL purge to the same shape.
  */
 function releasedAnalysis(analysis: unknown): Record<string, unknown> {
   const source = (analysis ?? {}) as Record<string, unknown>;
-  const kept = Object.fromEntries(Object.entries(source).filter(([key]) => key !== "normalizedQasm2" && key !== "transpilation"));
+  const kept = Object.fromEntries(Object.entries(source).filter(([key]) => key !== "normalizedQasm2" && key !== "transpilation" && key !== "encoding"));
   return { ...kept, released: true };
+}
+
+function releasedRouteDecision(decision: unknown): unknown {
+  if (!decision || typeof decision !== "object" || Array.isArray(decision)) return decision;
+  const row = { ...(decision as Record<string, unknown>) };
+  if (!row.encoding || typeof row.encoding !== "object" || Array.isArray(row.encoding)) return row;
+  const encoding = { ...(row.encoding as Record<string, unknown>) };
+  if (encoding.selected_bundle && typeof encoding.selected_bundle === "object" && !Array.isArray(encoding.selected_bundle)) {
+    const bundle = { ...(encoding.selected_bundle as Record<string, unknown>) };
+    delete bundle.payload;
+    encoding.selected_bundle = bundle;
+  }
+  row.encoding = encoding;
+  return row;
 }
 
 function circuitResource(row: DbRow): CircuitResource {
@@ -165,11 +181,13 @@ export async function releaseCircuitResource(principal: Principal, circuitId: st
         if (job) {
           job.source = "";
           job.result = null;
-          job.analysis = { ...job.analysis, normalizedQasm2: "", transpilation: undefined };
+          job.analysis = releasedAnalysis(job.analysis);
+          job.route_decision = releasedRouteDecision(job.route_decision) as StoredJob["route_decision"];
         }
         // The execution summary holds its own copy of the analysis, so the
         // transpiled QASM survives here even after the job row is cleared.
         execution.analysis = releasedAnalysis(execution.analysis);
+        execution.route_decision = releasedRouteDecision(execution.route_decision);
         execution.result_available = false;
       }
     }
@@ -255,18 +273,29 @@ export async function deleteCircuitResource(principal: Principal, circuitId: str
   if (deleteError) throw deleteError;
 }
 
-async function prepareGroupExecutions(circuit: DbRow & { source: string }, input: CreateExecutionGroupInput, demo = false): Promise<PreparedExecution[]> {
+async function prepareGroupExecutions(principal: Principal, circuit: DbRow & { source: string }, input: CreateExecutionGroupInput, demo = false): Promise<PreparedExecution[]> {
   const [context, analysis] = await Promise.all([
     loadRoutingContext(demo),
     Promise.resolve(circuit.analysis),
   ]);
+  const format: InputFormat = (circuit.input_format ?? circuit.format) === "openqasm3" ? "openqasm3" : "openqasm2";
   // Each prepareExecution is a full remote transpile; a 25-execution group must
   // not fire 25 of them at the Qiskit worker from one request.
   return mapWithConcurrency(input.executions, EXECUTION_FANOUT_LIMIT, async (execution) => {
+    assertTargetAllowedV2(principal, execution.target, context.backends);
     const prepared = await prepareExecution({
-      backends: context.backends, analysis: analysis as never, shots: execution.shots,
-      target: execution.target, mode: execution.routing_mode, constraints: execution.constraints,
-      qciSnapshotId: context.snapshot.id, qciTimestamp: context.snapshot.ts, optimizationLevel: execution.optimization_level,
+      backends: backendsForPrincipal(principal, context.backends),
+      analysis: analysis as never,
+      shots: execution.shots,
+      target: execution.target,
+      mode: execution.routing_mode,
+      constraints: execution.constraints,
+      qciSnapshotId: context.snapshot.id,
+      qciTimestamp: context.snapshot.ts,
+      optimizationLevel: execution.optimization_level,
+      source: circuit.source,
+      format,
+      failover: { enabled: execution.failover, max_attempts: execution.max_attempts },
     });
     return { ...execution, ...prepared };
   });
@@ -313,11 +342,11 @@ export async function getExecutionGroup(principal: Principal, groupId: string): 
 
 async function createDemoGroup(principal: Principal, circuit: DemoCircuit, input: CreateExecutionGroupInput, idempotencyKey: string, requestHash: string) {
   const now = new Date().toISOString();
-  const prepared = await prepareGroupExecutions(circuit as unknown as DbRow & { source: string }, input, true);
+  const prepared = await prepareGroupExecutions(principal, circuit as unknown as DbRow & { source: string }, input, true);
   const groupId = newV2Id();
   const executions = await mapWithConcurrency(prepared, EXECUTION_FANOUT_LIMIT, async (item) => {
     const id = newV2Id();
-    const analysis = { ...(circuit.analysis as object), transpilation: publicTranspilation(item.transpilation) };
+    const analysis = { ...(circuit.analysis as object), transpilation: publicTranspilation(item.transpilation), encoding: item.encoding };
     const job: StoredJob = {
       id, organization_id: principal.organizationId, name: null, input_format: circuit.format, source: circuit.source,
       shots: item.shots, target: item.target, routing_mode: item.routing_mode, status: "submitted",
@@ -326,9 +355,9 @@ async function createDemoGroup(principal: Principal, circuit: DemoCircuit, input
     };
     demoJobs.set(id, job);
     try {
-      const submission = await submitToProvider(item.decision.selected.id, item.executionAnalysis, item.shots, `${id}-1`);
+      const submission = await submitToProvider(item.decision.selected.id, item.executionAnalysis, item.shots, `${id}-1`, item.bundles[0]);
       job.status = submission.status === "completed" ? "completed" : "submitted";
-      job.result = submission.result ? normalizeProviderResult(item.decision.selected.id, submission.result, item.shots) : null;
+      job.result = submission.result ? normalizeProviderResult(item.decision.selected.id, submission.result, item.shots, item.encoding?.selected_bundle?.decode_map) : null;
       job.completed_at = job.status === "completed" ? new Date().toISOString() : null;
       job.updated_at = new Date().toISOString();
     } catch (error) {
@@ -363,7 +392,7 @@ export async function createExecutionGroup(principal: Principal, input: CreateEx
   const replay = await existingGroup(principal, idempotencyKey, requestHash);
   if (replay) return { group: await getExecutionGroup(principal, String(replay.id)), replayed: true, outcome: replay.status };
   const circuit = await readCircuit(principal, input.circuit_id);
-  const prepared = await prepareGroupExecutions(circuit, input, false);
+  const prepared = await prepareGroupExecutions(principal, circuit, input, false);
   const admin = createAdminClient();
   const groupId = newV2Id();
   const now = new Date().toISOString();
@@ -381,7 +410,7 @@ export async function createExecutionGroup(principal: Principal, input: CreateEx
     group_id: groupId, circuit_id: circuit.id, execution_key: item.key, execution_position: position,
     name: null, input_format: circuit.input_format, source: circuit.source, source_hash: circuit.source_hash,
     shots: item.shots, target: item.target, routing_mode: item.routing_mode, constraints: item.constraints,
-    analysis: { ...(circuit.analysis as object), transpilation: publicTranspilation(item.transpilation) }, route_decision: item.decision,
+    analysis: { ...(circuit.analysis as object), transpilation: publicTranspilation(item.transpilation), encoding: item.encoding }, route_decision: item.decision,
     selected_backend_id: item.decision.selected.id, status: "quoted", failover_enabled: item.failover, max_attempts: item.max_attempts,
     execution_timeout_seconds: item.timeout_seconds, next_attempt_at: now, request_id: requestId, created_at: now, updated_at: now,
   }));

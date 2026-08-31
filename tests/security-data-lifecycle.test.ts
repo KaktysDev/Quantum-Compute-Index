@@ -111,9 +111,10 @@ describe("supabase/qrouter.sql keeps the security contract", () => {
     const body = functionBody(qrouter, "purge_circuit_data");
     const required: Array<[string, RegExp]> = [
       ["circuits.source", /update public\.circuits[\s\S]*source=''/],
-      ["circuits.analysis.normalizedQasm2", /analysis=\(coalesce\(analysis,'\{\}'::jsonb\) - 'normalizedQasm2' - 'transpilation'\)/],
+      ["circuits.analysis.normalizedQasm2", /analysis=\(coalesce\(analysis,'\{\}'::jsonb\) - 'normalizedQasm2' - 'transpilation' - 'encoding'\)/],
       ["released_at stamped before the purge", /released_at=coalesce\(released_at,now\(\)\)/],
       ["jobs.source / result / analysis", /update public\.jobs[\s\S]*source='',result=null,analysis=/],
+      ["jobs.route_decision encoding payload", /route_decision #\- '\{encoding,selected_bundle,payload\}'/],
       ["job_attempts", /delete from public\.job_attempts/],
       ["job_events.payload", /update public\.job_events set payload=/],
       ["webhook_deliveries.payload", /update public\.webhook_deliveries[\s\S]*payload='\{\}'::jsonb/],

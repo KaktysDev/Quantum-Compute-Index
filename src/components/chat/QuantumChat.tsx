@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import LogoMark from "@/components/LogoMark";
 import GetStartedPanel from "@/components/chat/GetStartedPanel";
+import { EncodingDeepDive, EncodingOverview, EncodingStageStrip, overlayExecute, type CompileMetrics, type EncodingCandidate } from "@/components/encoding/EncodingProcess";
 import { getBackend } from "@/lib/qrouter/catalog";
 import { proposalIdempotencyKey, splitChatProposals, type ChatProposal } from "@/lib/qrouter/chatProposals";
 import { formatDuration } from "@/lib/qrouter/duration";
@@ -298,6 +299,10 @@ interface QuoteState {
   queueSeconds?: number;
   total?: number;
   analysis?: { qubits: number; depth: number; complexity: string };
+  encoding?: import("@/lib/qrouter/encoding/types").EncodingTrace;
+  explanation?: string[];
+  candidates?: EncodingCandidate[];
+  transpilation?: CompileMetrics;
 }
 
 function JobProposalCard({
@@ -378,6 +383,12 @@ function JobProposalCard({
           queueSeconds: data.decision.selected.queueSeconds,
           total: data.quote.total,
           analysis: data.analysis,
+          encoding: data.encoding ?? data.decision?.encoding,
+          explanation: data.decision?.explanation,
+          candidates: data.decision?.candidates,
+          transpilation: data.transpilation
+            ? { before: data.transpilation.before, after: data.transpilation.after }
+            : undefined,
         });
       } catch (error) {
         if (!cancelled)
@@ -553,12 +564,59 @@ function JobProposalCard({
         <p className="qc-proposal-error"><AlertCircle size={13} /> {runError}</p>
       )}
 
-      {/* Live processing readout — the only thing on this card that moves. */}
+      {quote.status === "loading" && (
+        <div className="qc-encoding">
+          <p className="qc-encoding-pending">Analyzing the circuit, compiling it, and choosing a backend…</p>
+          <EncodingStageStrip stages={overlayExecute(undefined)} compact />
+        </div>
+      )}
+      {quote.status === "ready" && phase === "review" && (
+        <div className="qc-encoding">
+          <EncodingOverview
+            encoding={quote.encoding}
+            candidates={quote.candidates}
+            explanation={quote.explanation}
+            selectedId={quote.backendId}
+            transpilation={quote.transpilation}
+            quoteTotal={quote.total ?? null}
+            density="process"
+          />
+          <EncodingStageStrip
+            stages={overlayExecute(quote.encoding?.stages)}
+            compact
+            encoding={quote.encoding}
+            transpilation={quote.transpilation}
+            candidates={quote.candidates}
+            selectedId={quote.backendId}
+          />
+          <details className="qc-encoding-detail">
+            <summary>How encoding and routing chose this</summary>
+            <EncodingDeepDive
+              encoding={quote.encoding}
+              stages={overlayExecute(quote.encoding?.stages)}
+              candidates={quote.candidates}
+              explanation={quote.explanation}
+              selectedId={quote.backendId}
+              transpilation={quote.transpilation}
+              quoteTotal={quote.total ?? null}
+              surface="tabs"
+            />
+          </details>
+        </div>
+      )}
+
+      {/* Live processing readout — stages come from the real encoding trace. */}
       {phase === "running" && (
         <div className="qc-progress">
           <span className="qc-elapsed running"><Loader2 size={12} className="spin" /> {formatDuration(liveMs)}</span>
-          <span className="qc-progress-bar" role="progressbar" aria-label="Routing and executing" />
-          <span className="qc-progress-stage">routing → transpiling → executing</span>
+          <EncodingStageStrip
+            stages={overlayExecute(quote.status === "ready" ? quote.encoding?.stages : undefined, "dispatching")}
+            compact
+            encoding={quote.status === "ready" ? quote.encoding : undefined}
+            transpilation={quote.status === "ready" ? quote.transpilation : undefined}
+            candidates={quote.status === "ready" ? quote.candidates : undefined}
+            selectedId={quote.status === "ready" ? quote.backendId : undefined}
+          />
         </div>
       )}
       {phase === "failed" && runMs !== null && (

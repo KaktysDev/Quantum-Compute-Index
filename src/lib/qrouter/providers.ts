@@ -23,11 +23,10 @@ export const PROVIDER_LABELS: Record<string, string> = {
  * Provider display names taken from the live catalog rather than typed in, so
  * the picture cannot drift from what the router can actually reach. Deduped by
  * provider — the diagram is about who we reach, not how many machines each of
- * them runs — and capped at six, which is what the stack has room for.
+ * them runs.
  */
 export const ROUTABLE_PROVIDERS: string[] = [...new Set(BACKENDS.map((backend) => backend.provider))]
-  .map((id) => PROVIDER_LABELS[id] ?? id)
-  .slice(0, 6);
+  .map((id) => PROVIDER_LABELS[id] ?? id);
 
 /** The display name if it is one we actually route to, otherwise null. */
 export function resolveProviderLabel(value: string | undefined | null): string | null {
