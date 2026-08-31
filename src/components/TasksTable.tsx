@@ -76,8 +76,8 @@ function mergeOpenJob(previous: Job | undefined, incoming: Job): Job {
   return {
     ...previous,
     ...incoming,
-    analysis: { ...previous.analysis, ...incoming.analysis },
-    route_decision: { ...previous.route_decision, ...incoming.route_decision },
+    analysis: incoming.analysis ?? previous.analysis,
+    route_decision: incoming.route_decision ?? previous.route_decision,
     events: incoming.events ?? previous.events,
     attempts: incoming.attempts ?? previous.attempts,
     result: incoming.result ?? previous.result,
@@ -194,7 +194,7 @@ export default function TasksTable() {
       const response = await fetch("/api/v1/jobs", { cache: "no-store" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error?.message ?? "Could not load tasks.");
-      const incoming = (Array.isArray(data.data) ? data.data : []).map(asJob);
+      const incoming = (Array.isArray(data.data) ? data.data as unknown[] : []).map(asJob);
       const openId = openRef.current;
       setJobs((current) => incoming.map((job) => (
         job.id === openId ? mergeOpenJob(current.find((item) => item.id === job.id), job) : job

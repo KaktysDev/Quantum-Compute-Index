@@ -132,10 +132,10 @@ export function stageStory(
   return fallback;
 }
 
-export function publicEncoding<T extends { selected_bundle?: { payload?: string } | undefined }>(trace: T): Omit<T, "selected_bundle"> & { selected_bundle?: Omit<NonNullable<T["selected_bundle"]>, "payload"> } {
+export function publicEncoding<T extends { selected_bundle?: { payload?: string } | undefined }>(trace: T): T {
   if (!trace.selected_bundle || trace.selected_bundle.payload == null) return trace;
   const { payload: _omit, ...bundle } = trace.selected_bundle;
-  return { ...trace, selected_bundle: bundle };
+  return { ...trace, selected_bundle: bundle as T["selected_bundle"] };
 }
 
 export function slimTranspilation<T>(value: T): T {
@@ -168,9 +168,9 @@ export function slimRouteDecision<T>(value: T): T {
 }
 
 export function slimJobForClient<T extends Record<string, unknown>>(job: T): T {
-  const next = { ...job };
+  const next: Record<string, unknown> = { ...job };
   delete next.source;
   if (next.analysis) next.analysis = slimAnalysis(next.analysis);
   if (next.route_decision) next.route_decision = slimRouteDecision(next.route_decision);
-  return next;
+  return next as T;
 }
