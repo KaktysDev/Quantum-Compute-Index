@@ -113,7 +113,7 @@ describe("route + compile + submit for every catalog family", () => {
     ["qi-starmon-5", "quantum-inspire"],
     ["xanadu-borealis", "xanadu"],
     ["quandela-mosaiq", "quandela"],
-  ] as const)("routes a Bell circuit to %s when the backend is configured", (id) => {
+  ] as const)("routes a Bell circuit to %s when the backend is configured", (id, _provider) => {
     const decision = routeCircuit({
       analysis, shots: 128, target: id, mode: "balanced",
       backends: withAvailable([id]),

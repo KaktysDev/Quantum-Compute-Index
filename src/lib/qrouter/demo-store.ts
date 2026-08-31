@@ -1,8 +1,11 @@
+import type { EncodingTrace } from "./encoding/types";
 import type { CircuitAnalysis, JobStatus, Quote, RouteDecision, TranspilationResult } from "./types";
 import type { QRouterProject } from "./repositories";
 
 export type StoredJobAnalysis = CircuitAnalysis & {
   transpilation?: Omit<TranspilationResult, "providerProgram">;
+  encoding?: EncodingTrace;
+  released?: boolean;
 };
 
 export interface StoredJob {
