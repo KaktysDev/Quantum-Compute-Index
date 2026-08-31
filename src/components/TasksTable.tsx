@@ -12,7 +12,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, ChevronDown, Clock, FileCode2, Loader2, RotateCw, Square } from "lucide-react";
 import { EncodingDeepDive, overlayExecute } from "@/components/encoding/EncodingProcess";
 import type { EncodingTrace } from "@/lib/qrouter/encoding/types";
-import { slimJobForClient } from "@/lib/qrouter/encoding";
+import { slimJobForClient } from "@/lib/qrouter/encoding/public";
 import { getBackend } from "@/lib/qrouter/catalog";
 import { elapsedMs, formatDuration, isTerminal, statusTone } from "@/lib/qrouter/duration";
 
