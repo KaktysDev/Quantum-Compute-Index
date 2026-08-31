@@ -9,6 +9,21 @@ export { buildEnvelope, buildBundle, verificationStatusOf } from "./bundle";
 export { decodeProviderResult, largestRemainderCounts, normalizeBitOrder, resultSetToNormalized, rewriteStates } from "./decode";
 export { applySatisfaction, buildExecutionEnvelope, cacheKey, cachedTranspile, compileTargets, encodeBundles, encodingTrace, liveStages, satisfactionFailures } from "./compose";
 export { overlayExecute } from "./stages";
+export {
+  bitOrderLabel,
+  compileChange,
+  gateCount,
+  publicEncoding,
+  quoteBindingLabel,
+  slimAnalysis,
+  slimJobForClient,
+  slimRouteDecision,
+  slimTranspilation,
+  stageStory,
+  verificationLabel,
+  whyRouted,
+  workloadLabel,
+} from "./public";
 export { RECIPES, getRecipe, productionRecipes } from "./recipes";
 export { EncodingError, PLATFORM_BIT_ORDER } from "./types";
 export type {

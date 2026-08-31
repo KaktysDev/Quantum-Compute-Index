@@ -8,6 +8,7 @@ import { apiError } from "@/lib/qrouter/http";
 import { prepareExecution } from "@/lib/qrouter/pipeline";
 import { routeCircuit } from "@/lib/qrouter/route";
 import { loadRoutingContext } from "@/lib/qrouter/routingContext";
+import { publicEncoding, slimTranspilation } from "@/lib/qrouter/encoding";
 import { publicTranspilation } from "@/lib/qrouter/transpiler";
 import { createJobSchema } from "@/lib/qrouter/validation";
 
@@ -146,7 +147,7 @@ export async function POST(request: Request) {
         source: snapshot.source,
         pricePerQcHour: snapshot.vwap,
       },
-      transpilation: publicTranspilation(prepared.transpilation),
+      transpilation: slimTranspilation(publicTranspilation(prepared.transpilation)),
       question: input.question ?? "Explain the selected route, the main tradeoff, and one practical optimization to try next.",
     };
 
@@ -172,9 +173,9 @@ export async function POST(request: Request) {
         },
         explanation: decision.explanation,
         candidates,
-        encoding: decision.encoding,
+        encoding: decision.encoding ? publicEncoding(decision.encoding) : decision.encoding,
       },
-      encoding: prepared.encoding,
+      encoding: publicEncoding(prepared.encoding),
       quote,
     });
   } catch (error) {

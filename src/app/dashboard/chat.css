@@ -493,6 +493,8 @@
 
 .qc-proposal .enc-strip { margin: 0.15rem 0.9rem 0.55rem; }
 .qc-encoding { margin: 0 0 0.35rem; }
+.qc-encoding .enc-overview { margin: 0 0.9rem 0.55rem; }
+.qc-encoding-pending { margin: 0.45rem 0.9rem 0.15rem; color: var(--qr-dim); font-size: 0.64rem; }
 .qc-encoding-detail { margin: 0 0.9rem 0.7rem; border: 1px solid var(--qr-line); border-radius: var(--qr-radius-sm); background: var(--qr-panel); }
 .qc-encoding-detail summary {
   cursor: pointer;
@@ -502,6 +504,7 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+.qc-encoding-detail summary:focus-visible { outline: 1px solid var(--qr-text); outline-offset: 2px; }
 .qc-encoding-detail[open] summary { border-bottom: 1px solid var(--qr-line); color: var(--qr-text); }
 .qc-encoding-detail .enc-deep { padding: 0.75rem 0.8rem 0.9rem; }
 .qc-encoding-detail .enc-strip { margin: 0 0 0.75rem; }

@@ -9,6 +9,7 @@ import { resolvePrincipal } from "@/lib/qrouter/auth";
 import { apiError } from "@/lib/qrouter/http";
 import { prepareExecution } from "@/lib/qrouter/pipeline";
 import { loadRoutingContext } from "@/lib/qrouter/routingContext";
+import { publicEncoding, slimTranspilation } from "@/lib/qrouter/encoding";
 import { publicTranspilation } from "@/lib/qrouter/transpiler";
 import { createJobSchema } from "@/lib/qrouter/validation";
 
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
         workloadKind: analysis.workloadKind,
       },
       compiledAnalysis: prepared.executionAnalysis,
-      transpilation: publicTranspilation(prepared.transpilation),
+      transpilation: slimTranspilation(publicTranspilation(prepared.transpilation)),
       decision: {
         selected: {
           id: decision.selected.id,
@@ -63,7 +64,7 @@ export async function POST(request: Request) {
           queueSeconds: decision.selected.queueSeconds,
         },
         explanation: decision.explanation,
-        encoding: decision.encoding,
+        encoding: decision.encoding ? publicEncoding(decision.encoding) : decision.encoding,
         candidates: decision.candidates.map((candidate) => ({
           backend: {
             id: candidate.backend.id,
@@ -79,7 +80,7 @@ export async function POST(request: Request) {
           compiled: candidate.compiled,
         })),
       },
-      encoding: prepared.encoding,
+      encoding: publicEncoding(prepared.encoding),
       quote,
     });
   } catch (error) {

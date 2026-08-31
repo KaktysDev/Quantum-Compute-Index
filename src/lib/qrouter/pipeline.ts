@@ -9,6 +9,9 @@ import {
   encodingTrace,
   liveStages,
   profileBackend,
+  quoteBindingLabel,
+  verificationLabel,
+  workloadLabel,
 } from "./encoding";
 import { EncodingError } from "./encoding/types";
 import { resolveProviderTarget } from "./providerTargets";
@@ -71,7 +74,7 @@ export async function prepareExecution(input: {
       const compilationTarget = await resolveProviderTarget(target.backend);
       const profile = profileBackend(target.backend);
       const transpilation = await cachedTranspile(
-        cacheKey(envelope.id, target.backend.id, profile.fingerprint, optimizationLevel, 42),
+        cacheKey(envelope.provenance.source_sha256, target.backend.id, profile.fingerprint, optimizationLevel, 42),
         () => transpileForBackend(compilationTarget, input.analysis, {
           optimizationLevel,
           seedTranspiler: 42,
@@ -97,11 +100,15 @@ export async function prepareExecution(input: {
 
   if (!compiled.length) {
     const compilationTarget = await resolveProviderTarget(selected.backend);
-    const transpilation = await transpileForBackend(compilationTarget, input.analysis, {
-      optimizationLevel,
-      seedTranspiler: 42,
-      verifyEquivalence: true,
-    });
+    const profile = profileBackend(selected.backend);
+    const transpilation = await cachedTranspile(
+      cacheKey(envelope.provenance.source_sha256, selected.backend.id, profile.fingerprint, optimizationLevel, 42),
+      () => transpileForBackend(compilationTarget, input.analysis, {
+        optimizationLevel,
+        seedTranspiler: 42,
+        verifyEquivalence: true,
+      }),
+    );
     compiled.push({ backend: selected.backend, transpilation, quoteBinding: "binding" });
   }
 
@@ -140,11 +147,11 @@ export async function prepareExecution(input: {
     compiled: true,
     routed: true,
     details: {
-      analyze: `${envelope.workload.kind} · ${envelope.requirements.qubits}q · ${envelope.requirements.instructions.length} ops · envelope ${envelope.id.slice(0, 8)}`,
-      score: `${candidates.filter((item) => item.compatible).length} of ${candidates.length} backends satisfy the requirement set`,
-      transpile: `${bundles.length} execution bundle(s); primary ${primary.transpilation.compiler} O${primary.transpilation.optimizationLevel}`,
-      route: `${primary.backend.displayName} · binding quote from compiled metrics`,
-      execute: "awaiting dispatch",
+      analyze: `${workloadLabel(envelope.workload.kind)} · ${envelope.requirements.qubits} qubits · ${envelope.requirements.instructions.length} ops`,
+      score: `${candidates.filter((item) => item.compatible).length} of ${candidates.length} backends can run this`,
+      transpile: `Depth ${primary.transpilation.before.depth} → ${primary.transpilation.after.depth} · ${primary.transpilation.before.gates} → ${primary.transpilation.after.gates} gates`,
+      route: `${primary.backend.displayName} · ${quoteBindingLabel(primary.quoteBinding).toLowerCase()}`,
+      execute: "waiting to run",
     },
   });
 
@@ -162,8 +169,8 @@ export async function prepareExecution(input: {
     encoding,
     explanation: [
       ...decisionBase.explanation,
-      `${primary.transpilation.compiler === "qiskit" ? "Qiskit" : "Local"} optimization level ${primary.transpilation.optimizationLevel}: depth ${primary.transpilation.before.depth} -> ${primary.transpilation.after.depth}, gates ${primary.transpilation.before.gates} -> ${primary.transpilation.after.gates}.`,
-      `Encoding envelope ${envelope.id.slice(0, 12)} · ${bundles.length} hashed bundle(s) · verification ${bundles[0]?.verification.status ?? "unsupported"}.`,
+      `Compiled for ${primary.backend.displayName}: depth ${primary.transpilation.before.depth} → ${primary.transpilation.after.depth}, gates ${primary.transpilation.before.gates} → ${primary.transpilation.after.gates}.`,
+      `${verificationLabel(bundles[0]?.verification.status)} · ${quoteBindingLabel(primary.quoteBinding).toLowerCase()} to the compiled circuit.`,
     ],
   };
 

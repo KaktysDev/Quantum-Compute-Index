@@ -15,9 +15,13 @@ import {
   normalizeBitOrder,
   OP,
   profileBackend,
+  publicEncoding,
   referenceUnitary,
   resolveOpId,
   satisfies,
+  slimJobForClient,
+  stageStory,
+  whyRouted,
 } from "@/lib/qrouter/encoding";
 import { qasm2ToIonqCircuit, ionqMeasurementMap, qasm2ToQasm3 } from "@/lib/qrouter/execution";
 import { prepareExecution } from "@/lib/qrouter/pipeline";
@@ -203,6 +207,25 @@ describe("JCS + pipeline", () => {
       "analyze", "score", "transpile", "route", "execute",
     ]);
     expect(prepared.bundles[0].id).toMatch(/^[0-9a-f]{64}$/);
+    expect(prepared.encoding.stages.find((stage) => stage.id === "analyze")?.detail).toMatch(/Gate circuit/);
+    expect(prepared.encoding.stages.find((stage) => stage.id === "transpile")?.detail).toMatch(/Depth /);
+    expect(JSON.stringify(prepared.encoding.stages)).not.toMatch(/envelope /);
+  });
+
+  it("reuses a compile when the source hash matches, not the timestamped envelope id", async () => {
+    const input = {
+      backends: [catalog("qci-aer-gpu")],
+      analysis: analyzeCircuit(BELL, "openqasm2"),
+      shots: 64,
+      target: "qci-aer-gpu" as const,
+      mode: "balanced" as const,
+      source: BELL,
+      format: "openqasm2" as const,
+    };
+    const first = await prepareExecution(input);
+    const second = await prepareExecution(input);
+    expect(second.transpilation).toBe(first.transpilation);
+    expect(second.envelope.id).not.toBe(first.envelope.id);
   });
 
   it("advertises per-backend capabilities instead of a single stamp", () => {
@@ -257,6 +280,44 @@ describe("console stage overlay", () => {
     expect(stages.map((stage) => stage.id)).toEqual(["analyze", "transpile", "score", "route", "execute"]);
     expect(stages.find((stage) => stage.id === "execute")?.status).toBe("running");
     expect(overlayExecute(undefined, "completed").find((stage) => stage.id === "execute")?.status).toBe("done");
+  });
+});
+
+describe("console encoding copy + client slimming", () => {
+  it("explains the route in plain language", () => {
+    expect(whyRouted({
+      selectedId: "ionq-aria-1",
+      candidates: [
+        { backend: { id: "ionq-aria-1", displayName: "IonQ Aria" }, compatible: true, score: 0.82, rejectionReasons: [] },
+        { backend: { id: "qci-aer-gpu", displayName: "QCI Aer GPU" }, compatible: true, score: 0.61, rejectionReasons: [] },
+        { backend: { id: "ibm-brisbane", displayName: "IBM Brisbane" }, compatible: false, score: 0, rejectionReasons: ["credentials missing"] },
+      ],
+    })).toBe("IonQ Aria scored 82 vs QCI Aer GPU at 61 among 2 that fit.");
+  });
+
+  it("derives a transpile story from before/after metrics", () => {
+    expect(stageStory("transpile", "compile fan-out", {
+      transpilation: { before: { depth: 4, gates: 10 }, after: { depth: 7, gates: 14 } },
+    })).toBe("Depth 4 → 7 · 10 → 14 gates");
+  });
+
+  it("strips QASM from list/quote payloads without touching stored bundles", () => {
+    const encoding = publicEncoding({
+      envelope_id: "aa",
+      selected_bundle: { payload: "OPENQASM 2.0;\nqreg q[1];", id: "bb", metrics: { depth: 1 } },
+    });
+    expect(encoding.selected_bundle && "payload" in encoding.selected_bundle).toBe(false);
+    const slim = slimJobForClient({
+      id: "job-1",
+      source: "OPENQASM 2.0;\nqreg q[8];",
+      analysis: { qubits: 8, normalizedQasm2: "OPENQASM 2.0;\nqreg q[8];", transpilation: { qasm: "huge", before: { depth: 1 }, after: { depth: 2 } } },
+      route_decision: { encoding: { selected_bundle: { payload: "native-program" } } },
+    });
+    expect(slim).not.toHaveProperty("source");
+    expect(slim.analysis).not.toHaveProperty("normalizedQasm2");
+    expect(slim.analysis.transpilation).not.toHaveProperty("qasm");
+    expect(slim.analysis.transpilation).toMatchObject({ before: { depth: 1 }, after: { depth: 2 } });
+    expect((slim.route_decision as { encoding: { selected_bundle: Record<string, unknown> } }).encoding.selected_bundle).not.toHaveProperty("payload");
   });
 });
 

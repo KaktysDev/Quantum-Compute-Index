@@ -9,6 +9,7 @@ import { apiError } from "@/lib/qrouter/http";
 import { prepareExecution } from "@/lib/qrouter/pipeline";
 import { loadRoutingContext } from "@/lib/qrouter/routingContext";
 import { assertTargetAllowed, backendsForPrincipal, requireScope } from "@/lib/qrouter/scopes";
+import { slimJobForClient } from "@/lib/qrouter/encoding";
 import { publicTranspilation } from "@/lib/qrouter/transpiler";
 import { createJobSchema } from "@/lib/qrouter/validation";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -23,15 +24,23 @@ export async function GET(request: Request) {
     const principal = await resolvePrincipal(request);
     requireScope(principal, "jobs:read");
     if (principal.demo) {
-      const data = [...demoJobs.values()].filter((job) => job.organization_id === principal.organizationId).sort((a, b) => b.created_at.localeCompare(a.created_at));
+      const data = [...demoJobs.values()]
+        .filter((job) => job.organization_id === principal.organizationId)
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))
+        .map((job) => slimJobForClient(job as unknown as Record<string, unknown>));
       return NextResponse.json({ object: "list", data });
     }
     const admin = createAdminClient();
     // `started_at` and the quote total are what the Activity table needs to show
     // real elapsed time and real cost without a second round-trip per row.
+    // Circuit source / compiled QASM stay on GET /jobs/:id and /transpiled —
+    // the list must not re-ship them on every 5s poll.
     const { data, error } = await admin.from("jobs").select("id,project_id,request_id,name,input_format,shots,target,routing_mode,status,selected_backend_id,failover_enabled,max_attempts,execution_deadline_at,analysis,route_decision,result,error,created_at,updated_at,started_at,completed_at,quotes!job_id(total)").eq("organization_id", principal.organizationId).order("created_at", { ascending: false }).limit(100);
     if (error) throw error;
-    return NextResponse.json({ object: "list", data });
+    return NextResponse.json({
+      object: "list",
+      data: (data ?? []).map((job) => slimJobForClient(job as Record<string, unknown>)),
+    });
   } catch (error) {
     return apiError(error);
   }

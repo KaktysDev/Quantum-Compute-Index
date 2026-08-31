@@ -22,6 +22,7 @@ import type {
 const FAILOVER_K = () => Math.max(0, Number(process.env.QROUTER_FAILOVER_COMPILE_K ?? 2));
 
 const compileCache = new Map<string, TranspilationResult>();
+const compileInflight = new Map<string, Promise<TranspilationResult>>();
 
 export function satisfactionFailures(backend: Backend, envelope: ExecutionEnvelope): SatisfactionFailure[] {
   const verdict = satisfies(envelope.requirements, profileBackend(backend));
@@ -73,21 +74,30 @@ export function compileTargets(candidates: RouteCandidate[]): Array<{ backend: B
   }));
 }
 
-export function cacheKey(envelopeId: string, backendId: string, fingerprint: string, optimizationLevel: number, seed: number) {
-  return `${envelopeId}:${backendId}:${fingerprint}:${optimizationLevel}:${seed}`;
+/** Content-addressed compile key — never the timestamped envelope document id. */
+export function cacheKey(sourceSha: string, backendId: string, fingerprint: string, optimizationLevel: number, seed: number) {
+  return `${sourceSha}:${backendId}:${fingerprint}:${optimizationLevel}:${seed}`;
 }
 
 export function cachedTranspile(key: string, compute: () => Promise<TranspilationResult>): Promise<TranspilationResult> {
   const hit = compileCache.get(key);
   if (hit) return Promise.resolve(hit);
-  return compute().then((result) => {
+  const pending = compileInflight.get(key);
+  if (pending) return pending;
+  const work = compute().then((result) => {
     compileCache.set(key, result);
+    compileInflight.delete(key);
     if (compileCache.size > 128) {
       const first = compileCache.keys().next().value;
       if (first) compileCache.delete(first);
     }
     return result;
+  }).catch((error) => {
+    compileInflight.delete(key);
+    throw error;
   });
+  compileInflight.set(key, work);
+  return work;
 }
 
 export function encodeBundles(input: {
