@@ -28,7 +28,12 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const { id } = await context.params;
     const parsed = patchSchema.safeParse(await request.json());
     if (!parsed.success) return NextResponse.json({ error: { type: "invalid_request", message: "The project update is invalid." } }, { status: 400 });
-    const update: Record<string, unknown> = {
+    const update: {
+      production_branch?: string;
+      circuit_path?: string;
+      updated_at: string;
+      settings?: Record<string, unknown>;
+    } = {
       ...(parsed.data.production_branch ? { production_branch: normalizeRef(parsed.data.production_branch) } : {}),
       ...(parsed.data.circuit_path ? { circuit_path: normalizeCircuitPath(parsed.data.circuit_path) } : {}),
       updated_at: new Date().toISOString(),

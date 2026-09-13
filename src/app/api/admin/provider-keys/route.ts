@@ -70,9 +70,12 @@ export async function POST(req: Request) {
 
   // Toggle / relabel only (no new key material supplied).
   if (credential === undefined) {
-    const patch: Record<string, unknown> = { updated_by: ctx.user.id, updated_at: now };
-    if (parsed.enabled !== undefined) patch.enabled = parsed.enabled;
-    if (parsed.label !== undefined) patch.label = parsed.label;
+    const patch = {
+      updated_by: ctx.user.id,
+      updated_at: now,
+      ...(parsed.enabled !== undefined ? { enabled: parsed.enabled } : {}),
+      ...(parsed.label !== undefined ? { label: parsed.label } : {}),
+    };
     const { error } = await admin.from("provider_keys").update(patch).eq("provider", parsed.provider);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true });

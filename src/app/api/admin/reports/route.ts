@@ -22,9 +22,11 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
-  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  if (parsed.status !== undefined) patch.status = parsed.status;
-  if (parsed.admin_notes !== undefined) patch.admin_notes = parsed.admin_notes;
+  const patch = {
+    updated_at: new Date().toISOString(),
+    ...(parsed.status !== undefined ? { status: parsed.status } : {}),
+    ...(parsed.admin_notes !== undefined ? { admin_notes: parsed.admin_notes } : {}),
+  };
 
   // The user-scoped client is fine here — RLS "reports: admin update" allows it.
   const { data, error } = await ctx.supabase

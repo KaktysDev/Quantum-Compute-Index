@@ -11,7 +11,7 @@
 // its place, rather than as an unremarkable gap.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { LooseQuery } from "@/lib/supabase/untyped";
 import { requiredEnergyRegions, REGISTRY } from "./registry";
 import { DEFAULT_FACTORS } from "./sources/factors";
 import type { IndexPoint, SourceTier } from "./types";
@@ -136,7 +136,7 @@ export interface IndexHealth {
   error?: string;
 }
 
-type Client = SupabaseClient;
+type Client = { from: (relation: string) => LooseQuery };
 
 /**
  * Load everything the health view shows, from the v2 tables only.

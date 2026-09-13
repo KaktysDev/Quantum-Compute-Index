@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   const backendIds = providers.flatMap((provider) => provider.backendIds);
   const { data: previous } = backendIds.length
     ? await admin.from("provider_health").select("backend_id,consecutive_failures").in("backend_id", backendIds)
-    : { data: [] };
+    : { data: [] as Array<Record<string, any>> };
   const failures = new Map((previous ?? []).map((item) => [item.backend_id, item.consecutive_failures]));
   const healthRows = providers.flatMap((provider) => provider.backendIds.map((backendId) => ({
     backend_id: backendId,

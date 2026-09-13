@@ -113,7 +113,7 @@ async function connectedRepositories(principal: Principal): Promise<GithubRepo[]
         .from("projects")
         .select("repository,repository_url,default_branch,production_branch,updated_at")
         .eq("organization_id", principal.organizationId);
-      if (!error) imported = data ?? [];
+      if (!error) imported = (data ?? []) as typeof imported;
     }
   } catch {
     // The projects migration is optional for chat; live GitHub listing remains

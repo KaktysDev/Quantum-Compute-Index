@@ -47,7 +47,11 @@ export default async function AdminUsersPage() {
     const credit = orgId ? creditByOrg.get(orgId) : undefined;
     const usage = jobsByUser.get(p.id);
     return {
-      ...p,
+      id: String(p.id),
+      email: p.email,
+      full_name: p.full_name,
+      company: p.company,
+      created_at: p.created_at,
       balance: Number(credit?.available ?? 0),
       reserved: Number(credit?.reserved ?? 0),
       purchased: orgId ? (purchasedByOrg.get(orgId) ?? 0) : 0,

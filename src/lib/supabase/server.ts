@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
+import { asUntypedClient } from "./untyped";
 
 type CookieToSet = { name: string; value: string; options: CookieOptions };
 
@@ -11,7 +12,7 @@ type CookieToSet = { name: string; value: string; options: CookieOptions };
 export async function createClient() {
   const cookieStore = await cookies();
 
-  return createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  return asUntypedClient(createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -27,5 +28,5 @@ export async function createClient() {
         }
       },
     },
-  });
+  }));
 }

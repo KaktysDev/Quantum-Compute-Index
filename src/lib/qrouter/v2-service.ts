@@ -336,7 +336,7 @@ export async function getExecutionGroup(principal: Principal, groupId: string): 
   const { data: jobs, error: jobsError } = await admin.from("jobs").select("id,execution_key,status,target,selected_backend_id,shots,routing_mode,analysis,route_decision,error,created_at,updated_at,completed_at").eq("group_id", groupId).order("execution_position");
   if (jobsError) throw jobsError;
   const ids = (jobs ?? []).map((job) => job.id);
-  const { data: quotes, error: quotesError } = ids.length ? await admin.from("quotes").select("*").in("job_id", ids) : { data: [], error: null };
+  const { data: quotes, error: quotesError } = ids.length ? await admin.from("quotes").select("*").in("job_id", ids) : { data: [] as Array<Record<string, any>>, error: null };
   if (quotesError) throw quotesError;
   const quotesByJob = new Map((quotes ?? []).map((quote) => [quote.job_id, quote as DbRow]));
   return {

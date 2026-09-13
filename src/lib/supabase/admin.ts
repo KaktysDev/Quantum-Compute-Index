@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { SUPABASE_URL } from "./config";
+import { asUntypedClient, type UntypedQueryClient } from "./untyped";
 
 /**
  * Service-role Supabase client — SERVER ONLY. Bypasses RLS.
@@ -10,7 +11,8 @@ import { SUPABASE_URL } from "./config";
  * new supabase-js client (and its fetch agent) on every call in the same
  * request.
  */
-let cached: ReturnType<typeof createClient> | null = null;
+type AdminClient = UntypedQueryClient<ReturnType<typeof createClient>>;
+let cached: AdminClient | null = null;
 let cachedStamp = "";
 
 export function createAdminClient() {
@@ -22,9 +24,9 @@ export function createAdminClient() {
   }
   const stamp = `${SUPABASE_URL}\0${serviceKey}`;
   if (cached && cachedStamp === stamp) return cached;
-  cached = createClient(SUPABASE_URL, serviceKey, {
+  cached = asUntypedClient(createClient(SUPABASE_URL, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
-  });
+  }));
   cachedStamp = stamp;
   return cached;
 }

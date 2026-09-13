@@ -10,7 +10,12 @@ export async function PATCH(request: Request) {
     if (principal.demo) return NextResponse.json({ ...body, id: "demo" });
     if (!principal.userId) return NextResponse.json({ error: { type: "forbidden", message: "User session required." } }, { status: 403 });
     const admin = createAdminClient();
-    const update: Record<string, unknown> = { full_name: body.full_name?.trim(), company: body.company?.trim(), onboarding_complete: body.onboarding_complete ?? true };
+    const update: {
+      full_name: string | undefined;
+      company: string | undefined;
+      onboarding_complete: boolean;
+      preferences?: Record<string, unknown>;
+    } = { full_name: body.full_name?.trim(), company: body.company?.trim(), onboarding_complete: body.onboarding_complete ?? true };
     // Merge preferences (theme, notification toggles, routing default) with the
     // stored object so partial updates never clobber other keys.
     if (body.preferences && typeof body.preferences === "object" && !Array.isArray(body.preferences)) {
