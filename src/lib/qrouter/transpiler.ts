@@ -96,6 +96,7 @@ function remapMeasurements(originalQasm: string) {
 
 function localTranspile(backend: Backend, analysis: CircuitAnalysis, optimizationLevel: number): TranspilationResult {
   let qasm = analysis.normalizedQasm2;
+  let compiled = analysis;
   let note = "Local pass-through: the circuit uses gates outside the local optimizer set, so it is preserved verbatim. Hardware-aware optimization requires QROUTER_COMPILER_URL.";
   const measurements = analysis.measurements > 0 ? remapMeasurements(analysis.normalizedQasm2) : [];
   if (optimizationLevel > 0 && canOptimizeLocally(analysis) && measurements !== null) {
@@ -103,8 +104,8 @@ function localTranspile(backend: Backend, analysis: CircuitAnalysis, optimizatio
     qasm = circuitToQASM(optimized);
     if (measurements.length) qasm += `\n${measurements.join("\n")}\n`;
     note = "Local all-to-all simulator optimization; full Qiskit verification requires QROUTER_COMPILER_URL.";
+    compiled = analyzeCircuit(qasm, "openqasm2");
   }
-  const compiled = analyzeCircuit(qasm, "openqasm2");
   return {
     qasm,
     backendId: backend.id,

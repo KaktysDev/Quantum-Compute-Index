@@ -4,6 +4,7 @@ import QciChart from "@/components/QciChart";
 import SiteFooter from "@/components/SiteFooter";
 import LandingNav from "@/components/landing/LandingNav";
 import { getPublicQci } from "@/lib/qci/v2/store";
+import "../landing.css";
 
 export const dynamic = "force-dynamic";
 

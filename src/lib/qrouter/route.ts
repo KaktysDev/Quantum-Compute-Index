@@ -7,15 +7,15 @@ function estimatedNqh(analysis: CircuitAnalysis, shots: number) {
   return Math.round((weightedOps * shots / 1_000_000) * 1_000_000) / 1_000_000;
 }
 
-function providerCost(backend: Backend, analysis: CircuitAnalysis, shots: number) {
+function providerCost(backend: Backend, analysis: CircuitAnalysis, shots: number, nqh: number) {
   const complexityMultiplier = 1 + analysis.twoQubitGates / Math.max(10, analysis.gates);
-  if (backend.pricePerNqh != null) return backend.pricePerTask + backend.pricePerNqh * estimatedNqh(analysis, shots);
+  if (backend.pricePerNqh != null) return backend.pricePerTask + backend.pricePerNqh * nqh;
   return backend.pricePerTask + backend.pricePerShot * shots * complexityMultiplier;
 }
 
-function compatibility(backend: Backend, analysis: CircuitAnalysis, constraints: RoutingConstraints, shots: number) {
+function compatibility(backend: Backend, analysis: CircuitAnalysis, constraints: RoutingConstraints, shots: number, nqh: number) {
   const reasons: UnavailabilityReason[] = [];
-  const cost = providerCost(backend, analysis, shots);
+  const cost = providerCost(backend, analysis, shots, nqh);
   // `available` is derived from provider credentials in the catalog, so an
   // unset key and a genuine capability gap are distinguished by whether the
   // backend documents a capabilityNote.
@@ -38,13 +38,16 @@ function compatibility(backend: Backend, analysis: CircuitAnalysis, constraints:
 type CompatibilityData = ReturnType<typeof compatibility> & { backend: Backend };
 
 /** Scores a pool, normalising cost and queue against the runnable entries in it. */
-function scoreCandidates(data: CompatibilityData[], analysis: CircuitAnalysis, shots: number, mode: RoutingMode): RouteCandidate[] {
-  const runnable = data.filter((item) => item.reasons.length === 0);
-  const maxCost = Math.max(...runnable.map((item) => item.cost), 0.000001);
-  const maxQueue = Math.max(...runnable.map((item) => item.backend.queueSeconds), 1);
+function scoreCandidates(data: CompatibilityData[], nqh: number, mode: RoutingMode): RouteCandidate[] {
+  let maxCost = 0.000001;
+  let maxQueue = 1;
+  for (const item of data) {
+    if (item.reasons.length) continue;
+    if (item.cost > maxCost) maxCost = item.cost;
+    if (item.backend.queueSeconds > maxQueue) maxQueue = item.backend.queueSeconds;
+  }
   const w = weights(mode);
   return data.map((item) => {
-    const nqh = estimatedNqh(analysis, shots);
     const score = item.reasons.length ? 0 :
       (1 - item.cost / maxCost) * w.cost +
       (1 - item.backend.queueSeconds / maxQueue) * w.speed +
@@ -79,7 +82,8 @@ export function routeCircuit(input: {
 }): RouteDecision {
   const constraints = input.constraints ?? {};
   const backends = input.backends ?? BACKENDS;
-  const allData: CompatibilityData[] = backends.map((backend) => ({ backend, ...compatibility(backend, input.analysis, constraints, input.shots) }));
+  const nqh = estimatedNqh(input.analysis, input.shots);
+  const allData: CompatibilityData[] = backends.map((backend) => ({ backend, ...compatibility(backend, input.analysis, constraints, input.shots, nqh) }));
   const pool = input.target === "auto" ? allData : allData.filter((item) => item.backend.id === input.target);
   if (!pool.length) throw new Error(`Unknown backend: ${input.target}`);
   const valid = pool.filter((item) => item.reasons.length === 0);
@@ -92,13 +96,13 @@ export function routeCircuit(input: {
       throw new BackendUnavailableError(
         requested.backend,
         requested.reasons[0],
-        buildAlternatives(requested.backend, requested.cost, scoreCandidates(allData, input.analysis, input.shots, input.mode)),
+        buildAlternatives(requested.backend, requested.cost, scoreCandidates(allData, nqh, input.mode)),
       );
     }
     const summary = pool.map((item) => `${item.backend.id}: ${item.reasons.map((reason) => reason.message).join(", ")}`).join("; ");
     throw new Error(`No backend can run this workload. ${summary}`);
   }
-  const candidates = scoreCandidates(pool, input.analysis, input.shots, input.mode);
+  const candidates = scoreCandidates(pool, nqh, input.mode);
   const selected = candidates.find((candidate) => candidate.compatible)!;
   return {
     selected: selected.backend, candidates, mode: input.mode, qciSnapshotId: input.qciSnapshotId, qciTimestamp: input.qciTimestamp,

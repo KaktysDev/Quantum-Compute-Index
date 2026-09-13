@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import base64
+import copy
+import hashlib
 import io
 import json
 import secrets
@@ -9,12 +11,14 @@ import sqlite3
 import threading
 import time
 import uuid
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, contextmanager
 from typing import Literal, Optional
 
 import numpy as np
 from fastapi import Depends, FastAPI, Header, HTTPException, Response
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from qiskit import qasm2, qasm3, qpy, transpile
@@ -35,10 +39,13 @@ JOB_DB_PATH = os.environ.get("JOB_DB_PATH", "/tmp/qrouter-simulator/jobs.sqlite3
 STARTED_AT = time.time()
 
 
+JOB_STATUS_COLUMNS = "id, status, result, error, created_at"
+
+
 @contextmanager
 def database():
     os.makedirs(os.path.dirname(JOB_DB_PATH) or ".", exist_ok=True)
-    connection = sqlite3.connect(JOB_DB_PATH, timeout=30)
+    connection = sqlite3.connect(JOB_DB_PATH, timeout=30, check_same_thread=False)
     connection.row_factory = sqlite3.Row
     try:
         yield connection
@@ -49,6 +56,9 @@ def database():
 
 def initialize_database():
     with database() as connection:
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA synchronous=NORMAL")
+        connection.execute("PRAGMA busy_timeout=5000")
         connection.execute("""
             create table if not exists jobs (
                 id text primary key,
@@ -77,12 +87,18 @@ def deserialize_job(row):
 
 def get_stored_job(job_id: str):
     with database() as connection:
-        return deserialize_job(connection.execute("select * from jobs where id=?", (job_id,)).fetchone())
+        return deserialize_job(connection.execute(
+            f"select {JOB_STATUS_COLUMNS} from jobs where id=?",
+            (job_id,),
+        ).fetchone())
 
 
 def get_idempotent_job(idempotency_key: str):
     with database() as connection:
-        return deserialize_job(connection.execute("select * from jobs where idempotency_key=?", (idempotency_key,)).fetchone())
+        return deserialize_job(connection.execute(
+            f"select {JOB_STATUS_COLUMNS} from jobs where idempotency_key=?",
+            (idempotency_key,),
+        ).fetchone())
 
 
 def insert_stored_job(job_id: str, payload, idempotency_key: Optional[str] = None):
@@ -163,6 +179,33 @@ def backend():
     return AerSimulator(method="statevector"), "CPU"
 
 
+# (REQUIRE_GPU, device|None, name|error, error_until|None). Health and /metrics
+# used to construct a new AerSimulator on every probe; load balancers hit
+# /health far more often than jobs run. Success stays cached. Failures expire
+# so a GPU that appears after a cold start is retried.
+_BACKEND_INFO = None
+BACKEND_INFO_ERROR_TTL_SECONDS = 15
+
+
+def backend_info():
+    global _BACKEND_INFO
+    now = time.time()
+    if _BACKEND_INFO is not None and _BACKEND_INFO[0] == REQUIRE_GPU:
+        device = _BACKEND_INFO[1]
+        if device is not None:
+            return _BACKEND_INFO[2], device
+        error_until = _BACKEND_INFO[3]
+        if error_until is None or now < error_until:
+            raise RuntimeError(_BACKEND_INFO[2])
+    try:
+        simulator, device = backend()
+        _BACKEND_INFO = (REQUIRE_GPU, device, simulator.name, None)
+        return simulator.name, device
+    except Exception as error:
+        _BACKEND_INFO = (REQUIRE_GPU, None, str(error), now + BACKEND_INFO_ERROR_TTL_SECONDS)
+        raise
+
+
 def circuit_metrics(circuit):
     operations = {str(name): int(count) for name, count in circuit.count_ops().items()}
     return {
@@ -237,8 +280,24 @@ def verify_equivalence(original, compiled):
         return None, f"Equivalence verification unavailable: {error}"
 
 
+_IBM_BACKENDS: dict[str, tuple[object, float, tuple[str, str]]] = {}
+IBM_BACKEND_TTL_SECONDS = 300
+
+
+def _ibm_env_stamp() -> tuple[str, str]:
+    return (
+        os.environ.get("IBM_QUANTUM_TOKEN", ""),
+        os.environ.get("IBM_QUANTUM_INSTANCE", "ibm-q/open/main"),
+    )
+
+
 def ibm_backend(name: str):
-    token = os.environ.get("IBM_QUANTUM_TOKEN")
+    stamp = _ibm_env_stamp()
+    cached = _IBM_BACKENDS.get(name)
+    now = time.time()
+    if cached and cached[2] == stamp and now - cached[1] < IBM_BACKEND_TTL_SECONDS:
+        return cached[0]
+    token = stamp[0]
     if not token:
         raise ValueError("IBM_QUANTUM_TOKEN is required for live IBM target retrieval")
     try:
@@ -248,31 +307,98 @@ def ibm_backend(name: str):
     service = QiskitRuntimeService(
         channel="ibm_quantum_platform",
         token=token,
-        instance=os.environ.get("IBM_QUANTUM_INSTANCE", "ibm-q/open/main"),
+        instance=stamp[1],
     )
-    return service.backend(name)
+    backend = service.backend(name)
+    _IBM_BACKENDS[name] = (backend, now, stamp)
+    return backend
+
+
+def ibm_backend_revision(backend) -> str:
+    version = getattr(backend, "backend_version", None)
+    if version:
+        return str(version)
+    try:
+        configuration = backend.configuration()
+        return str(getattr(configuration, "backend_version", "") or "")
+    except Exception:
+        return ""
+
+
+_IBM_SERVICE = None
+_IBM_SERVICE_STAMP = None
 
 
 def ibm_service():
+    global _IBM_SERVICE, _IBM_SERVICE_STAMP
     token = os.environ.get("IBM_QUANTUM_TOKEN")
     if not token:
         raise ValueError("IBM_QUANTUM_TOKEN is required")
+    instance = os.environ.get("IBM_QUANTUM_INSTANCE", "ibm-q/open/main")
+    stamp = (token, instance)
+    if _IBM_SERVICE is not None and _IBM_SERVICE_STAMP == stamp:
+        return _IBM_SERVICE
     from qiskit_ibm_runtime import QiskitRuntimeService
-    return QiskitRuntimeService(
+    _IBM_SERVICE = QiskitRuntimeService(
         channel="ibm_quantum_platform",
         token=token,
-        instance=os.environ.get("IBM_QUANTUM_INSTANCE", "ibm-q/open/main"),
+        instance=instance,
     )
+    _IBM_SERVICE_STAMP = stamp
+    return _IBM_SERVICE
+
+
+_COMPILE_CACHE: OrderedDict[str, tuple[float, dict]] = OrderedDict()
+_COMPILE_CACHE_MAX = 32
+_COMPILE_CACHE_TTL_SECONDS = 300
+_COMPILE_CACHE_LOCK = threading.Lock()
+SKIP_QASM3_PROVIDERS = {"qci", "quantum-inspire", "xanadu", "quandela", "ionq"}
+
+
+def _compile_cache_key(payload: TranspileInput, ibm_revision: str = "") -> str:
+    target = payload.target
+    material = json.dumps({
+        "qasm": hashlib.sha256(payload.qasm.encode("utf-8")).hexdigest(),
+        "backend_id": target.backend_id,
+        "provider": target.provider,
+        "backend_name": target.backend_name,
+        "num_qubits": target.num_qubits,
+        "basis_gates": target.basis_gates,
+        "coupling_map": target.coupling_map,
+        "connectivity": target.connectivity,
+        "optimization_level": payload.optimization_level,
+        "seed_transpiler": payload.seed_transpiler,
+        "verify_equivalence": payload.verify_equivalence,
+        # IBM live ISA is not in the request target. Key compiles to
+        # backend_version from the cached topology object (5 min TTL).
+        # A same-stamp ISA change is accepted; Qiskit exposes no cheaper generation id.
+        "ibm_revision": ibm_revision,
+    }, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
 def compile_circuit(payload: TranspileInput):
+    ibm = None
+    ibm_revision = ""
+    if payload.target.provider.lower() == "ibm" and payload.target.backend_name:
+        ibm = ibm_backend(payload.target.backend_name)
+        ibm_revision = ibm_backend_revision(ibm)
+    cache_key = _compile_cache_key(payload, ibm_revision)
+    with _COMPILE_CACHE_LOCK:
+        cached = _COMPILE_CACHE.get(cache_key)
+        if cached is not None and time.time() - cached[0] < _COMPILE_CACHE_TTL_SECONDS:
+            _COMPILE_CACHE.move_to_end(cache_key)
+            return copy.deepcopy(cached[1])
+        if cached is not None:
+            del _COMPILE_CACHE[cache_key]
+
     original = qasm2.loads(payload.qasm)
     if original.num_qubits > payload.target.num_qubits:
         raise ValueError(f"Circuit needs {original.num_qubits} qubits; {payload.target.backend_id} has {payload.target.num_qubits}")
 
-    if payload.target.provider.lower() == "ibm" and payload.target.backend_name:
+    if ibm is not None:
         pass_manager = generate_preset_pass_manager(
-            backend=ibm_backend(payload.target.backend_name),
+            backend=ibm,
             optimization_level=payload.optimization_level,
             seed_transpiler=payload.seed_transpiler,
         )
@@ -303,9 +429,10 @@ def compile_circuit(payload: TranspileInput):
     after = circuit_metrics(compiled)
     qpy_buffer = io.BytesIO()
     qpy.dump(compiled, qpy_buffer)
-    return {
+    artifact_qasm = None if payload.target.provider.lower() in SKIP_QASM3_PROVIDERS else qasm3.dumps(compiled)
+    result = {
         "qasm": qasm2.dumps(compiled),
-        "artifactQasm": qasm3.dumps(compiled),
+        "artifactQasm": artifact_qasm,
         "providerProgram": {"format": "qpy", "data": base64.b64encode(qpy_buffer.getvalue()).decode("ascii")},
         # camelCase to match the TypeScript TranspilationResult contract.
         "target": {
@@ -329,6 +456,12 @@ def compile_circuit(payload: TranspileInput):
             "gatePercent": round((before["gates"] - after["gates"]) / max(before["gates"], 1) * 100, 2),
         },
     }
+    with _COMPILE_CACHE_LOCK:
+        _COMPILE_CACHE[cache_key] = (time.time(), result)
+        _COMPILE_CACHE.move_to_end(cache_key)
+        while len(_COMPILE_CACHE) > _COMPILE_CACHE_MAX:
+            _COMPILE_CACHE.popitem(last=False)
+    return result
 
 
 def serialize_runtime_result(result):
@@ -357,6 +490,11 @@ def serialize_runtime_result(result):
     }
 
 
+_SIM_CIRCUITS: OrderedDict[str, object] = OrderedDict()
+_SIM_CACHE_MAX = 16
+_SIM_CACHE_LOCK = threading.Lock()
+
+
 def execute(job_id: str, payload: JobInput):
     started = time.perf_counter()
     with LOCK:
@@ -369,7 +507,16 @@ def execute(job_id: str, payload: JobInput):
         if circuit.num_qubits > MAX_QUBITS:
             raise ValueError(f"Circuit needs {circuit.num_qubits} qubits; worker limit is {MAX_QUBITS}")
         simulator, device = backend()
-        compiled = transpile(circuit, simulator, optimization_level=2)
+        sim_key = f"{hashlib.sha256(payload.qasm.encode('utf-8')).hexdigest()}:{device}"
+        with _SIM_CACHE_LOCK:
+            compiled = _SIM_CIRCUITS.get(sim_key)
+            if compiled is None:
+                compiled = transpile(circuit, simulator, optimization_level=2)
+                _SIM_CIRCUITS[sim_key] = compiled
+                while len(_SIM_CIRCUITS) > _SIM_CACHE_MAX:
+                    _SIM_CIRCUITS.popitem(last=False)
+            else:
+                _SIM_CIRCUITS.move_to_end(sim_key)
         result = simulator.run(compiled, shots=payload.shots).result()
         counts = {str(state): int(count) for state, count in result.get_counts(compiled).items()}
         probabilities = {state: count / payload.shots for state, count in counts.items()}
@@ -397,14 +544,15 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="QRouter GPU Simulator", version="1.0.0", lifespan=lifespan)
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
 @app.get("/health")
 def health():
     try:
-        simulator, device = backend()
+        name, device = backend_info()
         return {
-            "status": "ok", "device": device, "backend": simulator.name,
+            "status": "ok", "device": device, "backend": name,
             "gpuRequired": REQUIRE_GPU, "maxQubits": MAX_QUBITS,
             "maxShots": MAX_SHOTS, "workers": WORKERS, "activeJobs": active_job_count(),
         }
@@ -423,7 +571,7 @@ def health():
 def metrics():
     counts = job_status_counts()
     try:
-        _, device = backend()
+        _, device = backend_info()
         ready = True
     except Exception:
         device = "unavailable"

@@ -12,7 +12,7 @@ import {
 } from "@/lib/qrouter/encoding";
 import { getProviderStatus, submitToProvider } from "@/lib/qrouter/execution";
 import { prepareExecution } from "@/lib/qrouter/pipeline";
-import { resolveProviderTarget } from "@/lib/qrouter/providerTargets";
+import { resetProviderTargetCache, resolveProviderTarget } from "@/lib/qrouter/providerTargets";
 import { resolveProviderLabel, ROUTABLE_PROVIDERS } from "@/lib/qrouter/providers";
 import { routeCircuit } from "@/lib/qrouter/route";
 import { transpileForBackend, TranspilerUnavailableError } from "@/lib/qrouter/transpiler";
@@ -92,6 +92,7 @@ describe("route + compile + submit for every catalog family", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    resetProviderTargetCache();
     delete process.env.QI_API_KEY;
     delete process.env.QI_EXECUTION_URL;
     delete process.env.XANADU_EXECUTION_URL;

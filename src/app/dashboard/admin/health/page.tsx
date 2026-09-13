@@ -1,6 +1,6 @@
 import { Activity, Database, KeyRound, Radio, Waypoints, Wifi, WifiOff } from "lucide-react";
+import nextDynamic from "next/dynamic";
 import GlassCard from "@/components/GlassCard";
-import QciMap from "@/components/QciMap";
 import HealthActions from "@/components/admin/HealthActions";
 import { requireAdmin } from "@/lib/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -8,6 +8,8 @@ import { decryptSecret } from "@/lib/crypto";
 import { PROVIDERS } from "@/lib/providers";
 import { checkProviderConnections, type ProviderHealth } from "@/lib/qrouter/providerHealth";
 import { feedStatuses, getIndexHealth } from "@/lib/qci/v2/health";
+
+const QciMap = nextDynamic(() => import("@/components/QciMap"));
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // live probes run in parallel, up to ~10s each

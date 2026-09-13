@@ -8,6 +8,7 @@ import { cancelProviderJob } from "./execution";
 import { prepareExecution } from "./pipeline";
 import { loadRoutingContext } from "./routingContext";
 import { assertTargetAllowedV2, backendsForPrincipal } from "./scopes";
+import { slimRouteDecision } from "./encoding/public";
 import { publicTranspilation } from "./transpiler";
 import type { InputFormat } from "./types";
 import { normalizeProviderResult } from "./results";
@@ -60,6 +61,9 @@ function releasedRouteDecision(decision: unknown): unknown {
   const encoding = { ...(row.encoding as Record<string, unknown>) };
   if (encoding.selected_bundle && typeof encoding.selected_bundle === "object" && !Array.isArray(encoding.selected_bundle)) {
     const bundle = { ...(encoding.selected_bundle as Record<string, unknown>) };
+    if (typeof bundle.payload === "string" && bundle.payload_bytes == null) {
+      bundle.payload_bytes = new TextEncoder().encode(bundle.payload).length;
+    }
     delete bundle.payload;
     encoding.selected_bundle = bundle;
   }
@@ -79,7 +83,9 @@ function circuitResource(row: DbRow): CircuitResource {
 function executionSummary(row: DbRow, quote?: DbRow) {
   return {
     id: row.id, key: row.execution_key, status: row.status, target: row.target, selected_backend_id: row.selected_backend_id,
-    shots: row.shots, routing_mode: row.routing_mode, analysis: row.analysis, route_decision: row.route_decision,
+    shots: row.shots, routing_mode: row.routing_mode,
+    analysis: row.analysis,
+    route_decision: slimRouteDecision(row.route_decision),
     error: row.error, result_available: row.status === "completed", created_at: row.created_at,
     updated_at: row.updated_at, completed_at: row.completed_at,
     ...(quote ? { quote } : {}),

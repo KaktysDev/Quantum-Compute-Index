@@ -31,6 +31,8 @@ import { matchGithubQuantumTaskMention, matchGithubQuantumTaskMentions, matchGit
 import { normalizeCircuitPath, normalizeRef, normalizeRepository } from "@/lib/qrouter/repositories";
 import { nextAttemptCandidate, retryDelaySeconds } from "@/lib/qrouter/orchestration";
 import { applyProviderHealth } from "@/lib/qrouter/providerHealth";
+import { resetProviderTargetCache } from "@/lib/qrouter/providerTargets";
+import { resetRoutingContextCache } from "@/lib/qrouter/routingContext";
 import { resolveProviderLabel } from "@/lib/qrouter/providers";
 import { normalizeProviderResult } from "@/lib/qrouter/results";
 import { validateWebhookDestination } from "@/lib/qrouter/webhooks";
@@ -80,6 +82,8 @@ describe("QRouter circuit pipeline", () => {
     demoProjects.clear();
     demoV2Circuits.clear();
     demoV2Groups.clear();
+    resetRoutingContextCache();
+    resetProviderTargetCache();
   });
 
   it("reads console access from the database and fails closed on error", async () => {

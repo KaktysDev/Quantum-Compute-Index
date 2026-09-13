@@ -265,7 +265,7 @@ export default function MagnetField() {
       // Scrolled out of view the clock stops with it, so the field is not
       // somewhere unrelated when it comes back — and nothing is computed for a
       // surface nobody is looking at.
-      if (!visible) {
+      if (!visible || document.hidden) {
         originMs = now - clock * 1000;
         return;
       }

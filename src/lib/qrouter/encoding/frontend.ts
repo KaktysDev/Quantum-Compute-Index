@@ -5,11 +5,20 @@
  * not rejected (D12). User-defined gate bodies are resolved (D14).
  */
 
+import { createHash } from "crypto";
 import { evaluateParam } from "../dialects";
 import type { InputFormat } from "../types";
+import { lruGet, lruSet } from "./cache";
 import { EncodingError } from "./types";
 import type { ClbitRef, GateDef, GateProgram, ParamExpr, QubitRef, Stmt, Workload, WorkloadKind } from "./types";
 import { FRONTEND_VERSION } from "./types";
+
+const PARSE_CACHE_MAX = 32;
+const parseCache = new Map<string, GateProgram>();
+
+export function resetParseCache() {
+  parseCache.clear();
+}
 
 export const ALLOWED_INCLUDES = new Set(["qelib1.inc", "stdgates.inc"]);
 
@@ -171,6 +180,9 @@ function parseGateDef(raw: string): GateDef | null {
 export function parseGateProgram(source: string, format: InputFormat): GateProgram {
   if (!source.trim()) throw new EncodingError("Circuit source is required.");
   if (Buffer.byteLength(source, "utf8") > 256_000) throw new EncodingError("Circuit source exceeds the 256 KB limit.");
+  const cacheKey = `${format}:${createHash("sha256").update(source).digest("hex")}`;
+  const cached = lruGet(parseCache, cacheKey);
+  if (cached) return cached;
   assertIncludePolicy(source);
 
   const qubits: GateProgram["qubits"] = [];
@@ -205,7 +217,7 @@ export function parseGateProgram(source: string, format: InputFormat): GateProgr
   }
 
   if (!qubits.length) throw new EncodingError("No quantum register was declared.");
-  return { qubits, clbits, params, body, gate_defs };
+  return lruSet(parseCache, cacheKey, { qubits, clbits, params, body, gate_defs }, PARSE_CACHE_MAX);
 }
 
 function walk(statements: Stmt[], visit: (statement: Stmt) => void) {
@@ -246,53 +258,56 @@ export function workloadFromSource(source: string, format: InputFormat, shots: n
   return { kind: "gate", program, shots };
 }
 
-export function flattenQubit(program: GateProgram, ref: QubitRef): number {
+type RegisterOffset = { offset: number; size: number };
+
+function registerOffsets(registers: Array<{ name: string; size: number }>): Map<string, RegisterOffset> {
+  const offsets = new Map<string, RegisterOffset>();
   let offset = 0;
-  for (const register of program.qubits) {
-    if (register.name === ref.register) {
-      if (ref.index == null) return offset;
-      if (ref.index >= register.size) throw new EncodingError(`Qubit index out of range: ${ref.register}[${ref.index}].`);
-      return offset + ref.index;
-    }
+  for (const register of registers) {
+    offsets.set(register.name, { offset, size: register.size });
     offset += register.size;
   }
-  throw new EncodingError(`Unknown qubit register "${ref.register}".`);
+  return offsets;
+}
+
+function flattenRef(offsets: Map<string, RegisterOffset>, ref: QubitRef | ClbitRef, kind: "qubit" | "clbit"): number {
+  const register = offsets.get(ref.register);
+  if (!register) throw new EncodingError(`Unknown ${kind} register "${ref.register}".`);
+  if (ref.index == null) return register.offset;
+  if (ref.index >= register.size) throw new EncodingError(`${kind === "qubit" ? "Qubit" : "Clbit"} index out of range: ${ref.register}[${ref.index}].`);
+  return register.offset + ref.index;
+}
+
+export function flattenQubit(program: GateProgram, ref: QubitRef): number {
+  return flattenRef(registerOffsets(program.qubits), ref, "qubit");
 }
 
 export function flattenClbit(program: GateProgram, ref: ClbitRef): number {
-  let offset = 0;
-  for (const register of program.clbits) {
-    if (register.name === ref.register) {
-      if (ref.index == null) return offset;
-      if (ref.index >= register.size) throw new EncodingError(`Clbit index out of range: ${ref.register}[${ref.index}].`);
-      return offset + ref.index;
-    }
-    offset += register.size;
-  }
-  throw new EncodingError(`Unknown classical register "${ref.register}".`);
+  return flattenRef(registerOffsets(program.clbits), ref, "clbit");
 }
 
 export function measurementMap(program: GateProgram): Array<{ qubit: number; clbit: number }> {
+  const qubits = registerOffsets(program.qubits);
+  const clbits = registerOffsets(program.clbits);
   const map: Array<{ qubit: number; clbit: number }> = [];
   walk(program.body, (statement) => {
     if (statement.op !== "measure") return;
-    const qubit = statement.qubit.index == null
-      ? program.qubits.find((register) => register.name === statement.qubit.register)
-      : null;
-    const clbit = statement.clbit.index == null
-      ? program.clbits.find((register) => register.name === statement.clbit.register)
-      : null;
+    const qubit = statement.qubit.index == null ? qubits.get(statement.qubit.register) : null;
+    const clbit = statement.clbit.index == null ? clbits.get(statement.clbit.register) : null;
     if (qubit && clbit) {
       const width = Math.min(qubit.size, clbit.size);
       for (let index = 0; index < width; index += 1) {
         map.push({
-          qubit: flattenQubit(program, { register: statement.qubit.register, index }),
-          clbit: flattenClbit(program, { register: statement.clbit.register, index }),
+          qubit: flattenRef(qubits, { register: statement.qubit.register, index }, "qubit"),
+          clbit: flattenRef(clbits, { register: statement.clbit.register, index }, "clbit"),
         });
       }
       return;
     }
-    map.push({ qubit: flattenQubit(program, statement.qubit), clbit: flattenClbit(program, statement.clbit) });
+    map.push({
+      qubit: flattenRef(qubits, statement.qubit, "qubit"),
+      clbit: flattenRef(clbits, statement.clbit, "clbit"),
+    });
   });
   return map;
 }

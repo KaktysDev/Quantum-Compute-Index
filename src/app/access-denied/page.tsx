@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft, LockKeyhole } from "lucide-react";
 import LogoMark from "@/components/LogoMark";
+import "../landing.css";
 
 export default function AccessDeniedPage() {
   return (

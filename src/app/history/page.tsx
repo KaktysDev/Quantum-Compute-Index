@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
+import nextDynamic from "next/dynamic";
 import SiteFooter from "@/components/SiteFooter";
 import LandingNav from "@/components/landing/LandingNav";
-import Timeline, { type TimelinePoint } from "@/components/Timeline";
+import type { TimelinePoint } from "@/components/Timeline";
+import "../landing.css";
+
+const Timeline = nextDynamic(() => import("@/components/Timeline"));
 
 export const metadata: Metadata = {
   title: "History — QRouter",

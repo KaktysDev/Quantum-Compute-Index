@@ -269,6 +269,8 @@ export interface EncodingTrace {
     backend_id: string;
     media_type: string;
     payload?: string;
+    /** Byte length of the encoded payload. Safe to ship after `payload` is stripped. */
+    payload_bytes?: number;
     bit_order: BitOrder;
     verification: VerificationStatus;
     quote_binding: QuoteBinding;

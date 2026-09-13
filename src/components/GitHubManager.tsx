@@ -26,9 +26,11 @@ import {
   Trash2,
   Unplug,
 } from "lucide-react";
-import MagnetField from "@/components/routing/MagnetField";
+import nextDynamic from "next/dynamic";
 import { fetchJsonWithRetry } from "@/lib/client/fetch-json";
 import type { QRouterProject, RepositoryInspection } from "@/lib/qrouter/repositories";
+
+const MagnetField = nextDynamic(() => import("@/components/routing/MagnetField"), { ssr: false });
 
 const PLACEHOLDER_REPOSITORY = "Search repositories or paste a GitHub URL";
 

@@ -132,10 +132,17 @@ export function stageStory(
   return fallback;
 }
 
-export function publicEncoding<T extends { selected_bundle?: { payload?: string } | undefined }>(trace: T): T {
-  if (!trace.selected_bundle || trace.selected_bundle.payload == null) return trace;
-  const { payload: _omit, ...bundle } = trace.selected_bundle;
-  return { ...trace, selected_bundle: bundle as T["selected_bundle"] };
+export function payloadByteLength(payload: string): number {
+  return new TextEncoder().encode(payload).length;
+}
+
+export function publicEncoding<T extends { selected_bundle?: { payload?: string; payload_bytes?: number } | undefined }>(trace: T): T {
+  if (!trace.selected_bundle) return trace;
+  const bundle = trace.selected_bundle;
+  const payload_bytes = bundle.payload != null ? payloadByteLength(bundle.payload) : bundle.payload_bytes;
+  if (bundle.payload == null && payload_bytes == null) return trace;
+  const { payload: _omit, ...rest } = bundle;
+  return { ...trace, selected_bundle: { ...rest, payload_bytes } as T["selected_bundle"] };
 }
 
 export function slimTranspilation<T>(value: T): T {
@@ -167,10 +174,47 @@ export function slimRouteDecision<T>(value: T): T {
   return row as T;
 }
 
-export function slimJobForClient<T extends Record<string, unknown>>(job: T): T {
+/**
+ * Owner GET /jobs/:id. Native payloads leave; the circuit `source` stays so
+ * authorized clients can inspect what they submitted. List/summary use
+ * slimJobForClient / slimJobForList instead.
+ */
+export function slimJobForOwner<T extends Record<string, unknown>>(job: T): T {
   const next: Record<string, unknown> = { ...job };
-  delete next.source;
   if (next.analysis) next.analysis = slimAnalysis(next.analysis);
   if (next.route_decision) next.route_decision = slimRouteDecision(next.route_decision);
   return next as T;
+}
+
+export function slimJobForClient<T extends Record<string, unknown>>(job: T): T {
+  const next: Record<string, unknown> = slimJobForOwner(job);
+  delete next.source;
+  return next as T;
+}
+
+/**
+ * Activity-table row. Encoding traces, route candidates, counts, and errors
+ * stay on GET /jobs/:id — the list is polled every few seconds and must not
+ * re-hydrate that tree into React state for every closed row.
+ */
+export function slimJobForList<T extends Record<string, unknown>>(job: T): T {
+  const analysis = job.analysis && typeof job.analysis === "object" && !Array.isArray(job.analysis)
+    ? job.analysis as Record<string, unknown>
+    : null;
+  return {
+    id: job.id,
+    name: job.name,
+    status: job.status,
+    selected_backend_id: job.selected_backend_id,
+    shots: job.shots,
+    created_at: job.created_at,
+    started_at: job.started_at,
+    completed_at: job.completed_at,
+    updated_at: job.updated_at,
+    quotes: job.quotes,
+    quote: job.quote,
+    analysis: analysis
+      ? { qubits: analysis.qubits, depth: analysis.depth, complexity: analysis.complexity }
+      : job.analysis,
+  } as unknown as T;
 }

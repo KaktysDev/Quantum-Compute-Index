@@ -11,6 +11,24 @@ type CookieToSet = { name: string; value: string; options: CookieOptions };
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
+function hasSupabaseSessionCookie(request: NextRequest) {
+  return request.cookies.getAll().some((cookie) => cookie.name.includes("-auth-token"));
+}
+
+/**
+ * Session refresh is an Auth network round-trip. Dashboard and onboarding
+ * documents need it (RSC cannot persist refreshed cookies). API routes and
+ * anonymous marketing traffic do not: cookie-auth APIs call getUser()
+ * themselves, and Bearer/cron callers have no session to refresh.
+ */
+function shouldRefreshSession(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  if (pathname.startsWith("/dashboard") || pathname.startsWith("/onboarding")) return true;
+  if (pathname.startsWith("/api/")) return false;
+  if (request.headers.get("authorization")?.startsWith("Bearer ")) return false;
+  return hasSupabaseSessionCookie(request);
+}
+
 export async function middleware(request: NextRequest) {
   const requestId = request.headers.get("x-request-id")?.slice(0, 128) || crypto.randomUUID();
   const forwardedHeaders = new Headers(request.headers);
@@ -36,6 +54,11 @@ export async function middleware(request: NextRequest) {
       url.searchParams.set("next", request.nextUrl.pathname);
       return NextResponse.redirect(url);
     }
+    response.headers.set("x-request-id", requestId);
+    return response;
+  }
+
+  if (!shouldRefreshSession(request)) {
     response.headers.set("x-request-id", requestId);
     return response;
   }

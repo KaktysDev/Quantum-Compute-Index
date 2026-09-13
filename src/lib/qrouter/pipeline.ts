@@ -1,4 +1,5 @@
 import { BackendUnavailableError, buildAlternatives } from "./availability";
+import { mapWithConcurrency } from "./concurrency";
 import {
   applySatisfaction,
   buildExecutionEnvelope,
@@ -18,6 +19,8 @@ import { resolveProviderTarget } from "./providerTargets";
 import { buildQuote, routeCircuit } from "./route";
 import { analysisFromTranspilation, transpileForBackend } from "./transpiler";
 import type { Backend, CircuitAnalysis, InputFormat, RoutingConstraints, RoutingMode, TranspilationResult } from "./types";
+
+const COMPILE_CONCURRENCY = () => Math.max(1, Number(process.env.QROUTER_COMPILE_CONCURRENCY ?? 3));
 
 export async function prepareExecution(input: {
   backends: Backend[];
@@ -69,40 +72,58 @@ export async function prepareExecution(input: {
   const compiled: Array<{ backend: Backend; transpilation: TranspilationResult; quoteBinding: "binding" | "indicative" }> = [];
   const optimizationLevel = input.optimizationLevel ?? 2;
 
-  for (const target of eager) {
+  const outcomes = await mapWithConcurrency(eager, COMPILE_CONCURRENCY(), async (target) => {
     try {
       const compilationTarget = await resolveProviderTarget(target.backend);
-      const profile = profileBackend(target.backend);
+      const profile = profileBackend(compilationTarget);
       const transpilation = await cachedTranspile(
-        cacheKey(envelope.provenance.source_sha256, target.backend.id, profile.fingerprint, optimizationLevel, 42),
+        cacheKey(
+          envelope.provenance.source_sha256,
+          compilationTarget.id,
+          profile.fingerprint,
+          optimizationLevel,
+          42,
+          compilationTarget.id === selected.backend.id,
+        ),
+        // Failover eager-compiles are quote traces only (depth/gates). Dispatch
+        // never submits those artifacts: it recompiles the chosen failover
+        // with verifyEquivalence: true and encodes a matching bundle.
         () => transpileForBackend(compilationTarget, input.analysis, {
           optimizationLevel,
           seedTranspiler: 42,
-          verifyEquivalence: true,
+          verifyEquivalence: target.backend.id === selected.backend.id,
         }),
       );
-      compiled.push({ backend: target.backend, transpilation, quoteBinding: target.quoteBinding });
+      return { ok: true as const, target, transpilation };
     } catch (error) {
-      if (target.backend.id === selected.backend.id && target.backend.kind === "qpu") throw error;
-      const message = error instanceof Error ? error.message : "compile failed";
-      const index = decisionBase.candidates.findIndex((candidate) => candidate.backend.id === target.backend.id);
-      if (index >= 0) {
-        decisionBase.candidates[index] = {
-          ...decisionBase.candidates[index],
-          compatible: false,
-          score: 0,
-          compiled: false,
-          rejectionReasons: [...decisionBase.candidates[index].rejectionReasons, message],
-        };
-      }
+      return { ok: false as const, target, error };
+    }
+  });
+
+  for (const outcome of outcomes) {
+    if (outcome.ok) {
+      compiled.push({ backend: outcome.target.backend, transpilation: outcome.transpilation, quoteBinding: outcome.target.quoteBinding });
+      continue;
+    }
+    if (outcome.target.backend.id === selected.backend.id && outcome.target.backend.kind === "qpu") throw outcome.error;
+    const message = outcome.error instanceof Error ? outcome.error.message : "compile failed";
+    const index = decisionBase.candidates.findIndex((candidate) => candidate.backend.id === outcome.target.backend.id);
+    if (index >= 0) {
+      decisionBase.candidates[index] = {
+        ...decisionBase.candidates[index],
+        compatible: false,
+        score: 0,
+        compiled: false,
+        rejectionReasons: [...decisionBase.candidates[index].rejectionReasons, message],
+      };
     }
   }
 
   if (!compiled.length) {
     const compilationTarget = await resolveProviderTarget(selected.backend);
-    const profile = profileBackend(selected.backend);
+    const profile = profileBackend(compilationTarget);
     const transpilation = await cachedTranspile(
-      cacheKey(envelope.provenance.source_sha256, selected.backend.id, profile.fingerprint, optimizationLevel, 42),
+      cacheKey(envelope.provenance.source_sha256, compilationTarget.id, profile.fingerprint, optimizationLevel, 42, true),
       () => transpileForBackend(compilationTarget, input.analysis, {
         optimizationLevel,
         seedTranspiler: 42,
@@ -112,7 +133,25 @@ export async function prepareExecution(input: {
     compiled.push({ backend: selected.backend, transpilation, quoteBinding: "binding" });
   }
 
-  const primary = compiled.find((item) => item.backend.id === selected.backend.id) ?? compiled[0];
+  let primary = compiled.find((item) => item.backend.id === selected.backend.id) ?? compiled[0];
+  // Selected compile can fail on a simulator without aborting the quote. The
+  // promoted failover was compiled with verifyEquivalence: false. Recompile it
+  // before it becomes the execution artifact.
+  if (primary.backend.id !== selected.backend.id) {
+    const compilationTarget = await resolveProviderTarget(primary.backend);
+    const profile = profileBackend(compilationTarget);
+    const transpilation = await cachedTranspile(
+      cacheKey(envelope.provenance.source_sha256, compilationTarget.id, profile.fingerprint, optimizationLevel, 42, true),
+      () => transpileForBackend(compilationTarget, input.analysis, {
+        optimizationLevel,
+        seedTranspiler: 42,
+        verifyEquivalence: true,
+      }),
+    );
+    primary = { ...primary, transpilation };
+    const index = compiled.findIndex((item) => item.backend.id === primary.backend.id);
+    if (index >= 0) compiled[index] = primary;
+  }
   const executionAnalysis = analysisFromTranspilation(primary.transpilation);
   const compiledPricing = routeCircuit({
     ...input,
@@ -170,7 +209,7 @@ export async function prepareExecution(input: {
     explanation: [
       ...decisionBase.explanation,
       `Compiled for ${primary.backend.displayName}: depth ${primary.transpilation.before.depth} → ${primary.transpilation.after.depth}, gates ${primary.transpilation.before.gates} → ${primary.transpilation.after.gates}.`,
-      `${verificationLabel(bundles[0]?.verification.status)} · ${quoteBindingLabel(primary.quoteBinding).toLowerCase()} to the compiled circuit.`,
+      `${verificationLabel((bundles.find((bundle) => bundle.backend_id === primary.backend.id) ?? bundles[0])?.verification.status)} · ${quoteBindingLabel(primary.quoteBinding).toLowerCase()} to the compiled circuit.`,
     ],
   };
 

@@ -43,6 +43,7 @@ const STAGES = [
 const STAGE_MS = 4600;
 
 export default function HeroConsole() {
+  const hostRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(0);
   const [typed, setTyped] = useState("");
   const pinnedUntil = useRef(0);
@@ -52,14 +53,28 @@ export default function HeroConsole() {
     reduced.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   }, []);
 
-  // Auto-advance unless the user recently picked a stage.
+  // Auto-advance unless the user recently picked a stage, the tab is hidden,
+  // or the console has scrolled offscreen.
   useEffect(() => {
+    const host = hostRef.current;
+    let onScreen = true;
+    const io = host
+      ? new IntersectionObserver(([entry]) => {
+          onScreen = entry.isIntersecting;
+        }, { threshold: 0.2 })
+      : null;
+    if (host) io?.observe(host);
+
     const timer = window.setInterval(() => {
+      if (document.hidden || !onScreen) return;
       if (Date.now() > pinnedUntil.current) {
         setActive((v) => (v + 1) % STAGES.length);
       }
     }, STAGE_MS);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearInterval(timer);
+      io?.disconnect();
+    };
   }, []);
 
   // Typewriter for the prompt.
@@ -72,6 +87,7 @@ export default function HeroConsole() {
     setTyped("");
     let i = 0;
     const timer = window.setInterval(() => {
+      if (document.hidden) return;
       i += 2;
       setTyped(text.slice(0, i));
       if (i >= text.length) window.clearInterval(timer);
@@ -82,7 +98,7 @@ export default function HeroConsole() {
   const stage = STAGES[active];
 
   return (
-    <div className="ql-console" aria-label="QRouter workflow demo">
+    <div ref={hostRef} className="ql-console" aria-label="QRouter workflow demo">
       <span className="ql-console-scanline" aria-hidden="true" />
       <header className="ql-console-chrome">
         <i /><i /><i />

@@ -4,8 +4,10 @@
 // middleware matcher deliberately skips _next/static, _next/image and image
 // files, so headers set there would miss every static asset; and next.config
 // headers() keeps one source of truth instead of two places that can drift.
-// The middleware keeps doing only what it already did (x-request-id, Supabase
-// session refresh, /dashboard gating). The one gap is that a redirect returned
+// The middleware keeps doing x-request-id and /dashboard gating. Session
+// refresh is limited to console/onboarding documents and cookie-bearing
+// public pages — API routes and anonymous traffic skip the Auth round-trip.
+// The one gap is that a redirect returned
 // *from* middleware short-circuits this pipeline — those are bodyless 307s to
 // /signin, and the page they land on carries the full header set.
 

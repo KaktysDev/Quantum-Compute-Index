@@ -11,11 +11,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { NextResponse } from "next/server";
+import { mapWithConcurrency } from "@/lib/qrouter/concurrency";
 import { dispatchJob, pollJob, type OrchestratedJob } from "@/lib/qrouter/dispatcher";
 import { JOB_LEASE_SECONDS } from "@/lib/qrouter/orchestration";
 import { processWebhookDeliveries } from "@/lib/qrouter/webhooks";
 import { authorizeCronRequest } from "@/lib/security/secrets";
 import { createAdminClient } from "@/lib/supabase/admin";
+
+const WORKER_CONCURRENCY = 8;
 
 export const maxDuration = 60;
 
@@ -29,17 +32,31 @@ export async function POST(request: Request) {
   if (claimError) throw claimError;
   if (pollClaimError) throw pollClaimError;
 
-  const updates: Array<{ id: string; action: "dispatched" | "polled" }> = [];
-  for (const job of (queued ?? []) as OrchestratedJob[]) {
-    await dispatchJob(admin, job);
-    updates.push({ id: job.id, action: "dispatched" });
-  }
-  for (const job of (active ?? []) as OrchestratedJob[]) {
-    await pollJob(admin, job);
-    updates.push({ id: job.id, action: "polled" });
-  }
+  const dispatched = await mapWithConcurrency((queued ?? []) as OrchestratedJob[], WORKER_CONCURRENCY, async (job) => {
+    try {
+      await dispatchJob(admin, job);
+      return { id: job.id, action: "dispatched" as const };
+    } catch (error) {
+      console.error(`Failed to dispatch job ${job.id}`, error);
+      return { id: job.id, action: "dispatch_failed" as const };
+    }
+  });
+  const polled = await mapWithConcurrency((active ?? []) as OrchestratedJob[], WORKER_CONCURRENCY, async (job) => {
+    try {
+      await pollJob(admin, job);
+      return { id: job.id, action: "polled" as const };
+    } catch (error) {
+      console.error(`Failed to poll job ${job.id}`, error);
+      return { id: job.id, action: "poll_failed" as const };
+    }
+  });
   const webhookDeliveries = await processWebhookDeliveries(25);
-  return NextResponse.json({ claimed: queued?.length ?? 0, polled: active?.length ?? 0, webhookDeliveries: webhookDeliveries.claimed, updates });
+  return NextResponse.json({
+    claimed: queued?.length ?? 0,
+    polled: active?.length ?? 0,
+    webhookDeliveries: webhookDeliveries.claimed,
+    updates: [...dispatched, ...polled],
+  });
 }
 
 // Vercel Cron invokes routes with GET; POST remains available to external schedulers.

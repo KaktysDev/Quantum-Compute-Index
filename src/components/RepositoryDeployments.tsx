@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, Clock3, FileCode2, GitBranch, Loader2, Play, RefreshCw, Route, Terminal } from "lucide-react";
+import { onVisibleInterval } from "@/lib/client/visible-interval";
 import type { ProjectSettings, QRouterProject, RepositoryInspection } from "@/lib/qrouter/repositories";
 
 interface Deployment {
@@ -77,8 +78,7 @@ export default function RepositoryDeployments({ requestedTarget }: { requestedTa
 
   useEffect(() => {
     if (!selectedId) return;
-    const timer = window.setInterval(() => loadDeployments(selectedId), 5000);
-    return () => window.clearInterval(timer);
+    return onVisibleInterval(() => loadDeployments(selectedId), 5000);
   }, [loadDeployments, selectedId]);
 
   async function deploy() {

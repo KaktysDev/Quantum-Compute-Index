@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useMemo, useState, type KeyboardEvent } from "react";
+import { memo, useMemo, useState, type KeyboardEvent, type ReactNode, type SyntheticEvent } from "react";
 import { Check, ChevronRight, Loader2, X } from "lucide-react";
 import { overlayExecute } from "@/lib/qrouter/encoding/stages";
 import {
@@ -13,8 +13,10 @@ import {
   whyRouted,
   workloadLabel,
 } from "@/lib/qrouter/encoding/public";
+import { formatPayloadBytes, type EncodingPreviewInput } from "@/lib/qrouter/encoding/preview";
 import type { EncodingStage, EncodingTrace } from "@/lib/qrouter/encoding/types";
 import { getBackend } from "@/lib/qrouter/catalog";
+import { useEncodingPreview } from "@/components/encoding/useEncodingPreview";
 
 export { overlayExecute };
 
@@ -181,6 +183,90 @@ export function EncodingOverview({
   );
 }
 
+export function EncodingPreview({
+  defaultOpen = false,
+  children,
+  quoteTotal,
+  ...input
+}: EncodingPreviewInput & {
+  defaultOpen?: boolean;
+  children?: ReactNode;
+  quoteTotal?: number | null;
+}) {
+  const plan = useEncodingPreview(input);
+  const binding = input.encoding?.selected_bundle?.quote_binding;
+  const [open, setOpen] = useState(defaultOpen);
+  function onToggle(event: SyntheticEvent<HTMLDetailsElement>) {
+    setOpen(event.currentTarget.open);
+  }
+
+  return (
+    <details className={`enc-preview${plan.error ? " failed" : ""}${plan.source === "pending" ? " pending" : ""}`} open={open} onToggle={onToggle}>
+      <summary>
+        <span className="enc-preview-kicker">Encoding plan</span>
+        <span className="enc-preview-title">
+          <b>{plan.encodingLabel}</b>
+          {plan.backendName ? <em>{plan.backendName}</em> : null}
+          {plan.formatLabel !== "—" && !plan.encodingLabel.includes(plan.formatLabel) ? <em>{plan.formatLabel}</em> : null}
+        </span>
+        <p className="enc-preview-headline">{plan.headline}</p>
+        <ul className="enc-preview-chips">
+          {plan.resources.map((item) => (
+            <li key={item.key}><span>{item.label}</span><b>{item.value}</b></li>
+          ))}
+          {quoteTotal != null ? (
+            <li><span>Quote</span><b>${quoteTotal.toFixed(4)}</b></li>
+          ) : binding ? (
+            <li><span>Quote</span><b>{quoteBindingLabel(binding)}</b></li>
+          ) : null}
+        </ul>
+      </summary>
+      <div className="enc-preview-body">
+        <p className="enc-preview-why"><b>Why this encoding.</b> {plan.why}</p>
+        <p className="enc-preview-transform"><b>What will happen.</b> {plan.transform}</p>
+        <p className="enc-preview-next"><b>Next.</b> {plan.nextStep}</p>
+        {plan.warnings.length > 0 && (
+          <ul className="enc-preview-warnings">
+            {plan.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+          </ul>
+        )}
+        <div className="enc-preview-grid">
+          <section>
+            <h3>Parameters</h3>
+            <dl>
+              {plan.parameters.map((item) => (
+                <div key={item.name}>
+                  <dt>{item.name}</dt>
+                  <dd>
+                    <b>{item.value}</b>
+                    <small>{item.effect}</small>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+          <section>
+            <h3>Mappings</h3>
+            {plan.mappings.length ? (
+              <dl>
+                {plan.mappings.map((item) => (
+                  <div key={item.label}>
+                    <dt>{item.label}</dt>
+                    <dd>{item.detail}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              <p className="muted">Mappings appear after analyze — register layout, measurement pairs, and bit order.</p>
+            )}
+          </section>
+        </div>
+        {children}
+      </div>
+    </details>
+  );
+}
+
 function RoutePane({
   encoding,
   candidates,
@@ -248,9 +334,11 @@ function RoutePane({
 function EncodePane({
   encoding,
   transpilation,
+  shots,
 }: {
   encoding?: EncodingTrace;
   transpilation?: CompileMetrics;
+  shots?: number;
 }) {
   if (!encoding) {
     return <p className="muted">This job does not have an encoding trace yet — older runs stored only the route. Route and result tabs still work.</p>;
@@ -267,7 +355,7 @@ function EncodePane({
 
   return (
     <div className="enc-pane">
-      {change?.depth && change.gates ? (
+      {change?.depth != null && change.gates != null ? (
         <div className="enc-metrics" aria-label="Circuit change after transpile">
           <div>
             <small>Depth</small>
@@ -290,6 +378,8 @@ function EncodePane({
       <dl>
         <div><dt>Workload</dt><dd>{workloadLabel(encoding.workload_kind)}</dd></div>
         <div><dt>Qubits / bits</dt><dd>{encoding.requirements.qubits} / {encoding.requirements.clbits}</dd></div>
+        <div><dt>Shots</dt><dd>{shots != null ? shots.toLocaleString() : "—"}</dd></div>
+        <div><dt>Payload</dt><dd>{bundle?.payload_bytes != null ? formatPayloadBytes(bundle.payload_bytes) : "—"}</dd></div>
         <div>
           <dt>Operations</dt>
           <dd>{encoding.requirements.instructions.slice(0, 8).join(", ") || "—"}{encoding.requirements.instructions.length > 8 ? "…" : ""}</dd>
@@ -422,6 +512,15 @@ export const EncodingDeepDive = memo(function EncodingDeepDive({
   transpilation,
   quoteTotal,
   surface = "full",
+  defaultOpen,
+  shots,
+  format,
+  targetId,
+  routingMode,
+  kind,
+  qubits,
+  phase,
+  updating,
 }: {
   encoding?: EncodingTrace;
   stages: EncodingStage[];
@@ -437,6 +536,15 @@ export const EncodingDeepDive = memo(function EncodingDeepDive({
   transpilation?: CompileMetrics;
   quoteTotal?: number | null;
   surface?: "full" | "tabs";
+  defaultOpen?: boolean;
+  shots?: number;
+  format?: "openqasm2" | "openqasm3";
+  targetId?: string;
+  routingMode?: string;
+  kind?: "qpu" | "simulator";
+  qubits?: number;
+  phase?: EncodingPreviewInput["phase"];
+  updating?: boolean;
 }) {
   const [tab, setTab] = useState<TabId>(error && !counts ? "result" : "route");
   const selectedName = selectedId ? backendLabel(selectedId) : undefined;
@@ -445,6 +553,26 @@ export const EncodingDeepDive = memo(function EncodingDeepDive({
     return Object.fromEntries(stages.map((stage) => [stage.id, stageStory(stage.id, stage.detail, ctx)])) as Partial<Record<EncodingStage["id"], string>>;
   }, [candidates, encoding, selectedName, stages, transpilation]);
   const uid = jobId ?? "quote";
+  const previewOpen = defaultOpen ?? surface === "full";
+  const previewInput: EncodingPreviewInput = {
+    encoding,
+    selectedId,
+    targetId,
+    shots,
+    format,
+    routingMode,
+    kind,
+    qubits: qubits ?? encoding?.requirements.qubits,
+    depth: transpilation?.after.depth ?? encoding?.selected_bundle?.metrics.depth,
+    gates: transpilation?.after.gates,
+    transpilation,
+    candidates,
+    explanation,
+    error: error && jobStatus && ["failed", "cancelled"].includes(jobStatus) ? error : (phase === "failed" ? error : undefined),
+    phase,
+    updating,
+    jobStatus,
+  };
 
   function onTabKey(event: KeyboardEvent<HTMLDivElement>) {
     const index = TABS.indexOf(tab);
@@ -460,16 +588,7 @@ export const EncodingDeepDive = memo(function EncodingDeepDive({
   return (
     <div className="enc-deep">
       {surface === "full" && (
-        <EncodingOverview
-          encoding={encoding}
-          candidates={candidates}
-          explanation={explanation}
-          selectedId={selectedId}
-          transpilation={transpilation}
-          quoteTotal={quoteTotal}
-          error={error && jobStatus && ["failed", "cancelled"].includes(jobStatus) ? error : undefined}
-          emptyHint={jobStatus && ["analyzing", "quoted", "queued"].includes(jobStatus) ? "Analyze → transpile → score → route is still running." : undefined}
-        />
+        <EncodingPreview {...previewInput} defaultOpen={previewOpen} quoteTotal={quoteTotal} />
       )}
       {surface === "full" && <EncodingStageStrip stages={stages} stories={stories} />}
       <div className="enc-tabs" role="tablist" aria-label="Encoding and routing details" onKeyDown={onTabKey}>
@@ -491,7 +610,7 @@ export const EncodingDeepDive = memo(function EncodingDeepDive({
       </div>
       <div role="tabpanel" id={`enc-panel-${uid}-${tab}`} aria-labelledby={`enc-tab-${uid}-${tab}`}>
         {tab === "route" && <RoutePane encoding={encoding} candidates={candidates} explanation={explanation} selectedId={selectedId} />}
-        {tab === "encode" && <EncodePane encoding={encoding} transpilation={transpilation} />}
+        {tab === "encode" && <EncodePane encoding={encoding} transpilation={transpilation} shots={shots} />}
         {tab === "timeline" && <TimelinePane events={events} attempts={attempts} />}
         {tab === "result" && <ResultPane counts={counts} error={error} jobId={jobId} />}
       </div>

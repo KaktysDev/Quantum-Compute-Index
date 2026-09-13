@@ -9,7 +9,6 @@ import type { Backend } from "../types";
 import { jcsHash } from "./jcs";
 import { LOWERABLE } from "./lowering";
 import { opIdsFromTokens, resolveOpId } from "./ops";
-import { sourceMetrics } from "./frontend";
 import { ADAPTER_VERSION, CAP_SCHEMA, REQ_SCHEMA } from "./types";
 import type {
   CapabilityProfile,
@@ -23,36 +22,22 @@ import type {
 } from "./types";
 
 const TTL_SECONDS = 300;
+const CORE_OR_LOWERABLE = new Set<string>([
+  ...LOWERABLE,
+  "u1", "u2", "u3", "cx", "h", "x", "y", "z", "s", "sdg", "t", "tdg",
+  "rx", "ry", "rz", "id", "swap", "cz", "ccx", "measure",
+]);
 
-function walkOps(program: GateProgram): InstructionRequirement[] {
-  const seen = new Map<string, InstructionRequirement>();
-  const visit = (statements: typeof program.body) => {
-    for (const statement of statements) {
-      if (statement.op === "gate") {
-        const op = resolveOpId(statement.name);
-        const key = op?.key ?? `op:${statement.name}`;
-        if (!seen.has(key)) {
-          seen.set(key, {
-            opid: key,
-            name: statement.name,
-            arity: op?.arity ?? { qubits: statement.qubits.length, params: statement.params.length },
-          });
-        }
-      } else if (statement.op === "measure") {
-        seen.set("op:measure", { opid: "op:measure", name: "measure", arity: { qubits: 1, params: 0 } });
-      } else if (statement.op === "if") {
-        visit(statement.then);
-        if (statement.else) visit(statement.else);
-      } else if (statement.op === "for" || statement.op === "while") {
-        visit(statement.body);
-      } else if (statement.op === "switch") {
-        for (const entry of statement.cases) visit(entry.body);
-      }
-    }
-  };
-  visit(program.body);
-  for (const def of Object.values(program.gate_defs)) visit(def.body);
-  return [...seen.values()];
+function addInstruction(seen: Map<string, InstructionRequirement>, name: string, qubits: number, params: number) {
+  const op = resolveOpId(name);
+  const key = op?.key ?? `op:${name}`;
+  if (!seen.has(key)) {
+    seen.set(key, {
+      opid: key,
+      name,
+      arity: op?.arity ?? { qubits, params },
+    });
+  }
 }
 
 function programOf(workload: Workload): GateProgram | null {
@@ -64,45 +49,62 @@ function programOf(workload: Workload): GateProgram | null {
 
 export function deriveRequirements(workload: Workload): RequirementSet {
   const program = programOf(workload);
-  const metrics = program ? sourceMetrics(program) : { qubits: 0, classicalBits: 0, depth: 0, gates: 0, twoQubitGates: 0 };
   const control_flow: RequirementSet["classical"]["control_flow"] = [];
+  const seen = new Map<string, InstructionRequirement>();
   let mid = false;
   let feedback = false;
   let delays = false;
+  let gates = 0;
+  let twoQubitGates = 0;
   if (program) {
     let measured = false;
-    const visit = (statements: typeof program.body) => {
+    const visit = (statements: typeof program.body, countMetrics: boolean) => {
       for (const statement of statements) {
-        if (statement.op === "measure") measured = true;
-        if (statement.op === "gate" && measured) {
-          mid = true;
-          feedback = true;
+        if (statement.op === "measure") {
+          measured = true;
+          addInstruction(seen, "measure", 1, 0);
+          continue;
         }
+        if (statement.op === "gate") {
+          addInstruction(seen, statement.name, statement.qubits.length, statement.params.length);
+          if (countMetrics) {
+            gates += 1;
+            if (statement.qubits.length > 1) twoQubitGates += 1;
+          }
+          if (measured) {
+            mid = true;
+            feedback = true;
+          }
+          continue;
+        }
+        if (statement.op === "delay") delays = true;
         if (statement.op === "if" || statement.op === "for" || statement.op === "while" || statement.op === "switch") {
           if (!control_flow.includes(statement.op)) control_flow.push(statement.op);
           if (statement.op === "if") {
-            visit(statement.then);
-            if (statement.else) visit(statement.else);
-          } else if (statement.op === "for" || statement.op === "while") visit(statement.body);
-          else for (const entry of statement.cases) visit(entry.body);
+            visit(statement.then, countMetrics);
+            if (statement.else) visit(statement.else, countMetrics);
+          } else if (statement.op === "for" || statement.op === "while") visit(statement.body, countMetrics);
+          else for (const entry of statement.cases) visit(entry.body, countMetrics);
         }
-        if (statement.op === "delay") delays = true;
       }
     };
-    visit(program.body);
+    visit(program.body, true);
+    for (const def of Object.values(program.gate_defs)) visit(def.body, false);
   }
+  const qubits = program ? program.qubits.reduce((sum, register) => sum + register.size, 0) : 0;
+  const classicalBits = program ? program.clbits.reduce((sum, register) => sum + register.size, 0) : 0;
   const shots = "shots" in workload ? workload.shots : "reads" in workload ? workload.reads : 0;
   return {
     schema_version: REQ_SCHEMA,
     workload_kind: workload.kind,
-    qubits: metrics.qubits,
-    clbits: metrics.classicalBits,
-    instructions: program ? walkOps(program) : [],
-    connectivity: { pairs: [], needs_routing: metrics.twoQubitGates > 0 },
+    qubits,
+    clbits: classicalBits,
+    instructions: [...seen.values()],
+    connectivity: { pairs: [], needs_routing: twoQubitGates > 0 },
     classical: { mid_circuit_measurement: mid, feedback, control_flow },
     timing: { explicit_delays: delays, stretch: workload.kind === "timed", pulse_level: workload.kind === "timed" },
     results: workload.kind === "photonic" ? ["photon_pattern"] : workload.kind === "annealing" ? ["annealing"] : ["counts", "probabilities"],
-    limits: { shots, depth: metrics.depth, ops: metrics.gates, batch_size: 1 },
+    limits: { shots, depth: gates, ops: gates, batch_size: 1 },
   };
 }
 
@@ -150,18 +152,17 @@ export function staticProfile(backend: Backend, adapterName: string, extra?: Par
   return { ...base, fingerprint: jcsHash({ ...base, fetched_at: undefined, fingerprint: undefined }) };
 }
 
-function canLowerTo(opid: string, cap: CapabilityProfile): boolean {
-  if (cap.instructions.some((item) => item.opid === opid)) return true;
+function canLowerTo(opid: string, cap: CapabilityProfile, supported: Set<string>): boolean {
+  if (supported.has(opid)) return true;
   const name = opid.replace(/^op:/, "");
-  if (!LOWERABLE.has(name) && !["u1", "u2", "u3", "cx", "h", "x", "y", "z", "s", "sdg", "t", "tdg", "rx", "ry", "rz", "id", "swap", "cz", "ccx", "measure"].includes(name)) {
-    return false;
-  }
+  if (!CORE_OR_LOWERABLE.has(name)) return false;
   // A lowerable (or core) gate can run on any gate-model adapter that implements encode.
   return cap.workload_kinds.includes("gate") && cap.instructions.length > 0;
 }
 
 export function satisfies(req: RequirementSet, cap: CapabilityProfile): Verdict {
   const failures: SatisfactionFailure[] = [];
+  const supported = new Set(cap.instructions.map((item) => item.opid));
   if (!cap.workload_kinds.includes(req.workload_kind)) {
     failures.push({
       code: "workload_kind",
@@ -180,7 +181,7 @@ export function satisfies(req: RequirementSet, cap: CapabilityProfile): Verdict 
   }
   for (const instruction of req.instructions) {
     if (instruction.opid === "op:barrier" || instruction.opid === "op:reset") continue;
-    if (!canLowerTo(instruction.opid, cap)) {
+    if (!canLowerTo(instruction.opid, cap, supported)) {
       failures.push({
         code: "instruction",
         message: `${cap.backend_id} cannot encode ${instruction.name} (${instruction.opid})`,

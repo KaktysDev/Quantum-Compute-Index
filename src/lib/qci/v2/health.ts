@@ -149,12 +149,13 @@ type Client = SupabaseClient;
  */
 export async function getIndexHealth(supabase: Client): Promise<IndexHealth> {
   try {
-    const [pointsRes, runsRes] = await Promise.all([
+    const [latestRes, countRes, runsRes] = await Promise.all([
       supabase
         .from("qci_index_points")
         .select("index_date, point")
         .order("index_date", { ascending: false })
-        .limit(400),
+        .limit(1),
+      supabase.from("qci_index_points").select("index_date", { count: "exact", head: true }),
       supabase
         .from("qci_refresh_runs")
         .select(
@@ -164,19 +165,19 @@ export async function getIndexHealth(supabase: Client): Promise<IndexHealth> {
         .limit(8),
     ]);
 
-    if (pointsRes.error) {
+    if (latestRes.error) {
       return {
         latest: null,
         latestDate: null,
         archivedToday: 0,
         pointCount: 0,
         runs: [],
-        error: pointsRes.error.message,
+        error: latestRes.error.message,
       };
     }
 
-    const rows = (pointsRes.data ?? []) as Array<{ index_date: string; point: IndexPoint }>;
-    const latestDate = rows[0]?.index_date ?? null;
+    const latestRow = (latestRes.data?.[0] ?? null) as { index_date: string; point: IndexPoint } | null;
+    const latestDate = latestRow?.index_date ?? null;
 
     let archivedToday = 0;
     if (latestDate) {
@@ -188,12 +189,12 @@ export async function getIndexHealth(supabase: Client): Promise<IndexHealth> {
     }
 
     return {
-      latest: rows[0]?.point ?? null,
+      latest: latestRow?.point ?? null,
       latestDate,
       archivedToday,
-      pointCount: rows.length,
+      pointCount: countRes.count ?? (latestRow ? 1 : 0),
       runs: (runsRes.data ?? []) as RefreshRun[],
-      error: runsRes.error?.message,
+      error: runsRes.error?.message ?? countRes.error?.message,
     };
   } catch (e) {
     return {

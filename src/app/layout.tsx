@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
 import "./globals.css";
-import "./landing.css";
 
 export const metadata: Metadata = {
   // Needed so per-page canonical URLs and Open Graph assets resolve absolutely.

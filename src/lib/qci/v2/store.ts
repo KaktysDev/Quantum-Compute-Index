@@ -27,6 +27,20 @@ import type { IndexPoint } from "./types";
 
 /** How many points to chart. Daily cadence, so this is a few years of headroom. */
 const SERIES_LIMIT = 1200;
+const PUBLIC_QCI_TTL_MS = 60_000;
+
+function publicWindow(days: number) {
+  if (!Number.isFinite(days)) return 365;
+  return Math.min(Math.max(Math.floor(days), 1), SERIES_LIMIT);
+}
+
+function seriesLimit(days: number) {
+  return Math.min(publicWindow(days) + 1, SERIES_LIMIT);
+}
+
+export function resetPublicQciCache() {
+  publicQciCache.clear();
+}
 
 export interface SeriesPoint {
   /** UNIX seconds, to match the charting library. */
@@ -86,7 +100,6 @@ interface PointRow {
   matched: number;
   status: "final" | "provisional";
   cost_basis_per_hour: number | string | null;
-  point: IndexPoint;
 }
 
 function seconds(ts: string): number {
@@ -100,7 +113,13 @@ function num(v: number | string | null | undefined): number | null {
 }
 
 /**
- * Load the full view the QCI tab needs, in one query.
+ * Load the series the QCI tab and public charts need.
+ *
+ * History is scalar columns only. Each `point` blob is a full IndexPoint
+ * (devices, factors, attribution) — pulling it for every day blocked first
+ * paint on the landing page and the console QCI tab, and nothing that calls
+ * this function reads `deviceSeries`. The map gets today's point from a
+ * second, single-row query.
  *
  * Unlike v1's `getSeries`, this does NOT filter history down to snapshots that
  * share the current basket. That filter was a workaround for v1's composition
@@ -115,33 +134,40 @@ export async function getQciView(days = 365): Promise<QciView> {
   }
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("qci_index_points")
-      .select(
-        "ts, index_date, level, change_pct, usd_per_qpu_hour, usd_per_qcu, coverage, matched, status, cost_basis_per_hour, point",
-      )
-      .order("index_date", { ascending: true })
-      .limit(SERIES_LIMIT);
+    const [{ data, error }, latestRes] = await Promise.all([
+      supabase
+        .from("qci_index_points")
+        .select(
+          "ts, index_date, level, change_pct, usd_per_qpu_hour, usd_per_qcu, coverage, matched, status, cost_basis_per_hour",
+        )
+        .order("index_date", { ascending: false })
+        .limit(seriesLimit(days)),
+      supabase
+        .from("qci_index_points")
+        .select("point")
+        .order("index_date", { ascending: false })
+        .limit(1),
+    ]);
 
-    if (error) {
+    const readError = error ?? latestRes.error;
+    if (readError) {
       // Distinguish "table not created yet" from a real failure — the former is
       // the expected state before the migration is applied.
-      const missing = /relation .* does not exist|schema cache/i.test(error.message);
+      const missing = /relation .* does not exist|schema cache/i.test(readError.message);
       return empty(
         missing
           ? "The QCI v2 tables do not exist yet. Apply supabase/qci-v2.sql."
-          : `Could not read the index: ${error.message}`,
+          : `Could not read the index: ${readError.message}`,
       );
     }
     if (!data || data.length === 0) {
       return empty("No index points recorded yet. Run a refresh to compute the first one.");
     }
 
-    const rows = data as unknown as PointRow[];
-    const cutoff = Date.now() / 1000 - days * 86_400;
+    const rows = (data as unknown as PointRow[]).slice().reverse();
+    const cutoff = Date.now() / 1000 - publicWindow(days) * 86_400;
 
     const series: QciSeries = { level: [], usdPerQpuHour: [], usdPerQcu: [], costBasis: [] };
-    const deviceSeries: Record<string, SeriesPoint[]> = {};
 
     for (const row of rows) {
       const time = seconds(row.ts);
@@ -157,18 +183,17 @@ export async function getQciView(days = 365): Promise<QciView> {
       if (perQcu != null && perQcu > 0) series.usdPerQcu.push({ ...base, value: perQcu });
       const cost = num(row.cost_basis_per_hour);
       if (cost != null && cost > 0) series.costBasis.push({ ...base, value: cost });
-
-      for (const d of row.point?.devices ?? []) {
-        if (!Number.isFinite(d.pricePerHour) || d.pricePerHour <= 0) continue;
-        (deviceSeries[d.id] ??= []).push({ ...base, value: d.pricePerHour });
-      }
     }
+
+    const latest = !latestRes.error && latestRes.data?.[0]
+      ? (latestRes.data[0] as { point: IndexPoint }).point
+      : null;
 
     return {
       hasData: true,
-      latest: rows[rows.length - 1].point,
+      latest,
       series,
-      deviceSeries,
+      deviceSeries: {},
     };
   } catch (e) {
     return empty(
@@ -210,35 +235,115 @@ export interface PublicQci {
   emptyReason?: string;
 }
 
-export async function getPublicQci(days = 365): Promise<PublicQci> {
-  const view = await getQciView(days);
-  const latest = view.latest;
-  if (!latest) {
-    return {
-      hasData: false,
-      usdPerQpuHour: 0,
-      changePct: 0,
-      level: 0,
-      costBasisPerHour: null,
-      ts: null,
-      machines: 0,
-      providers: 0,
-      series: [],
-      emptyReason: view.emptyReason,
-    };
-  }
+const PUBLIC_QCI_CACHE_MAX = 8;
+const publicQciCache = new Map<number, { expiresAt: number; value: PublicQci }>();
+
+function emptyPublic(reason: string): PublicQci {
   return {
-    hasData: true,
-    usdPerQpuHour: latest.usdPerQpuHour,
-    changePct: latest.changePct,
-    level: latest.level,
-    costBasisPerHour: latest.costBasisPerHour ?? null,
-    ts: latest.ts,
-    machines: latest.devices.length,
-    providers: new Set(latest.devices.map((d) => d.provider)).size,
-    series: view.series.usdPerQpuHour,
-    emptyReason: view.hasData ? undefined : view.emptyReason,
+    hasData: false,
+    usdPerQpuHour: 0,
+    changePct: 0,
+    level: 0,
+    costBasisPerHour: null,
+    ts: null,
+    machines: 0,
+    providers: 0,
+    series: [],
+    emptyReason: reason,
   };
+}
+
+function rememberPublicQci(days: number, value: PublicQci): PublicQci {
+  if (publicQciCache.has(days)) publicQciCache.delete(days);
+  publicQciCache.set(days, { expiresAt: Date.now() + PUBLIC_QCI_TTL_MS, value });
+  while (publicQciCache.size > PUBLIC_QCI_CACHE_MAX) {
+    const first = publicQciCache.keys().next().value;
+    if (first === undefined) break;
+    publicQciCache.delete(first);
+  }
+  return value;
+}
+
+export async function getPublicQci(days = 365): Promise<PublicQci> {
+  const window = publicWindow(days);
+  const cached = publicQciCache.get(window);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+
+  if (!isSupabaseConfigured()) {
+    return rememberPublicQci(
+      window,
+      emptyPublic("Supabase is not configured — set NEXT_PUBLIC_SUPABASE_URL and keys."),
+    );
+  }
+
+  try {
+    const supabase = await createClient();
+    // Public surfaces only need the headline point plus the USD/QPU-hour
+    // series. Reusing getQciView() pulled every historical `point` blob
+    // (devices, factors, attribution) for a payload the landing page discarded.
+    const [latestRes, seriesRes] = await Promise.all([
+      supabase
+        .from("qci_index_points")
+        .select("point")
+        .order("index_date", { ascending: false })
+        .limit(1),
+      supabase
+        .from("qci_index_points")
+        .select("ts, usd_per_qpu_hour, coverage, status")
+        .order("index_date", { ascending: false })
+        .limit(seriesLimit(window)),
+    ]);
+
+    const readError = latestRes.error ?? seriesRes.error;
+    if (readError) {
+      const missing = /relation .* does not exist|schema cache/i.test(readError.message);
+      const value = emptyPublic(
+        missing
+          ? "The QCI v2 tables do not exist yet. Apply supabase/qci-v2.sql."
+          : `Could not read the index: ${readError.message}`,
+      );
+      return missing ? rememberPublicQci(window, value) : value;
+    }
+
+    const latest = (latestRes.data?.[0] as { point?: IndexPoint } | undefined)?.point ?? null;
+    if (!latest) {
+      return rememberPublicQci(
+        window,
+        emptyPublic("No index points recorded yet. Run a refresh to compute the first one."),
+      );
+    }
+
+    const cutoff = Date.now() / 1000 - window * 86_400;
+    const series: SeriesPoint[] = [];
+    for (const row of (seriesRes.data ?? []) as Array<{
+      ts: string;
+      usd_per_qpu_hour: number | string | null;
+      coverage: number | string;
+      status: "final" | "provisional";
+    }>) {
+      const time = seconds(row.ts);
+      if (!Number.isFinite(time) || time < cutoff) continue;
+      const perHour = num(row.usd_per_qpu_hour);
+      if (perHour != null && perHour > 0) {
+        series.push({ time, value: perHour, coverage: num(row.coverage) ?? 0, status: row.status });
+      }
+    }
+    series.sort((a, b) => a.time - b.time);
+
+    return rememberPublicQci(window, {
+      hasData: true,
+      usdPerQpuHour: latest.usdPerQpuHour,
+      changePct: latest.changePct,
+      level: latest.level,
+      costBasisPerHour: latest.costBasisPerHour ?? null,
+      ts: latest.ts,
+      machines: latest.devices?.length ?? 0,
+      providers: new Set((latest.devices ?? []).map((d) => d.provider)).size,
+      series,
+    });
+  } catch (e) {
+    return emptyPublic(`Could not read the index: ${e instanceof Error ? e.message : "unknown error"}`);
+  }
 }
 
 /** Just the latest point — for the landing page and the routing engine. */

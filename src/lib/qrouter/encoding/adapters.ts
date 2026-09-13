@@ -5,11 +5,13 @@
  * dropped. Quantum Inspire encodes to cQASM 1.0.
  */
 
+import { createHash } from "crypto";
 import { getBackend } from "../catalog";
 import type { Backend, CircuitAnalysis, TranspilationResult } from "../types";
 import { buildBundle, verificationFromTranspile } from "./bundle";
+import { lruGet, lruSet } from "./cache";
 import { measurementMap, registerLayout } from "./frontend";
-import { nativeProgramFor } from "./native";
+import { nativeProgramFor, type NativeProgram } from "./native";
 import { opIdsFromTokens } from "./ops";
 import { staticProfile } from "./satisfy";
 import { satisfies } from "./satisfy";
@@ -42,6 +44,38 @@ export interface EncodingAdapter {
 function programOf(envelope: ExecutionEnvelope): GateProgram | null {
   const workload = envelope.workload;
   if (workload.kind === "gate" || workload.kind === "dynamic" || workload.kind === "timed") return workload.program;
+  return null;
+}
+
+const PROFILE_CACHE_MAX = 64;
+const profileCache = new Map<string, CapabilityProfile>();
+
+function couplingKey(map?: number[][]) {
+  if (!map?.length) return "";
+  return createHash("sha256").update(map.map((edge) => edge.join(",")).join(";")).digest("hex").slice(0, 16);
+}
+
+function profileKey(backend: Backend, adapterName: string) {
+  const qi = adapterName === "quantum-inspire" && process.env.QI_API_KEY ? "qi" : "";
+  return [
+    backend.id, adapterName, backend.available ? "1" : "0", backend.qubits, backend.connectivity,
+    backend.basisGates.join(","), backend.nativeGates.join(","), backend.capabilityNote ?? "", couplingKey(backend.couplingMap), qi,
+  ].join("\x1f");
+}
+
+export function resetProfileCache() {
+  profileCache.clear();
+}
+
+function reusedNativeProgram(transpilation: TranspilationResult | null): NativeProgram | null {
+  const existing = transpilation?.providerProgram;
+  if (typeof existing !== "string") return null;
+  try {
+    const parsed = JSON.parse(existing) as NativeProgram;
+    if (parsed?.format === "cqasm-1.0" || parsed?.format === "photonic-dual-rail") return parsed;
+  } catch {
+    return null;
+  }
   return null;
 }
 
@@ -142,21 +176,21 @@ const ionq: EncodingAdapter = {
   validate: (env, cap) => satisfies(env.requirements, cap),
   encode: (input) => {
     const program = programOf(input.envelope);
-    const map = program ? measurementMap(program) : [];
-    if (!map.length) throw new EncodingError("IonQ encoding refused: the measurement map is empty; a circuit is never submitted without its classical mapping.");
+    const decodeMap = decodeMapFor(program, "q0_left", layoutFrom(input.transpilation));
+    if (!decodeMap.measurement_map.length) throw new EncodingError("IonQ encoding refused: the measurement map is empty; a circuit is never submitted without its classical mapping.");
     const payload = JSON.stringify({
       qubits: input.analysis.qubits,
       gateset: "qis",
       qasm: input.transpilation?.qasm ?? input.analysis.normalizedQasm2,
-      measurement_map: map,
-      registers: program ? registerLayout(program) : [],
+      measurement_map: decodeMap.measurement_map,
+      registers: decodeMap.registers,
     });
     return buildBundle({
       envelope: input.envelope,
       backendId: input.backend.id,
       payload,
       mediaType: "application/json",
-      decodeMap: decodeMapFor(program, "q0_left", layoutFrom(input.transpilation)),
+      decodeMap,
       capability: input.capability,
       compiler: compilerOf(input.transpilation),
       verification: verificationFromTranspile(input.transpilation, input.capability),
@@ -200,10 +234,11 @@ const photonic: EncodingAdapter = {
   validate: (env, cap) => satisfies(env.requirements, cap),
   encode: (input) => {
     const qasm = input.transpilation?.qasm ?? input.analysis.normalizedQasm2;
+    const program = reusedNativeProgram(input.transpilation) ?? nativeProgramFor(input.backend, qasm);
     return buildBundle({
       envelope: input.envelope,
       backendId: input.backend.id,
-      payload: JSON.stringify(nativeProgramFor(input.backend, qasm)),
+      payload: JSON.stringify(program),
       mediaType: "application/json",
       decodeMap: decodeMapFor(programOf(input.envelope), "q0_right", layoutFrom(input.transpilation)),
       capability: input.capability,
@@ -224,7 +259,7 @@ const quantumInspire: EncodingAdapter = {
   validate: (env, cap) => satisfies(env.requirements, cap),
   encode: (input) => {
     const qasm = input.transpilation?.qasm ?? input.analysis.normalizedQasm2;
-    const program = nativeProgramFor(input.backend, qasm);
+    const program = reusedNativeProgram(input.transpilation) ?? nativeProgramFor(input.backend, qasm);
     return buildBundle({
       envelope: input.envelope,
       backendId: input.backend.id,
@@ -249,7 +284,11 @@ export function adapterFor(backend: Backend): EncodingAdapter {
 }
 
 export function profileBackend(backend: Backend): CapabilityProfile {
-  return adapterFor(backend).profile(backend);
+  const adapter = adapterFor(backend);
+  const key = profileKey(backend, adapter.name);
+  const hit = lruGet(profileCache, key);
+  if (hit) return hit;
+  return lruSet(profileCache, key, adapter.profile(backend), PROFILE_CACHE_MAX);
 }
 
 export function encodeForBackend(input: {
@@ -260,7 +299,7 @@ export function encodeForBackend(input: {
   quoteBinding: QuoteBinding;
 }): ExecutionBundle {
   const adapter = adapterFor(input.backend);
-  const capability = adapter.profile(input.backend);
+  const capability = profileBackend(input.backend);
   const verdict = adapter.validate(input.envelope, capability);
   if (!verdict.ok) {
     throw new EncodingError(

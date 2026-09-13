@@ -1,11 +1,13 @@
 import Link from "next/link";
+import nextDynamic from "next/dynamic";
 import { ArrowLeft, FlaskConical } from "lucide-react";
-import QciMap from "@/components/QciMap";
 import { collectDryRun } from "@/lib/qci/v2/collect";
 import { computeIndexPoint } from "@/lib/qci/v2/compute";
 import type { LedgerEntry } from "@/lib/qci/v2/ledger";
 import { REGISTRY, requiredEnergyRegions } from "@/lib/qci/v2/registry";
 import { collectFactors } from "@/lib/qci/v2/sources/factors";
+
+const QciMap = nextDynamic(() => import("@/components/QciMap"));
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;

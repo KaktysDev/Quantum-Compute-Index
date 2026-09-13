@@ -34,6 +34,7 @@ interface ApiKeyRow {
   expires_at: string | null;
   scopes: string[];
   environment: string;
+  last_used_at?: string | null;
 }
 
 /** Everything the mocked Supabase clients answer from. Reset in beforeEach. */
@@ -49,15 +50,17 @@ const db = {
   /** Errors to return from the next inserts, oldest first. */
   insertErrors: [] as Array<{ code?: string; message?: string }>,
   insertedRows: [] as Array<Record<string, unknown>>,
+  keyUpdates: [] as Array<Record<string, unknown>>,
+  updateThrow: null as Error | null,
 };
 
 function builder(resolveResult: (state: BuilderState) => QueryResult): Builder {
-  const state: BuilderState = { counting: false, inserted: null, filters: new Map() };
+  const state: BuilderState = { counting: false, inserted: null, updated: null, filters: new Map() };
   const run = () => resolveResult(state);
   const self: Builder = {
     select: (_columns, options) => { state.counting = Boolean(options?.count); return self; },
     insert: (values) => { state.inserted = values; return self; },
-    update: () => self,
+    update: (values) => { state.updated = values; return self; },
     eq: (column, value) => { state.filters.set(column, value); return self; },
     is: () => self,
     or: () => self,
@@ -73,10 +76,20 @@ function builder(resolveResult: (state: BuilderState) => QueryResult): Builder {
 interface BuilderState {
   counting: boolean;
   inserted: Record<string, unknown> | null;
+  updated: Record<string, unknown> | null;
   filters: Map<string, unknown>;
 }
 
 function apiKeysResult(state: BuilderState): QueryResult {
+  if (state.updated) {
+    if (db.updateThrow) {
+      const error = db.updateThrow;
+      db.updateThrow = null;
+      throw error;
+    }
+    db.keyUpdates.push({ ...state.updated, id: state.filters.get("id") });
+    return { data: { id: state.filters.get("id") }, error: null };
+  }
   if (state.inserted) {
     const failure = db.insertErrors.shift();
     if (failure) return { data: null, error: failure };
@@ -139,6 +152,7 @@ function seedKey(rawKey: string, row: Partial<ApiKeyRow> & { organization_id: st
     expires_at: row.expires_at ?? null,
     scopes: row.scopes ?? ["jobs:read", "jobs:write"],
     environment: row.environment ?? "live",
+    last_used_at: row.last_used_at,
   });
 }
 
@@ -166,6 +180,8 @@ describe("QRouter authentication and authorization", () => {
     db.activeKeyCount = 0;
     db.insertErrors = [];
     db.insertedRows = [];
+    db.keyUpdates = [];
+    db.updateThrow = null;
     allowedConsole.mockResolvedValue(true);
   });
 
@@ -275,6 +291,34 @@ describe("QRouter authentication and authorization", () => {
     await expect(resolvePrincipal(bearerRequest("qci_test_readonly"))).resolves.toMatchObject({
       apiKeyId: "key-ro", scopes: ["jobs:read"], environment: "test",
     });
+  });
+
+  it("does not rewrite last_used_at inside the five-minute freshness window", async () => {
+    seedKey("qci_live_fresh", {
+      id: "key-fresh",
+      organization_id: "org-fresh",
+      last_used_at: new Date().toISOString(),
+    });
+    await expect(resolvePrincipal(bearerRequest("qci_live_fresh"))).resolves.toMatchObject({ apiKeyId: "key-fresh" });
+    expect(db.keyUpdates).toEqual([]);
+  });
+
+  it("touches a stale last_used_at and still authenticates when the write throws", async () => {
+    seedKey("qci_live_stale", {
+      id: "key-stale",
+      organization_id: "org-stale",
+      last_used_at: new Date(Date.now() - 10 * 60_000).toISOString(),
+    });
+    await expect(resolvePrincipal(bearerRequest("qci_live_stale"))).resolves.toMatchObject({ apiKeyId: "key-stale" });
+    expect(db.keyUpdates).toHaveLength(1);
+
+    seedKey("qci_live_broken", {
+      id: "key-broken",
+      organization_id: "org-broken",
+      last_used_at: new Date(Date.now() - 10 * 60_000).toISOString(),
+    });
+    db.updateThrow = new Error("api_keys write timed out");
+    await expect(resolvePrincipal(bearerRequest("qci_live_broken"))).resolves.toMatchObject({ apiKeyId: "key-broken" });
   });
 
   it("denies a key that lacks the scope and exempts console sessions", () => {

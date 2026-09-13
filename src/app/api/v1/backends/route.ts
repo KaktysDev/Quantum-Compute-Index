@@ -1,16 +1,13 @@
 import { NextResponse } from "next/server";
-import { getLatestSnapshot } from "@/lib/qci/store";
-import { withQciSnapshot } from "@/lib/qrouter/catalog";
-import { applyProviderHealth, loadPersistedBackendHealth } from "@/lib/qrouter/providerHealth";
+import { loadPublicRoutingContext } from "@/lib/qrouter/routingContext";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const [snapshot, health] = await Promise.all([getLatestSnapshot(), loadPersistedBackendHealth()]);
-  const data = applyProviderHealth(withQciSnapshot(snapshot.components), health);
+  const { snapshot, backends } = await loadPublicRoutingContext();
   return NextResponse.json({
     object: "list",
-    data,
+    data: backends,
     qci: {
       timestamp: snapshot.ts,
       source: snapshot.source,

@@ -3,12 +3,61 @@
 // Scroll-reveal wrapper: adds .in once the element enters the viewport.
 // Direction/stagger are CSS concerns (variants: up, left, right, zoom).
 //
-// Robustness: IntersectionObserver is the primary trigger, but some contexts
-// (prerender, embedded/hidden documents) suspend IO callbacks — so we also
-// check the rect directly at mount and on scroll/resize as a fallback. The
-// content must never be lost to a missed observer callback.
+// One shared IntersectionObserver (plus one window scroll/resize fallback)
+// instead of a listener pair per card. The landing page mounts ~17 of these.
 
 import { useEffect, useRef, type ReactNode } from "react";
+
+type RevealFn = () => void;
+
+const watchers = new Map<Element, RevealFn>();
+let sharedIo: IntersectionObserver | null = null;
+let fallbackBound = false;
+
+function checkRect(el: Element, show: RevealFn) {
+  const rect = el.getBoundingClientRect();
+  if (rect.top < window.innerHeight - 24 && rect.bottom > 0) show();
+}
+
+function onScrollOrResize() {
+  for (const [el, show] of watchers) checkRect(el, show);
+}
+
+function ensureFallback() {
+  if (fallbackBound) return;
+  fallbackBound = true;
+  window.addEventListener("scroll", onScrollOrResize, { passive: true });
+  window.addEventListener("resize", onScrollOrResize);
+}
+
+function releaseFallback() {
+  if (watchers.size > 0 || !fallbackBound) return;
+  fallbackBound = false;
+  window.removeEventListener("scroll", onScrollOrResize);
+  window.removeEventListener("resize", onScrollOrResize);
+}
+
+function observeReveal(el: Element, show: RevealFn) {
+  if (!sharedIo) {
+    sharedIo = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) watchers.get(entry.target)?.();
+        }
+      },
+      { threshold: 0.14, rootMargin: "0px 0px -40px" },
+    );
+  }
+  watchers.set(el, show);
+  sharedIo.observe(el);
+  ensureFallback();
+}
+
+function unobserveReveal(el: Element) {
+  watchers.delete(el);
+  sharedIo?.unobserve(el);
+  releaseFallback();
+}
 
 export default function Reveal({
   children,
@@ -28,20 +77,11 @@ export default function Reveal({
     if (!el) return;
 
     let done = false;
-    let io: IntersectionObserver | null = null;
-
     const show = () => {
       if (done) return;
       done = true;
       el.classList.add("in");
-      io?.disconnect();
-      window.removeEventListener("scroll", check);
-      window.removeEventListener("resize", check);
-    };
-
-    const check = () => {
-      const rect = el.getBoundingClientRect();
-      if (rect.top < window.innerHeight - 24 && rect.bottom > 0) show();
+      unobserveReveal(el);
     };
 
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -49,21 +89,11 @@ export default function Reveal({
       return;
     }
 
-    io = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) show();
-      },
-      { threshold: 0.14, rootMargin: "0px 0px -40px" },
-    );
-    io.observe(el);
-    window.addEventListener("scroll", check, { passive: true });
-    window.addEventListener("resize", check);
-    check(); // already in view at mount → reveal immediately
+    observeReveal(el, show);
+    checkRect(el, show);
 
     return () => {
-      io?.disconnect();
-      window.removeEventListener("scroll", check);
-      window.removeEventListener("resize", check);
+      unobserveReveal(el);
     };
   }, []);
 

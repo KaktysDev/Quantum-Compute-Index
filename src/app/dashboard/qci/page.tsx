@@ -1,8 +1,10 @@
 import Link from "next/link";
+import nextDynamic from "next/dynamic";
 import { ArrowRight, Cpu, Route, Terminal } from "lucide-react";
-import QciMap from "@/components/QciMap";
 import QciSeriesPanel from "@/components/QciSeriesPanel";
 import { getQciView } from "@/lib/qci/v2/store";
+
+const QciMap = nextDynamic(() => import("@/components/QciMap"));
 
 export const dynamic = "force-dynamic";
 

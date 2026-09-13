@@ -33,6 +33,7 @@ export function buildEnvelope(input: {
 }): ExecutionEnvelope {
   const requirements = deriveRequirements(input.workload);
   const created_at = new Date().toISOString();
+  const source_sha256 = createHash("sha256").update(input.source).digest("hex");
   const body = {
     schema_version: QEE_SCHEMA,
     created_at,
@@ -45,11 +46,26 @@ export function buildEnvelope(input: {
       verification: { minimum_status: "unsupported" as const },
     },
     provenance: {
-      source_sha256: createHash("sha256").update(input.source).digest("hex"),
+      source_sha256,
       frontend: frontendInfo(),
     },
   };
-  return { ...body, id: jcsHash(body) };
+  // created_at is telemetry. Hashing it (or the full AST) made every quote a
+  // unique document and forced a JCS walk of every gate on the hot path.
+  // source_sha256 is the program identity; requirements + policy are the rest.
+  const shots = "shots" in input.workload ? input.workload.shots : "reads" in input.workload ? input.workload.reads : 0;
+  return {
+    ...body,
+    id: jcsHash({
+      schema_version: body.schema_version,
+      source_sha256,
+      workload_kind: input.workload.kind,
+      shots,
+      requirements,
+      policy: body.policy,
+      frontend: body.provenance.frontend,
+    }),
+  };
 }
 
 export function verificationFromTranspile(result: TranspilationResult | null, capability: CapabilityProfile): VerificationReport {

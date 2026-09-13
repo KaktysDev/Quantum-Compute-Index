@@ -11,6 +11,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, ChevronDown, Clock, FileCode2, Loader2, RotateCw, Square } from "lucide-react";
 import { EncodingDeepDive, overlayExecute } from "@/components/encoding/EncodingProcess";
+import { onVisibleInterval } from "@/lib/client/visible-interval";
 import type { EncodingTrace } from "@/lib/qrouter/encoding/types";
 import { slimJobForClient } from "@/lib/qrouter/encoding/public";
 import { getBackend } from "@/lib/qrouter/catalog";
@@ -51,6 +52,7 @@ interface Job {
   result?: { counts?: Record<string, number> };
   error?: { message?: string };
   created_at: string;
+  updated_at?: string | null;
   started_at?: string | null;
   completed_at?: string | null;
   // The list endpoint embeds the quote as `quotes` (PostgREST join); the demo
@@ -69,6 +71,10 @@ function quoteTotal(job: Job): number | null {
 
 function asJob(value: unknown): Job {
   return slimJobForClient((value ?? {}) as Record<string, unknown>) as unknown as Job;
+}
+
+function listFingerprint(jobs: Job[]): string {
+  return jobs.map((job) => `${job.id}:${job.status}:${job.updated_at ?? ""}:${job.started_at ?? ""}:${job.completed_at ?? ""}:${quoteTotal(job) ?? ""}`).join("|");
 }
 
 function mergeOpenJob(previous: Job | undefined, incoming: Job): Job {
@@ -151,6 +157,7 @@ const TaskInspector = memo(function TaskInspector({
         candidates={job.route_decision?.candidates}
         explanation={job.route_decision?.explanation}
         selectedId={job.selected_backend_id}
+        targetId={job.selected_backend_id}
         transpilation={job.analysis?.transpilation}
         quoteTotal={quoteTotal(job)}
         events={job.events}
@@ -159,6 +166,9 @@ const TaskInspector = memo(function TaskInspector({
         error={job.error?.message}
         jobId={job.id}
         jobStatus={job.status}
+        shots={job.shots}
+        qubits={job.analysis?.qubits}
+        phase={job.status === "failed" || job.status === "cancelled" ? "failed" : job.status === "completed" ? "done" : !isTerminal(job.status) ? "running" : "ready"}
       />
       <div className="task-encoding-actions">
         {running && (
@@ -185,20 +195,33 @@ export default function TasksTable() {
   const openedFromQuery = useRef<string | null>(null);
   const openRef = useRef<string | null>(null);
   const detailedRef = useRef<Set<string>>(new Set());
+  const inFlight = useRef(false);
+  const fingerprint = useRef("");
   // Drives the live duration column. Held in state so the whole table advances
   // on one timer rather than one per row.
   const [now, setNow] = useState(() => Date.now());
 
   const load = useCallback(async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     try {
-      const response = await fetch("/api/v1/jobs", { cache: "no-store" });
+      const response = await fetch("/api/v1/jobs?view=summary", { cache: "no-store" });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error?.message ?? "Could not load tasks.");
+      if (!response.ok) {
+        const raw = data.error?.message ?? "Could not load tasks.";
+        throw new Error(response.status === 401 || response.status === 403
+          ? "Could not load tasks — the session is missing or expired."
+          : raw);
+      }
       const incoming = (Array.isArray(data.data) ? data.data as unknown[] : []).map(asJob);
       const openId = openRef.current;
-      setJobs((current) => incoming.map((job) => (
-        job.id === openId ? mergeOpenJob(current.find((item) => item.id === job.id), job) : job
-      )));
+      const nextFingerprint = listFingerprint(incoming);
+      if (nextFingerprint !== fingerprint.current) {
+        fingerprint.current = nextFingerprint;
+        setJobs((current) => incoming.map((job) => (
+          job.id === openId ? mergeOpenJob(current.find((item) => item.id === job.id), job) : job
+        )));
+      }
       setError(null);
       if (!openId) return;
       const listed = incoming.find((item) => item.id === openId);
@@ -212,14 +235,14 @@ export default function TasksTable() {
     } catch (value) {
       setError(value instanceof Error ? value.message : "Could not load tasks.");
     } finally {
+      inFlight.current = false;
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    load();
-    const timer = setInterval(load, 5000);
-    return () => clearInterval(timer);
+    void load();
+    return onVisibleInterval(load, 5000);
   }, [load]);
 
   // Only tick while something is actually in flight. Duration lives on TaskRow
@@ -227,8 +250,7 @@ export default function TasksTable() {
   const anyRunning = jobs.some((job) => !isTerminal(job.status));
   useEffect(() => {
     if (!anyRunning) return;
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
+    return onVisibleInterval(() => setNow(Date.now()), 1000);
   }, [anyRunning]);
 
   const openJob = useCallback(async (job: Job) => {
@@ -308,13 +330,13 @@ export default function TasksTable() {
         <span>Status</span>
         <span />
       </div>
-      {jobs.length === 0 ? (
+      {jobs.length === 0 && !error ? (
         <div className="console-empty">
           <Clock />
           <p>No tasks yet</p>
           <a href="/dashboard/deploy">Deploy your first job</a>
         </div>
-      ) : (
+      ) : jobs.length === 0 ? null : (
         jobs.map((job) => (
           <div className="task-wrap" key={job.id}>
             <TaskRow job={job} now={now} open={open === job.id} onToggle={toggle} />

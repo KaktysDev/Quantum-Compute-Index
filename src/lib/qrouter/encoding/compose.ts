@@ -3,11 +3,14 @@
  * Prune with satisfies → compile primary + K failover → encode exact bundles.
  */
 
+import { createHash } from "crypto";
 import type { Backend, CircuitAnalysis, InputFormat, RoutingConstraints, RoutingMode, TranspilationResult } from "../types";
 import type { RouteCandidate } from "../types";
 import { encodeForBackend, profileBackend } from "./adapters";
 import { buildEnvelope } from "./bundle";
+import { lruGet, lruSet } from "./cache";
 import { workloadFromSource } from "./frontend";
+import { jcs } from "./jcs";
 import { satisfies } from "./satisfy";
 import type {
   EncodingStage,
@@ -20,9 +23,12 @@ import type {
 } from "./types";
 
 const FAILOVER_K = () => Math.max(0, Number(process.env.QROUTER_FAILOVER_COMPILE_K ?? 2));
+const COMPILE_CACHE_MAX = 128;
+const ENVELOPE_CACHE_MAX = 32;
 
 const compileCache = new Map<string, TranspilationResult>();
 const compileInflight = new Map<string, Promise<TranspilationResult>>();
+const envelopeCache = new Map<string, ExecutionEnvelope>();
 
 export function satisfactionFailures(backend: Backend, envelope: ExecutionEnvelope): SatisfactionFailure[] {
   const verdict = satisfies(envelope.requirements, profileBackend(backend));
@@ -37,13 +43,23 @@ export function buildExecutionEnvelope(input: {
   constraints?: RoutingConstraints;
   failover?: { enabled: boolean; max_attempts: number };
 }): ExecutionEnvelope {
-  return buildEnvelope({
+  const key = [
+    createHash("sha256").update(input.source).digest("hex"),
+    input.format,
+    input.shots,
+    input.routing_mode,
+    jcs(input.constraints ?? {}),
+    jcs(input.failover ?? {}),
+  ].join(":");
+  const hit = lruGet(envelopeCache, key);
+  if (hit) return hit;
+  return lruSet(envelopeCache, key, buildEnvelope({
     workload: workloadFromSource(input.source, input.format, input.shots),
     source: input.source,
     routing_mode: input.routing_mode,
     constraints: input.constraints,
     failover: input.failover,
-  });
+  }), ENVELOPE_CACHE_MAX);
 }
 
 export function applySatisfaction(candidates: RouteCandidate[], envelope: ExecutionEnvelope): RouteCandidate[] {
@@ -75,22 +91,32 @@ export function compileTargets(candidates: RouteCandidate[]): Array<{ backend: B
 }
 
 /** Content-addressed compile key — never the timestamped envelope document id. */
-export function cacheKey(sourceSha: string, backendId: string, fingerprint: string, optimizationLevel: number, seed: number) {
-  return `${sourceSha}:${backendId}:${fingerprint}:${optimizationLevel}:${seed}`;
+export function cacheKey(
+  sourceSha: string,
+  backendId: string,
+  fingerprint: string,
+  optimizationLevel: number,
+  seed: number,
+  verifyEquivalence = true,
+) {
+  return createHash("sha256").update([
+    sourceSha,
+    backendId,
+    fingerprint,
+    String(optimizationLevel),
+    String(seed),
+    verifyEquivalence ? "v" : "nv",
+  ].join("\0")).digest("hex");
 }
 
 export function cachedTranspile(key: string, compute: () => Promise<TranspilationResult>): Promise<TranspilationResult> {
-  const hit = compileCache.get(key);
+  const hit = lruGet(compileCache, key);
   if (hit) return Promise.resolve(hit);
   const pending = compileInflight.get(key);
   if (pending) return pending;
   const work = compute().then((result) => {
-    compileCache.set(key, result);
+    lruSet(compileCache, key, result, COMPILE_CACHE_MAX);
     compileInflight.delete(key);
-    if (compileCache.size > 128) {
-      const first = compileCache.keys().next().value;
-      if (first) compileCache.delete(first);
-    }
     return result;
   }).catch((error) => {
     compileInflight.delete(key);
@@ -114,6 +140,34 @@ export function encodeBundles(input: {
   }));
 }
 
+export function selectedBundleView(bundle: ExecutionBundle): NonNullable<EncodingTrace["selected_bundle"]> {
+  return {
+    id: bundle.id,
+    backend_id: bundle.backend_id,
+    media_type: bundle.media_type,
+    payload: bundle.payload,
+    bit_order: bundle.decode_map.bit_order,
+    verification: bundle.verification.status,
+    quote_binding: bundle.quote_binding,
+    metrics: bundle.metrics,
+    decode_map: bundle.decode_map,
+  };
+}
+
+/**
+ * The quote-time `selected_bundle` is the primary only. Failover must not
+ * inherit that payload or decode map — IBM QPY / IonQ JSON are backend-specific
+ * and bit-order differs across adapters.
+ */
+export function selectedBundleForBackend(
+  encoding: EncodingTrace | undefined,
+  backendId: string,
+): EncodingTrace["selected_bundle"] | undefined {
+  const bundle = encoding?.selected_bundle;
+  if (!bundle?.backend_id || bundle.backend_id !== backendId) return undefined;
+  return bundle;
+}
+
 export function encodingTrace(input: {
   envelope: ExecutionEnvelope;
   bundles: ExecutionBundle[];
@@ -135,17 +189,7 @@ export function encodingTrace(input: {
       mid_circuit_measurement: input.envelope.requirements.classical.mid_circuit_measurement,
       feedback: input.envelope.requirements.classical.feedback,
     },
-    selected_bundle: selected ? {
-      id: selected.id,
-      backend_id: selected.backend_id,
-      media_type: selected.media_type,
-      payload: selected.payload,
-      bit_order: selected.decode_map.bit_order,
-      verification: selected.verification.status,
-      quote_binding: selected.quote_binding,
-      metrics: selected.metrics,
-      decode_map: selected.decode_map,
-    } : undefined,
+    selected_bundle: selected ? selectedBundleView(selected) : undefined,
     compiled: input.bundles.map((bundle) => ({
       backend_id: bundle.backend_id,
       bundle_id: bundle.id,
@@ -153,6 +197,12 @@ export function encodingTrace(input: {
       verification: bundle.verification.status,
     })),
   };
+}
+
+export function resetComposeCaches() {
+  compileCache.clear();
+  compileInflight.clear();
+  envelopeCache.clear();
 }
 
 export function stage(id: EncodingStage["id"], label: string, paper: string, status: EncodingStage["status"], detail: string): EncodingStage {

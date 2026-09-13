@@ -39,7 +39,9 @@ import {
 } from "lucide-react";
 import LogoMark from "@/components/LogoMark";
 import GetStartedPanel from "@/components/chat/GetStartedPanel";
-import { EncodingDeepDive, EncodingOverview, EncodingStageStrip, overlayExecute, type CompileMetrics, type EncodingCandidate } from "@/components/encoding/EncodingProcess";
+import { EncodingDeepDive, EncodingPreview, EncodingStageStrip, overlayExecute, type CompileMetrics, type EncodingCandidate } from "@/components/encoding/EncodingProcess";
+import { EncodingSandbox } from "@/components/encoding/EncodingSandbox";
+import { encodingTargets, quoteOverlayApplies } from "@/lib/qrouter/encoding/preview";
 import { getBackend } from "@/lib/qrouter/catalog";
 import { proposalIdempotencyKey, splitChatProposals, type ChatProposal } from "@/lib/qrouter/chatProposals";
 import { formatDuration } from "@/lib/qrouter/duration";
@@ -326,8 +328,15 @@ function JobProposalCard({
   const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
   const [runMs, setRunMs] = useState<number | null>(null);
   const [tick, setTick] = useState(0);
-
-  const shots = proposal.shots ?? 1024;
+  const [shots, setShots] = useState(proposal.shots ?? 1024);
+  const [target, setTarget] = useState(proposal.target ?? "auto");
+  const [routingMode, setRoutingMode] = useState(proposal.routing_mode ?? "balanced");
+  const [updatingQuote, setUpdatingQuote] = useState(false);
+  const circuitCache = useRef<{ circuit: string; format: "openqasm2" | "openqasm3" } | null>(null);
+  const quotedOnce = useRef(false);
+  const quotedTarget = useRef<string | null>(null);
+  const locked = phase === "running" || phase === "done";
+  const targets = useMemo(() => encodingTargets(), []);
   const stableIdempotencyKey = messageId === undefined ? null : proposalIdempotencyKey(messageId, proposalIndex);
 
   // Ticks only while a job is in flight.
@@ -341,11 +350,14 @@ function JobProposalCard({
   void tick; // the interval above is what re-renders the elapsed readout
 
   useEffect(() => {
+    if (locked) return;
     let cancelled = false;
-    (async () => {
+    const delay = quotedOnce.current ? 280 : 0;
+    const timer = window.setTimeout(async () => {
       try {
-        let circuit = proposal.circuit ?? "";
-        let format = proposal.format ?? "openqasm2";
+        if (quotedOnce.current) setUpdatingQuote(true);
+        let circuit = circuitCache.current?.circuit ?? proposal.circuit ?? "";
+        let format = circuitCache.current?.format ?? proposal.format ?? "openqasm2";
         if (!circuit && proposal.repository) {
           const params = new URLSearchParams({
             repository: proposal.repository.url,
@@ -359,6 +371,7 @@ function JobProposalCard({
           format = data.format;
         }
         if (!circuit) throw new Error("The proposal is missing a circuit.");
+        circuitCache.current = { circuit, format };
         const res = await fetch("/api/chat/quote", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -366,14 +379,16 @@ function JobProposalCard({
             circuit,
             format,
             shots,
-            target: proposal.target ?? "auto",
-            routing_mode: proposal.routing_mode ?? "balanced",
+            target,
+            routing_mode: routingMode,
             constraints: proposal.constraints ?? {},
           }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error?.message ?? "Quoting failed.");
         if (cancelled) return;
+        quotedOnce.current = true;
+        quotedTarget.current = target;
         setQuote({
           status: "ready",
           circuit,
@@ -391,15 +406,19 @@ function JobProposalCard({
             : undefined,
         });
       } catch (error) {
-        if (!cancelled)
+        if (!cancelled) {
+          quotedTarget.current = null;
           setQuote({ status: "error", message: error instanceof Error ? error.message : "Quoting failed." });
+        }
+      } finally {
+        if (!cancelled) setUpdatingQuote(false);
       }
-    })();
+    }, delay);
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [locked, proposal.circuit, proposal.constraints, proposal.format, proposal.repository, routingMode, shots, target]);
 
   // A proposal card is reconstructed from persisted assistant text whenever a
   // chat is reopened. Ask the server whether this exact message-position was
@@ -419,8 +438,8 @@ function JobProposalCard({
             name: proposal.name,
             circuit: quote.circuit,
             shots,
-            target: proposal.target ?? "auto",
-            routing_mode: proposal.routing_mode ?? "balanced",
+            target,
+            routing_mode: routingMode,
           }),
         });
         if (cancelled) return;
@@ -445,7 +464,7 @@ function JobProposalCard({
     return () => {
       cancelled = true;
     };
-  }, [messageId, proposal.name, proposal.routing_mode, proposal.target, quote, shots, stableIdempotencyKey]);
+  }, [messageId, proposal.name, quote, routingMode, shots, stableIdempotencyKey, target]);
 
   async function run() {
     if (quote.status !== "ready" || !quote.circuit) return;
@@ -466,8 +485,8 @@ function JobProposalCard({
           circuit: quote.circuit,
           format: quote.format,
           shots,
-          target: proposal.target ?? "auto",
-          routing_mode: proposal.routing_mode ?? "balanced",
+          target,
+          routing_mode: routingMode,
           constraints: proposal.constraints ?? {},
         }),
       });
@@ -495,6 +514,13 @@ function JobProposalCard({
 
   const insufficient =
     quote.status === "ready" && balance !== null && typeof quote.total === "number" && quote.total > balance;
+  const overlayLive = quoteOverlayApplies(quotedTarget.current, target);
+  const overlayEncoding = overlayLive ? quote.encoding : undefined;
+  const overlaySelected = overlayLive ? quote.backendId : undefined;
+  const overlayCandidates = overlayLive ? quote.candidates : undefined;
+  const overlayExplanation = overlayLive ? quote.explanation : undefined;
+  const overlayTranspile = overlayLive ? quote.transpilation : undefined;
+  const overlayQuote = overlayLive && quote.status === "ready" ? quote.total ?? null : null;
 
   return (
     <div className="qc-proposal">
@@ -525,22 +551,68 @@ function JobProposalCard({
                 : "inline OpenQASM"}
           </dd>
         </div>
-        <div><dt>Shots</dt><dd>{shots.toLocaleString()}</dd></div>
-        <div><dt>Routing</dt><dd><span className="capitalize">{proposal.routing_mode ?? "balanced"}</span> · {backendLabel(proposal.target ?? "auto")}</dd></div>
+        <div>
+          <dt>Shots</dt>
+          <dd>
+            <label className="qc-field">
+              <input
+                type="number"
+                min={1}
+                max={1_000_000}
+                value={shots}
+                disabled={locked}
+                onChange={(event) => setShots(Number(event.target.value) || 1)}
+                aria-label="Shots"
+              />
+            </label>
+          </dd>
+        </div>
+        <div>
+          <dt>Routing</dt>
+          <dd>
+            <label className="qc-field">
+              <select value={routingMode} disabled={locked} onChange={(event) => setRoutingMode(event.target.value as typeof routingMode)} aria-label="Routing mode">
+                <option value="balanced">balanced</option>
+                <option value="cost">cost</option>
+                <option value="speed">speed</option>
+                <option value="quality">quality</option>
+              </select>
+            </label>
+          </dd>
+        </div>
+        <div>
+          <dt>Target</dt>
+          <dd>
+            <label className="qc-field">
+              <select value={target} disabled={locked} onChange={(event) => setTarget(event.target.value)} aria-label="Target backend">
+                <option value="auto">Automatic</option>
+                {targets.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.displayName} · {item.encodingLabel}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </dd>
+        </div>
         <div>
           <dt>Backend</dt>
           <dd>
-            {quote.status === "loading" && <span className="qc-quote-loading"><Loader2 size={12} className="spin" /> routing…</span>}
-            {quote.status === "ready" && quote.backend}
-            {quote.status === "error" && "—"}
+            {quote.status === "loading" || (quote.status === "ready" && !overlayLive) ? (
+              <span className="qc-quote-loading"><Loader2 size={12} className="spin" /> routing…</span>
+            ) : quote.status === "ready" ? quote.backend : "—"}
           </dd>
         </div>
         <div>
           <dt>QRouter quote</dt>
           <dd>
-            {quote.status === "loading" && <span className="qc-quote-loading"><Loader2 size={12} className="spin" /> quoting…</span>}
-            {quote.status === "ready" && <b className="qc-quote-total">${quote.total?.toFixed(4)}</b>}
-            {quote.status === "error" && "unavailable"}
+            {quote.status === "loading" || (quote.status === "ready" && (!overlayLive || updatingQuote)) ? (
+              <span className="qc-quote-loading"><Loader2 size={12} className="spin" /> {overlayLive && updatingQuote ? "updating…" : "quoting…"}</span>
+            ) : quote.status === "ready" ? (
+              <b className="qc-quote-total">${quote.total?.toFixed(4)}</b>
+            ) : (
+              "unavailable"
+            )}
           </dd>
         </div>
         <div>
@@ -564,44 +636,54 @@ function JobProposalCard({
         <p className="qc-proposal-error"><AlertCircle size={13} /> {runError}</p>
       )}
 
-      {quote.status === "loading" && (
+      {(quote.status === "loading" || (quote.status === "ready" && phase === "review") || quote.status === "error") && (
         <div className="qc-encoding">
-          <p className="qc-encoding-pending">Analyzing the circuit, compiling it, and choosing a backend…</p>
-          <EncodingStageStrip stages={overlayExecute(undefined)} compact />
-        </div>
-      )}
-      {quote.status === "ready" && phase === "review" && (
-        <div className="qc-encoding">
-          <EncodingOverview
-            encoding={quote.encoding}
-            candidates={quote.candidates}
-            explanation={quote.explanation}
-            selectedId={quote.backendId}
-            transpilation={quote.transpilation}
-            quoteTotal={quote.total ?? null}
-            density="process"
-          />
+          <EncodingPreview
+            encoding={overlayEncoding}
+            candidates={overlayCandidates}
+            explanation={overlayExplanation}
+            selectedId={overlaySelected}
+            targetId={target}
+            transpilation={overlayTranspile}
+            quoteTotal={overlayQuote}
+            shots={shots}
+            format={quote.format ?? proposal.format}
+            routingMode={routingMode}
+            kind={proposal.constraints?.kind}
+            qubits={quote.analysis?.qubits}
+            depth={overlayLive ? quote.analysis?.depth : undefined}
+            phase={quote.status === "error" ? "failed" : overlayLive && quote.status === "ready" ? "ready" : "quoting"}
+            updating={updatingQuote}
+            error={quote.status === "error" ? quote.message : undefined}
+          >
+            {quote.status === "ready" && overlayLive && (
+              <EncodingDeepDive
+                encoding={overlayEncoding}
+                stages={overlayExecute(overlayEncoding?.stages)}
+                candidates={overlayCandidates}
+                explanation={overlayExplanation}
+                selectedId={overlaySelected}
+                transpilation={overlayTranspile}
+                quoteTotal={overlayQuote}
+                shots={shots}
+                format={quote.format ?? proposal.format}
+                targetId={target}
+                routingMode={routingMode}
+                kind={proposal.constraints?.kind}
+                qubits={quote.analysis?.qubits}
+                phase="ready"
+                surface="tabs"
+              />
+            )}
+          </EncodingPreview>
           <EncodingStageStrip
-            stages={overlayExecute(quote.encoding?.stages)}
+            stages={overlayExecute(overlayLive && quote.status === "ready" ? overlayEncoding?.stages : undefined)}
             compact
-            encoding={quote.encoding}
-            transpilation={quote.transpilation}
-            candidates={quote.candidates}
-            selectedId={quote.backendId}
+            encoding={overlayEncoding}
+            transpilation={overlayTranspile}
+            candidates={overlayCandidates}
+            selectedId={overlaySelected}
           />
-          <details className="qc-encoding-detail">
-            <summary>How encoding and routing chose this</summary>
-            <EncodingDeepDive
-              encoding={quote.encoding}
-              stages={overlayExecute(quote.encoding?.stages)}
-              candidates={quote.candidates}
-              explanation={quote.explanation}
-              selectedId={quote.backendId}
-              transpilation={quote.transpilation}
-              quoteTotal={quote.total ?? null}
-              surface="tabs"
-            />
-          </details>
         </div>
       )}
 
@@ -609,6 +691,23 @@ function JobProposalCard({
       {phase === "running" && (
         <div className="qc-progress">
           <span className="qc-elapsed running"><Loader2 size={12} className="spin" /> {formatDuration(liveMs)}</span>
+          <EncodingPreview
+            encoding={quote.encoding}
+            candidates={quote.candidates}
+            explanation={quote.explanation}
+            selectedId={quote.backendId}
+            targetId={target}
+            transpilation={quote.transpilation}
+            quoteTotal={quote.total ?? null}
+            shots={shots}
+            format={quote.format ?? proposal.format}
+            routingMode={routingMode}
+            kind={proposal.constraints?.kind}
+            qubits={quote.analysis?.qubits}
+            depth={quote.analysis?.depth}
+            phase="running"
+            jobStatus="dispatching"
+          />
           <EncodingStageStrip
             stages={overlayExecute(quote.status === "ready" ? quote.encoding?.stages : undefined, "dispatching")}
             compact
@@ -654,7 +753,7 @@ function JobProposalCard({
             type="button"
             className="qc-run"
             onClick={run}
-            disabled={!historyChecked || quote.status !== "ready" || phase === "running" || insufficient}
+            disabled={!historyChecked || quote.status !== "ready" || updatingQuote || phase === "running" || insufficient}
           >
             {!historyChecked
               ? <><Loader2 size={14} className="spin" /> Checking previous run…</>
@@ -1078,6 +1177,7 @@ export default function QuantumChat({
                     and the footnote already says nothing runs unconfirmed. */}
                 <p>Describe a job, name a connected repository, or ask about hardware and pricing.</p>
                 <GhostSuggestion items={SUGGESTIONS} onPick={send} disabled={busy} />
+                <EncodingSandbox />
               </div>
             ) : (
               <div className="qc-thread">

@@ -259,9 +259,15 @@
   padding-bottom: 2rem;
   text-align: center;
 }
-/* With the first-run panel above it, a full-height welcome would push itself
-   below the fold; let it sit directly under the panel instead. */
-.qc-scroll:has(.qc-getstarted) .qc-welcome { min-height: 0; padding: 1.5rem 0 2rem; }
+/* A full-height welcome centers the greeting and pushes the encoding plan
+   below the scrollport. Collapse once either the first-run strip or the
+   sandbox is present so researchers see the plan without hunting. */
+.qc-scroll:has(.qc-getstarted) .qc-welcome,
+.qc-scroll:has(.enc-sandbox) .qc-welcome {
+  min-height: 0;
+  justify-content: flex-start;
+  padding: 1.5rem 0 2rem;
+}
 .qc-welcome h1 { margin: 0; font-size: clamp(1.2rem, 2.2vw, 1.65rem); font-weight: 560; letter-spacing: -0.025em; }
 .qc-welcome > p { max-width: 480px; margin: 0.65rem 0 0; color: var(--qr-muted); font-size: 0.775rem; line-height: 1.65; }
 
@@ -449,6 +455,20 @@
 .qc-proposal dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem 1rem; margin: 0; padding: 0.85rem 0.9rem; }
 .qc-proposal dt { color: var(--qr-dim); font: 620 0.52rem var(--qr-mono); letter-spacing: 0.11em; text-transform: uppercase; }
 .qc-proposal dd { margin: 0.25rem 0 0; color: var(--qr-text); font-size: 0.72rem; overflow-wrap: anywhere; }
+.qc-proposal .qc-field { display: block; }
+.qc-proposal .qc-field input,
+.qc-proposal .qc-field select {
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid var(--qr-line);
+  border-radius: var(--qr-radius-sm);
+  background: var(--qr-bg);
+  color: var(--qr-text);
+  font: inherit;
+}
+.qc-proposal .qc-field input:disabled,
+.qc-proposal .qc-field select:disabled { opacity: 0.55; }
 .qc-proposal dd.capitalize { text-transform: capitalize; }
 .qc-quote-loading { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--qr-dim); font-size: 0.68rem; }
 .qc-quote-total { color: var(--qr-text); font: 650 0.8rem var(--qr-mono); }
@@ -493,9 +513,11 @@
 
 .qc-proposal .enc-strip { margin: 0.15rem 0.9rem 0.55rem; }
 .qc-encoding { margin: 0 0 0.35rem; }
-.qc-encoding .enc-overview { margin: 0 0.9rem 0.55rem; }
+.qc-encoding .enc-overview,
+.qc-encoding .enc-preview { margin: 0 0.9rem 0.55rem; }
 .qc-encoding-pending { margin: 0.45rem 0.9rem 0.15rem; color: var(--qr-dim); font-size: 0.64rem; }
 .qc-encoding-detail { margin: 0 0.9rem 0.7rem; border: 1px solid var(--qr-line); border-radius: var(--qr-radius-sm); background: var(--qr-panel); }
+.qc-encoding-detail .enc-preview { margin: 0; border: 0; }
 .qc-encoding-detail summary {
   cursor: pointer;
   padding: 0.45rem 0.7rem;
@@ -509,6 +531,7 @@
 .qc-encoding-detail .enc-deep { padding: 0.75rem 0.8rem 0.9rem; }
 .qc-encoding-detail .enc-strip { margin: 0 0 0.75rem; }
 .qc-progress { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.7rem 0.9rem; border-top: 1px solid var(--qr-line); }
+.qc-progress .enc-preview { flex: 1 1 100%; margin: 0.15rem 0 0.35rem; }
 .qc-progress .enc-strip { margin: 0; flex: 1 1 100%; }
 .qc-progress-bar { position: relative; height: 3px; min-width: 0; flex: 1; overflow: hidden; border-radius: 2px; background: var(--qr-line); }
 .qc-progress-bar::after {
@@ -687,6 +710,11 @@
   .qc-rail-scrim { position: absolute; z-index: 30; inset: 0; display: block; background: rgba(0, 0, 0, 0.42); }
   .qc-shell.rail-collapsed .qc-rail-scrim { display: none; }
   .qc-proposal dl { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 480px) {
+  .qc-proposal dl { grid-template-columns: 1fr; }
+  .qc-welcome { padding-inline: 0.15rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

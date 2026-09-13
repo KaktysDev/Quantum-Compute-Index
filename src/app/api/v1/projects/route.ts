@@ -35,7 +35,7 @@ export async function GET(request: Request) {
         .sort((a, b) => b.created_at.localeCompare(a.created_at));
       return NextResponse.json({ object: "list", data });
     }
-    const { data, error } = await createAdminClient().from("projects").select("*").eq("organization_id", principal.organizationId).order("created_at", { ascending: false });
+    const { data, error } = await createAdminClient().from("projects").select("id,name,repository,repository_url,default_branch,production_branch,circuit_path,settings,created_at,updated_at,last_deployed_at").eq("organization_id", principal.organizationId).order("created_at", { ascending: false }).limit(200);
     if (error) throw error;
     return NextResponse.json({ object: "list", data });
   } catch (error) {

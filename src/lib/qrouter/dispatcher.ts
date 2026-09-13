@@ -15,6 +15,9 @@
 
 import { analyzeCircuit } from "./analyze";
 import { storeArtifact } from "./artifacts";
+import { encodeForBackend } from "./encoding/adapters";
+import { buildExecutionEnvelope, selectedBundleForBackend, selectedBundleView } from "./encoding/compose";
+import type { DecodeMap, ExecutionBundle } from "./encoding/types";
 import { cancelProviderJob, getProviderStatus, submitToProvider } from "./execution";
 import { JOB_LEASE_SECONDS, nextAttemptCandidate, orchestrationError, retryDelaySeconds } from "./orchestration";
 import { resolveProviderTarget } from "./providerTargets";
@@ -106,24 +109,81 @@ async function scheduleRetryOrFail(admin: AdminClient, job: OrchestratedJob, att
   return "queued";
 }
 
-async function executionAnalysisFor(admin: AdminClient, job: OrchestratedJob, backendId: string) {
-  const existing = job.analysis.transpilation;
-  if (existing?.backendId === backendId) return analysisFromTranspilation(existing as TranspilationResult);
-
-  const candidate = job.route_decision.candidates.find((item) => item.backend.id === backendId);
-  if (!candidate) throw new Error(`The route decision does not contain backend ${backendId}.`);
-  const target = await resolveProviderTarget(candidate.backend);
-  const transpilation = await transpileForBackend(target, analyzeCircuit(job.source, job.input_format), {
-    optimizationLevel: existing?.optimizationLevel ?? 2,
-    seedTranspiler: existing?.seedTranspiler ?? 42,
-    verifyEquivalence: true,
-  });
-  const analysis = { ...job.analysis, transpilation };
+async function persistAttemptEncoding(
+  admin: AdminClient,
+  job: OrchestratedJob,
+  backendId: string,
+  transpilation: TranspilationResult,
+  encoded?: ExecutionBundle,
+) {
+  const encoding = encoded && job.route_decision.encoding
+    ? { ...job.route_decision.encoding, selected_bundle: selectedBundleView(encoded) }
+    : job.route_decision.encoding;
+  const analysis = { ...job.analysis, transpilation, encoding };
+  // Keep route_decision.selected as the quoted primary — failover cost ceiling
+  // is keyed off that winner. Only the live encoding + selected_backend_id move.
+  const route_decision = encoding === job.route_decision.encoding
+    ? job.route_decision
+    : { ...job.route_decision, encoding };
   await Promise.all([
-    admin.from("jobs").update({ analysis, selected_backend_id: backendId, updated_at: new Date().toISOString() }).eq("id", job.id),
+    admin.from("jobs").update({
+      analysis,
+      route_decision,
+      selected_backend_id: backendId,
+      updated_at: new Date().toISOString(),
+    }).eq("id", job.id),
     storeArtifact({ jobId: job.id, organizationId: job.organization_id, kind: "transpiled", content: transpilation.artifactQasm ?? transpilation.qasm }),
   ]);
-  return analysisFromTranspilation(transpilation);
+  job.analysis = analysis as PersistedAnalysis;
+  job.route_decision = route_decision;
+  job.selected_backend_id = backendId;
+}
+
+async function executionPlanFor(admin: AdminClient, job: OrchestratedJob, backendId: string): Promise<{
+  analysis: CircuitAnalysis;
+  bundle?: Pick<ExecutionBundle, "media_type" | "payload">;
+  decodeMap?: DecodeMap;
+}> {
+  const candidate = job.route_decision.candidates.find((item) => item.backend.id === backendId);
+  if (!candidate) throw new Error(`The route decision does not contain backend ${backendId}.`);
+
+  const existing = job.analysis.transpilation;
+  let transpilation: TranspilationResult;
+  if (existing?.backendId === backendId) {
+    transpilation = existing as TranspilationResult;
+  } else {
+    const target = await resolveProviderTarget(candidate.backend);
+    transpilation = await transpileForBackend(target, analyzeCircuit(job.source, job.input_format), {
+      optimizationLevel: existing?.optimizationLevel ?? 2,
+      seedTranspiler: existing?.seedTranspiler ?? 42,
+      verifyEquivalence: true,
+    });
+  }
+
+  const analysis = analysisFromTranspilation(transpilation);
+  const matching = selectedBundleForBackend(job.route_decision.encoding, backendId);
+  if (matching?.payload && matching.media_type) {
+    if (existing?.backendId !== backendId) {
+      await persistAttemptEncoding(admin, job, backendId, transpilation);
+    }
+    return { analysis, bundle: { media_type: matching.media_type, payload: matching.payload }, decodeMap: matching.decode_map };
+  }
+
+  const encoded = encodeForBackend({
+    envelope: buildExecutionEnvelope({
+      source: job.source,
+      format: job.input_format,
+      shots: job.shots,
+      routing_mode: job.route_decision.mode,
+      failover: { enabled: job.failover_enabled, max_attempts: job.max_attempts },
+    }),
+    backend: candidate.backend,
+    analysis,
+    transpilation,
+    quoteBinding: "binding",
+  });
+  await persistAttemptEncoding(admin, job, backendId, transpilation, encoded);
+  return { analysis, bundle: { media_type: encoded.media_type, payload: encoded.payload }, decodeMap: encoded.decode_map };
 }
 
 export async function dispatchJob(admin: AdminClient, job: OrchestratedJob) {
@@ -155,19 +215,17 @@ export async function dispatchJob(admin: AdminClient, job: OrchestratedJob) {
   }
 
   try {
-    const executionAnalysis = await executionAnalysisFor(admin, job, candidate.backend.id);
-    const selectedBundle = job.route_decision.encoding?.selected_bundle;
-    const decodeMap = selectedBundle?.decode_map;
+    const plan = await executionPlanFor(admin, job, candidate.backend.id);
     const submission = await submitToProvider(
       candidate.backend.id,
-      executionAnalysis,
+      plan.analysis,
       job.shots,
       attemptToken,
-      selectedBundle?.payload ? { media_type: selectedBundle.media_type, payload: selectedBundle.payload } : undefined,
+      plan.bundle,
     );
     const status = submission.status === "completed" ? "completed" : "submitted";
     const now = new Date().toISOString();
-    const normalizedResult = submission.result ? normalizeProviderResult(candidate.backend.id, submission.result, job.shots, decodeMap) : undefined;
+    const normalizedResult = submission.result ? normalizeProviderResult(candidate.backend.id, submission.result, job.shots, plan.decodeMap) : undefined;
     await admin.from("job_attempts").update({
       provider_job_id: submission.providerJobId,
       status,
@@ -221,7 +279,7 @@ export async function pollJob(admin: AdminClient, job: OrchestratedJob) {
     }
     const provider = await getProviderStatus(job.selected_backend_id, job.provider_job_id);
     const terminal = ["completed", "failed", "cancelled"].includes(provider.status);
-    const decodeMap = job.route_decision.encoding?.selected_bundle?.decode_map;
+    const decodeMap = selectedBundleForBackend(job.route_decision.encoding, job.selected_backend_id)?.decode_map;
     const normalizedResult = provider.status === "completed" ? normalizeProviderResult(job.selected_backend_id, provider.result, job.shots, decodeMap) : undefined;
     await admin.from("job_attempts").update({
       status: provider.status,

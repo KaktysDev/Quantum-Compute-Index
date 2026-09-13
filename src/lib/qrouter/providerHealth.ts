@@ -99,8 +99,13 @@ export async function checkProviderConnections() {
 }
 
 export function applyProviderHealth(backends: Backend[], health: PersistedBackendHealth[], now = new Date()) {
+  if (!health.length) return backends;
+  const latestById = new Map<string, PersistedBackendHealth>();
+  for (const item of health) {
+    if (!latestById.has(item.backend_id)) latestById.set(item.backend_id, item);
+  }
   return backends.map((backend) => {
-    const latest = health.find((item) => item.backend_id === backend.id);
+    const latest = latestById.get(backend.id);
     if (!latest) return backend;
     const ageMs = now.getTime() - new Date(latest.checked_at).getTime();
     const stale = !Number.isFinite(ageMs) || ageMs > 10 * 60_000;

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import nextDynamic from "next/dynamic";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -8,18 +9,21 @@ import {
   Route,
   ShieldCheck,
 } from "lucide-react";
-import HeroConsole from "@/components/landing/HeroConsole";
-import HeroParticleText from "@/components/landing/HeroParticleText";
 import LandingNav from "@/components/landing/LandingNav";
 import Reveal from "@/components/landing/Reveal";
 import AffiliationRail from "@/components/landing/AffiliationRail";
-import DeveloperApiDemo from "@/components/landing/DeveloperApiDemo";
-import RoutingSandbox from "@/components/landing/RoutingSandbox";
-import LandingPriceIndex, { type IndexPoint } from "@/components/LandingPriceIndex";
+import type { IndexPoint } from "@/components/LandingPriceIndex";
 import LogoMark from "@/components/LogoMark";
 import { PUBLIC_CONFIG } from "@/lib/publicConfig";
 import { BACKENDS } from "@/lib/qrouter/catalog";
 import { getPublicQci } from "@/lib/qci/v2/store";
+import "./landing.css";
+
+const HeroConsole = nextDynamic(() => import("@/components/landing/HeroConsole"));
+const HeroParticleText = nextDynamic(() => import("@/components/landing/HeroParticleText"));
+const DeveloperApiDemo = nextDynamic(() => import("@/components/landing/DeveloperApiDemo"));
+const RoutingSandbox = nextDynamic(() => import("@/components/landing/RoutingSandbox"));
+const LandingPriceIndex = nextDynamic(() => import("@/components/LandingPriceIndex"));
 
 export const dynamic = "force-dynamic";
 

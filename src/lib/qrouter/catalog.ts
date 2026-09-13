@@ -101,8 +101,10 @@ export const BACKENDS: Backend[] = [
   },
 ];
 
+const BACKENDS_BY_ID = new Map(BACKENDS.map((backend) => [backend.id, backend]));
+
 export function getBackend(id: string): Backend | undefined {
-  return BACKENDS.find((backend) => backend.id === id);
+  return BACKENDS_BY_ID.get(id);
 }
 
 const COMPONENT_MATCHERS: Record<string, (component: QpuComponent) => boolean> = {
@@ -116,8 +118,15 @@ const COMPONENT_MATCHERS: Record<string, (component: QpuComponent) => boolean> =
 };
 
 export function withQciSnapshot(components: QpuComponent[] = []): Backend[] {
+  if (!components.length) return BACKENDS;
+  const matched = new Map<string, QpuComponent>();
+  for (const component of components) {
+    for (const [id, matcher] of Object.entries(COMPONENT_MATCHERS)) {
+      if (!matched.has(id) && matcher(component)) matched.set(id, component);
+    }
+  }
   return BACKENDS.map((backend) => {
-    const component = components.find((item) => COMPONENT_MATCHERS[backend.id]?.(item));
+    const component = matched.get(backend.id);
     if (!component) return backend;
     return {
       ...backend,

@@ -14,8 +14,14 @@ export const dynamic = "force-dynamic";
  * `latest.source` is kept for compatibility with older clients, but it can now
  * only ever be "live": nothing here is generated.
  */
-export async function GET() {
-  const qci = await getPublicQci(365);
+function requestedDays(request: Request) {
+  const raw = Number(new URL(request.url).searchParams.get("days") ?? 365);
+  if (!Number.isFinite(raw)) return 365;
+  return Math.min(Math.max(Math.floor(raw), 1), 1200);
+}
+
+export async function GET(request: Request) {
+  const qci = await getPublicQci(requestedDays(request));
   return NextResponse.json(
     {
       hasData: qci.hasData,

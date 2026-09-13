@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import AssistantPage from "@/components/chat/AssistantPage";
 import { resolveProviderLabel } from "@/lib/qrouter/providers";
+import "../chat.css";
 
 export const dynamic = "force-dynamic";
 

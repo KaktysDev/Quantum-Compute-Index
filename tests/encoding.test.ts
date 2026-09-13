@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { analyzeCircuit } from "@/lib/qrouter/analyze";
 import { expandDialects } from "@/lib/qrouter/dialects";
 import { BACKENDS } from "@/lib/qrouter/catalog";
@@ -6,7 +6,10 @@ import { overlayExecute } from "@/lib/qrouter/encoding";
 import {
   advertisedCapabilities,
   buildExecutionEnvelope,
+  cacheKey,
+  cachedTranspile,
   decodeProviderResult,
+  encodeForBackend,
   expandedUnitary,
   jcsHash,
   LOWERING_RULES,
@@ -16,20 +19,29 @@ import {
   OP,
   profileBackend,
   publicEncoding,
+  buildEncodingPreview,
+  encodingTargets,
+  quoteOverlayApplies,
   referenceUnitary,
+  resetComposeCaches,
   resolveOpId,
   satisfies,
+  selectedBundleForBackend,
   slimJobForClient,
+  slimJobForList,
+  slimJobForOwner,
   stageStory,
   whyRouted,
 } from "@/lib/qrouter/encoding";
 import { qasm2ToIonqCircuit, ionqMeasurementMap, qasm2ToQasm3 } from "@/lib/qrouter/execution";
 import { prepareExecution } from "@/lib/qrouter/pipeline";
+import * as providerTargets from "@/lib/qrouter/providerTargets";
 import { simulateCircuit } from "@/lib/qrouter/simulator";
+import * as transpiler from "@/lib/qrouter/transpiler";
 import { assertTargetAllowedV2 } from "@/lib/qrouter/scopes";
 import { V2ApiError } from "@/lib/qrouter/v2-http";
 import { createCircuitResource, createExecutionGroup } from "@/lib/qrouter/v2-service";
-import type { Backend } from "@/lib/qrouter/types";
+import type { Backend, TranspilationResult } from "@/lib/qrouter/types";
 import type { Principal } from "@/lib/qrouter/auth";
 
 const HEADER = 'OPENQASM 2.0;\ninclude "qelib1.inc";\n';
@@ -190,6 +202,22 @@ describe("JCS + pipeline", () => {
     expect(first).toMatch(/^[0-9a-f]{64}$/);
   });
 
+  it("reuses envelope identity for the same source and not for different programs", () => {
+    const first = buildExecutionEnvelope({ source: BELL, format: "openqasm2", shots: 128, routing_mode: "balanced" });
+    const second = buildExecutionEnvelope({ source: BELL, format: "openqasm2", shots: 128, routing_mode: "balanced" });
+    expect(second).toBe(first);
+    expect(second.id).toBe(first.id);
+    const otherShots = buildExecutionEnvelope({ source: BELL, format: "openqasm2", shots: 256, routing_mode: "balanced" });
+    expect(otherShots.id).not.toBe(first.id);
+    const otherSource = buildExecutionEnvelope({
+      source: `${HEADER}qreg q[1];\ncreg c[1];\nx q[0];\nmeasure q -> c;`,
+      format: "openqasm2",
+      shots: 128,
+      routing_mode: "balanced",
+    });
+    expect(otherSource.id).not.toBe(first.id);
+  });
+
   it("prepareExecution attaches an encoding trace and a hashed bundle", async () => {
     const prepared = await prepareExecution({
       backends: [catalog("qci-aer-gpu")],
@@ -216,6 +244,37 @@ describe("JCS + pipeline", () => {
     const first = profileBackend(catalog("qci-aer-gpu"));
     const second = profileBackend(catalog("qci-aer-gpu"));
     expect(first.fingerprint).toBe(second.fingerprint);
+    expect(second).toBe(first);
+  });
+
+  it("reuses a native providerProgram instead of re-encoding", () => {
+    const qi = catalog("qi-starmon-5");
+    const analysis = analyzeCircuit(BELL, "openqasm2");
+    const program = nativeProgramFor(qi, analysis.normalizedQasm2);
+    const envelope = buildExecutionEnvelope({ source: BELL, format: "openqasm2", shots: 32, routing_mode: "balanced" });
+    const bundle = encodeForBackend({
+      envelope,
+      backend: qi,
+      analysis,
+      transpilation: { qasm: analysis.normalizedQasm2, providerProgram: JSON.stringify(program) } as never,
+      quoteBinding: "binding",
+    });
+    expect(bundle.payload).toBe(program.format === "cqasm-1.0" ? program.source : JSON.stringify(program));
+  });
+
+  it("prepares Aer together with an encoder-backed failover without serializing compiles", async () => {
+    const prepared = await prepareExecution({
+      backends: [catalog("qci-aer-gpu"), catalog("qi-starmon-5")],
+      analysis: analyzeCircuit(BELL, "openqasm2"),
+      shots: 32,
+      target: "auto",
+      mode: "balanced",
+      source: BELL,
+      format: "openqasm2",
+    });
+    expect(prepared.bundles.length).toBeGreaterThanOrEqual(1);
+    expect(prepared.encoding.compiled.length).toBeGreaterThanOrEqual(1);
+    expect(prepared.decision.selected.id).toMatch(/qci-aer-gpu|qi-starmon-5/);
   });
 
   it("reuses a compile when the source hash matches, not the timestamped envelope id", async () => {
@@ -313,6 +372,7 @@ describe("console encoding copy + client slimming", () => {
       selected_bundle: { payload: "OPENQASM 2.0;\nqreg q[1];", id: "bb", metrics: { depth: 1 } },
     });
     expect(encoding.selected_bundle && "payload" in encoding.selected_bundle).toBe(false);
+    expect(encoding.selected_bundle).toMatchObject({ payload_bytes: new TextEncoder().encode("OPENQASM 2.0;\nqreg q[1];").length });
     const slim = slimJobForClient({
       id: "job-1",
       source: "OPENQASM 2.0;\nqreg q[8];",
@@ -324,6 +384,297 @@ describe("console encoding copy + client slimming", () => {
     expect(slim.analysis.transpilation).not.toHaveProperty("qasm");
     expect(slim.analysis.transpilation).toMatchObject({ before: { depth: 1 }, after: { depth: 2 } });
     expect((slim.route_decision as { encoding: { selected_bundle: Record<string, unknown> } }).encoding.selected_bundle).not.toHaveProperty("payload");
+    const owner = slimJobForOwner({
+      id: "job-owner",
+      source: "OPENQASM 2.0;\nqreg q[1];",
+      analysis: { qubits: 1, normalizedQasm2: "secret", encoding: { selected_bundle: { payload: "native", backend_id: "ibm-brisbane" } } },
+      route_decision: { encoding: { selected_bundle: { payload: "native", backend_id: "ibm-brisbane" } } },
+    });
+    expect(owner.source).toBe("OPENQASM 2.0;\nqreg q[1];");
+    expect(owner.analysis).not.toHaveProperty("normalizedQasm2");
+    expect((owner.route_decision as { encoding: { selected_bundle: Record<string, unknown> } }).encoding.selected_bundle).not.toHaveProperty("payload");
+    expect((owner.route_decision as { encoding: { selected_bundle: Record<string, unknown> } }).encoding.selected_bundle.backend_id).toBe("ibm-brisbane");
+  });
+
+  it("refuses a primary encoding bundle when dispatching a different backend", () => {
+    const encoding = {
+      selected_bundle: {
+        id: "primary",
+        backend_id: "ibm-brisbane",
+        media_type: "application/qpy",
+        payload: "ibm-qpy",
+        bit_order: "q0_right" as const,
+        verification: "checked" as const,
+        quote_binding: "binding" as const,
+        metrics: { qubits: 2, depth: 3, ops: {}, two_qubit_ops: 1 },
+        decode_map: { bit_order: "q0_right" as const, registers: [], measurement_map: [], layout: null, result_types: [] as string[] },
+      },
+    };
+    expect(selectedBundleForBackend(encoding as never, "ibm-brisbane")?.payload).toBe("ibm-qpy");
+    expect(selectedBundleForBackend(encoding as never, "ionq-aria-1")).toBeUndefined();
+    expect(selectedBundleForBackend({ selected_bundle: { payload: "legacy" } } as never, "ionq-aria-1")).toBeUndefined();
+  });
+
+  it("does not reuse a capability profile when the coupling map changes", () => {
+    const base = catalog("iqm-garnet");
+    const first = profileBackend({ ...base, couplingMap: [[0, 1], [1, 2], [2, 3]] });
+    const second = profileBackend({ ...base, couplingMap: [[0, 1], [1, 3], [2, 3]] });
+    expect(first.fingerprint).not.toBe(second.fingerprint);
+  });
+
+  it("keeps compile-cache keys from colliding across verify flags or colon-bearing fields", () => {
+    expect(cacheKey("sha", "a:b", "c", 2, 42, true)).not.toBe(cacheKey("sha", "a", "b:c", 2, 42, true));
+    expect(cacheKey("sha", "ibm", "fp", 2, 42, true)).not.toBe(cacheKey("sha", "ibm", "fp", 2, 42, false));
+  });
+
+  it("keeps Activity-list rows to table columns", () => {
+    const row = slimJobForList({
+      id: "job-2",
+      name: "Bell",
+      status: "queued",
+      selected_backend_id: "qci-aer-gpu",
+      shots: 1024,
+      created_at: "2026-09-13T00:00:00.000Z",
+      updated_at: "2026-09-13T00:00:01.000Z",
+      started_at: null,
+      completed_at: null,
+      quotes: [{ total: 0.01 }],
+      source: "OPENQASM 2.0;",
+      analysis: { qubits: 2, depth: 4, complexity: "trivial", encoding: { envelope_id: "keep-off-list" } },
+      route_decision: { selected: { id: "qci-aer-gpu" }, encoding: { envelope_id: "keep-off-list" } },
+      result: { counts: { "00": 512 } },
+      error: { message: "no" },
+    });
+    expect(row).toMatchObject({
+      id: "job-2",
+      name: "Bell",
+      status: "queued",
+      selected_backend_id: "qci-aer-gpu",
+      shots: 1024,
+      analysis: { qubits: 2, depth: 4, complexity: "trivial" },
+    });
+    expect(row).not.toHaveProperty("source");
+    expect(row).not.toHaveProperty("route_decision");
+    expect(row).not.toHaveProperty("result");
+    expect(row).not.toHaveProperty("error");
+    expect(row.analysis).not.toHaveProperty("encoding");
+  });
+});
+
+function fakeTranspile(backend: Backend, qasm: string): TranspilationResult {
+  const metrics = { qubits: 2, classicalBits: 2, depth: 3, gates: 3, twoQubitGates: 1, operations: { h: 1, cx: 1, measure: 2 } };
+  return {
+    qasm,
+    backendId: backend.id,
+    compiler: "local",
+    optimizationLevel: 2,
+    seedTranspiler: 42,
+    before: metrics,
+    after: metrics,
+    layout: null,
+    equivalent: true,
+    improvement: { depthPercent: 0, gatePercent: 0 },
+    target: { backendId: backend.id, basisGates: backend.basisGates, connectivity: backend.connectivity },
+  };
+}
+
+describe("compile cache isolation", () => {
+  afterEach(() => {
+    resetComposeCaches();
+    vi.restoreAllMocks();
+  });
+
+  it("does not serve an unverified compile as a verified one, and retries after a failed coalesce", async () => {
+    const verified = fakeTranspile(catalog("qci-aer-gpu"), "verified");
+    const unverified = fakeTranspile(catalog("qci-aer-gpu"), "unverified");
+    const v = cacheKey("sha", "qci-aer-gpu", "fp", 2, 42, true);
+    const nv = cacheKey("sha", "qci-aer-gpu", "fp", 2, 42, false);
+    let computes = 0;
+    await expect(cachedTranspile(v, async () => {
+      computes += 1;
+      throw new Error("compiler down");
+    })).rejects.toThrow("compiler down");
+    const [left, right] = await Promise.all([
+      cachedTranspile(nv, async () => {
+        computes += 1;
+        return unverified;
+      }),
+      cachedTranspile(nv, async () => {
+        computes += 1;
+        return unverified;
+      }),
+    ]);
+    const checked = await cachedTranspile(v, async () => {
+      computes += 1;
+      return verified;
+    });
+    expect(left).toBe(right);
+    expect(left.qasm).toBe("unverified");
+    expect(checked.qasm).toBe("verified");
+    expect(computes).toBe(3);
+  });
+
+  it("does not reuse a compile after the resolved coupling map changes", async () => {
+    const backend = catalog("iqm-garnet", true);
+    const mapA = { ...backend, connectivity: "custom" as const, couplingMap: [[0, 1], [1, 2]] };
+    const mapB = { ...backend, connectivity: "custom" as const, couplingMap: [[0, 1], [1, 3]] };
+    vi.spyOn(providerTargets, "resolveProviderTarget")
+      .mockResolvedValueOnce(mapA)
+      .mockResolvedValueOnce(mapB);
+    vi.spyOn(transpiler, "transpileForBackend").mockImplementation(async (target) => (
+      fakeTranspile(target, `MAP:${JSON.stringify(target.couplingMap)}`)
+    ));
+
+    const input = {
+      backends: [backend],
+      analysis: analyzeCircuit(BELL, "openqasm2"),
+      shots: 32,
+      target: "iqm-garnet" as const,
+      mode: "balanced" as const,
+      source: BELL,
+      format: "openqasm2" as const,
+    };
+    const first = await prepareExecution(input);
+    const second = await prepareExecution(input);
+    expect(first.transpilation.qasm).toBe("MAP:[[0,1],[1,2]]");
+    expect(second.transpilation.qasm).toBe("MAP:[[0,1],[1,3]]");
+  });
+});
+
+describe("encoding preview plan", () => {
+  it("covers every catalog backend with a named encoder", () => {
+    const targets = encodingTargets();
+    expect(targets.map((item) => item.id).sort()).toEqual(BACKENDS.map((item) => item.id).sort());
+    expect(targets.every((item) => item.encodingLabel && item.modality)).toBe(true);
+  });
+
+  it("stays pending until a backend is chosen", () => {
+    const plan = buildEncodingPreview({ shots: 1024, targetId: "auto", phase: "quoting" });
+    expect(plan.encodingId).toBe("pending-route");
+    expect(plan.source).toBe("pending");
+    expect(plan.headline).toMatch(/scoring backends/i);
+    expect(plan.resources.find((item) => item.key === "shots")?.value).toBe("1,024");
+  });
+
+  it("updates encoder, modality, and warnings when the backend changes", () => {
+    const ibm = buildEncodingPreview({ targetId: "ibm-brisbane", shots: 512, qubits: 5, format: "openqasm2" });
+    expect(ibm.encodingId).toBe("ibm-isa");
+    expect(ibm.modality).toBe("superconducting");
+    expect(ibm.transform).toMatch(/ISA/i);
+
+    const ionq = buildEncodingPreview({ targetId: "ionq-aria-1", shots: 512, qubits: 5 });
+    expect(ionq.encodingId).toBe("ionq-qis");
+    expect(ionq.modality).toBe("trapped-ion");
+    expect(ionq.transform).toMatch(/measurement/i);
+
+    const photonic = buildEncodingPreview({ targetId: "xanadu-borealis", shots: 512, qubits: 4 });
+    expect(photonic.encodingId).toBe("photonic-dual-rail");
+    expect(photonic.modality).toBe("photonic");
+    expect(photonic.resources.find((item) => item.key === "modes")?.value).toBe("8");
+    expect(photonic.warnings.some((item) => /8 optical modes/.test(item))).toBe(true);
+
+    const cqasm = buildEncodingPreview({ targetId: "qi-starmon-5", shots: 128, qubits: 2 });
+    expect(cqasm.encodingId).toBe("cqasm-1.0");
+    expect(cqasm.formatLabel).toBe("cQASM 1.0");
+  });
+
+  it("flags oversized and large-shot jobs", () => {
+    const overflow = buildEncodingPreview({ targetId: "qi-starmon-5", qubits: 12, shots: 8 });
+    expect(overflow.warnings.some((item) => /exceed/i.test(item))).toBe(true);
+    const heavy = buildEncodingPreview({ targetId: "qci-aer-gpu", qubits: 24, shots: 250_000 });
+    expect(heavy.warnings.some((item) => /2ⁿ/.test(item))).toBe(true);
+    expect(heavy.warnings.some((item) => /250,000/.test(item))).toBe(true);
+  });
+
+  it("ignores a stale encoding trace when the target changes", () => {
+    const plan = buildEncodingPreview({
+      targetId: "ionq-aria-1",
+      selectedId: "ibm-brisbane",
+      shots: 1024,
+      encoding: {
+        schema_version: "qee/1",
+        envelope_id: "env",
+        workload_kind: "gate",
+        frontend: { name: "qee", version: "1" },
+        stages: [],
+        requirements: { qubits: 2, clbits: 2, instructions: ["h", "cx"], control_flow: [], mid_circuit_measurement: false, feedback: false },
+        selected_bundle: {
+          id: "b",
+          backend_id: "ibm-brisbane",
+          media_type: "application/qpy",
+          payload_bytes: 2048,
+          bit_order: "q0_right",
+          verification: "checked",
+          quote_binding: "binding",
+          metrics: { qubits: 2, depth: 3, ops: { h: 1, cx: 1 }, two_qubit_ops: 1 },
+          decode_map: { bit_order: "q0_right", registers: [], measurement_map: [], layout: null, result_types: [] },
+        },
+        compiled: [],
+      },
+    });
+    expect(plan.encodingId).toBe("ionq-qis");
+    expect(plan.source).toBe("catalog");
+    expect(plan.warnings.some((item) => /different backend/.test(item))).toBe(true);
+    expect(plan.resources.find((item) => item.key === "payload")?.value).toBe("—");
+  });
+
+  it("overlays compiled resources from a matching trace", () => {
+    const plan = buildEncodingPreview({
+      targetId: "qci-aer-gpu",
+      shots: 4096,
+      encoding: {
+        schema_version: "qee/1",
+        envelope_id: "env",
+        workload_kind: "gate",
+        frontend: { name: "qee", version: "1" },
+        stages: [],
+        requirements: { qubits: 2, clbits: 2, instructions: ["h"], control_flow: [], mid_circuit_measurement: false, feedback: false },
+        selected_bundle: {
+          id: "b",
+          backend_id: "qci-aer-gpu",
+          media_type: "text/qasm2",
+          payload_bytes: 80,
+          bit_order: "q0_right",
+          verification: "checked",
+          quote_binding: "binding",
+          metrics: { qubits: 2, depth: 2, ops: { h: 1, cx: 1 }, two_qubit_ops: 1 },
+          decode_map: {
+            bit_order: "q0_right",
+            registers: [{ name: "c", width: 2, offset: 0 }],
+            measurement_map: [{ qubit: 0, clbit: 0 }, { qubit: 1, clbit: 1 }],
+            layout: null,
+            result_types: ["counts"],
+          },
+        },
+        compiled: [],
+      },
+    });
+    expect(plan.source).toBe("trace");
+    expect(plan.resources.find((item) => item.key === "payload")?.value).toBe("80 B");
+    expect(plan.resources.find((item) => item.key === "shots")?.value).toBe("4,096");
+    expect(plan.mappings.some((item) => item.label === "Measurements" && item.detail.includes("2"))).toBe(true);
+  });
+
+  it("surfaces compute-type pins and mismatches", () => {
+    const pending = buildEncodingPreview({ targetId: "auto", kind: "qpu", phase: "quoting" });
+    expect(pending.parameters.find((item) => item.name === "Compute type")?.value).toBe("Physical QPU");
+    expect(pending.parameters.find((item) => item.name === "Backend")?.effect).toMatch(/physical qpu/i);
+
+    const mismatch = buildEncodingPreview({ targetId: "qci-aer-gpu", kind: "qpu", qubits: 2, shots: 8 });
+    expect(mismatch.warnings.some((item) => /pinned to qpu/.test(item))).toBe(true);
+    expect(mismatch.parameters.find((item) => item.name === "Compute type")?.effect).toMatch(/conflicts/);
+
+    const sim = buildEncodingPreview({ targetId: "qci-aer-gpu", kind: "simulator", qubits: 2, shots: 8 });
+    expect(sim.parameters.find((item) => item.name === "Compute type")?.value).toBe("Simulator");
+    expect(sim.warnings.some((item) => /pinned to/.test(item))).toBe(false);
+  });
+
+  it("only overlays a quote for the target it was fetched for", () => {
+    expect(quoteOverlayApplies("ibm-brisbane", "ibm-brisbane")).toBe(true);
+    expect(quoteOverlayApplies("ibm-brisbane", "ionq-aria-1")).toBe(false);
+    expect(quoteOverlayApplies("ibm-brisbane", "auto")).toBe(false);
+    expect(quoteOverlayApplies(null, "auto")).toBe(false);
+    expect(quoteOverlayApplies(undefined, "qci-aer-gpu")).toBe(false);
   });
 });
 

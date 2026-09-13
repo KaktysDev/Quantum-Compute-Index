@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import ContactForm from "@/components/ContactForm";
 import SiteFooter from "@/components/SiteFooter";
 import LandingNav from "@/components/landing/LandingNav";
+import "../landing.css";
 
 export const metadata: Metadata = {
   title: "Request Access — QRouter",

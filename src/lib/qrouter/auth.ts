@@ -48,6 +48,7 @@ export class RateLimitError extends Error {
  * QROUTER_RATE_LIMIT_PER_MINUTE once real traffic is understood.
  */
 const API_RATE_LIMIT_PER_MINUTE = Number(process.env.QROUTER_RATE_LIMIT_PER_MINUTE ?? 600);
+const LAST_USED_TOUCH_MS = 5 * 60_000;
 
 /**
  * Demo mode serves a shared, unauthenticated `demo` tenant backed by
@@ -100,12 +101,22 @@ export async function resolvePrincipal(request: Request): Promise<Principal> {
       throw new AuthenticationError("API key storage is not configured.");
     }
     const admin = createAdminClient();
-    const { data, error } = await admin.from("api_keys").select("id, organization_id, revoked_at, expires_at, scopes, environment").eq("key_hash", hashApiKey(rawKey)).maybeSingle();
+    const { data, error } = await admin.from("api_keys").select("id, organization_id, revoked_at, expires_at, scopes, environment, last_used_at").eq("key_hash", hashApiKey(rawKey)).maybeSingle();
     if (error || !data || data.revoked_at || (data.expires_at && new Date(data.expires_at) <= new Date())) {
       throw new AuthenticationError("Invalid or expired API key.");
     }
     await enforceOrganizationRateLimit(data.organization_id);
-    await admin.from("api_keys").update({ last_used_at: new Date().toISOString() }).eq("id", data.id);
+    // last_used_at is displayed as a calendar day. Touching it on every
+    // authenticated request doubled the Auth hot path with a write; a short
+    // freshness window keeps the column useful without blocking polls.
+    const lastUsed = typeof data.last_used_at === "string" ? Date.parse(data.last_used_at) : NaN;
+    if (!Number.isFinite(lastUsed) || Date.now() - lastUsed >= LAST_USED_TOUCH_MS) {
+      try {
+        await admin.from("api_keys").update({ last_used_at: new Date().toISOString() }).eq("id", data.id);
+      } catch {
+        // last_used_at is calendar-day telemetry. A write outage must not 401 a valid key.
+      }
+    }
     return {
       organizationId: data.organization_id,
       userId: null,

@@ -19,9 +19,7 @@ import { isAssistantConfigured, streamAssistant } from "@/lib/ai/assistant";
 import { type GeminiTurn } from "@/lib/ai/gemini";
 import { describeAssistantFailure } from "@/lib/ai/inference";
 import { consumeAssistantQuota, quotaLimits, recordAssistantTokens } from "@/lib/ai/limits";
-import { getLatestSnapshot } from "@/lib/qci/store";
 import { AuthenticationError, resolvePrincipal, type Principal } from "@/lib/qrouter/auth";
-import { withQciSnapshot } from "@/lib/qrouter/catalog";
 import { mapWithConcurrency } from "@/lib/qrouter/concurrency";
 import { demoProjects } from "@/lib/qrouter/demo-store";
 import {
@@ -33,8 +31,8 @@ import {
   type GithubRepo,
 } from "@/lib/qrouter/github";
 import { apiError } from "@/lib/qrouter/http";
-import { applyProviderHealth, loadPersistedBackendHealth } from "@/lib/qrouter/providerHealth";
 import { inspectRepository, listRepositoryCircuitFiles, readCircuitFromRepository } from "@/lib/qrouter/repositories";
+import { loadPublicRoutingContext, loadRoutingContext } from "@/lib/qrouter/routingContext";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -199,11 +197,11 @@ async function loadBalance(principal: Principal): Promise<number | null> {
 }
 
 async function loadCatalog(principal: Principal) {
-  const latest = await getLatestSnapshot();
-  const health = principal.demo ? [] : await loadPersistedBackendHealth();
-  const backends = applyProviderHealth(withQciSnapshot(latest.components), health);
+  const { snapshot, backends } = principal.demo
+    ? await loadRoutingContext(true)
+    : await loadPublicRoutingContext();
   return {
-    qci: { vwap: latest.vwap, source: latest.source, ts: latest.ts },
+    qci: { vwap: snapshot.vwap, source: snapshot.source, ts: snapshot.ts },
     backends: backends.map((backend) => ({
       id: backend.id,
       displayName: backend.displayName,
@@ -581,50 +579,50 @@ export async function POST(request: Request) {
   let threadId = parsed.data.threadId ?? null;
   let title = message.length > 64 ? `${message.slice(0, 61)}…` : message;
 
-  // Resolve user display info for the prompt.
-  let userName = "there";
-  let organization = "your workspace";
-  if (admin && principal.userId) {
-    try {
-      const { data: profile } = await admin
-        .from("profiles")
-        .select("email")
-        .eq("id", principal.userId)
-        .maybeSingle();
-      if (profile?.email) userName = profile.email.split("@")[0];
-      const { data: member } = await admin
-        .from("organization_members")
-        .select("organizations(name)")
-        .eq("user_id", principal.userId)
-        .limit(1)
-        .maybeSingle();
-      const org = Array.isArray(member?.organizations) ? member?.organizations[0] : member?.organizations;
-      organization = (org as { name?: string } | null)?.name ?? organization;
-    } catch {
-      /* cosmetic only */
+  async function loadDisplayIdentity(): Promise<{ userName: string; organization: string }> {
+    let userName = "there";
+    let organization = "your workspace";
+    if (admin && principal.userId) {
+      try {
+        const [profileRes, memberRes] = await Promise.all([
+          admin.from("profiles").select("email").eq("id", principal.userId).maybeSingle(),
+          admin.from("organization_members").select("organizations(name)").eq("user_id", principal.userId).limit(1).maybeSingle(),
+        ]);
+        if (profileRes.data?.email) userName = profileRes.data.email.split("@")[0];
+        const org = Array.isArray(memberRes.data?.organizations)
+          ? memberRes.data?.organizations[0]
+          : memberRes.data?.organizations;
+        organization = (org as { name?: string } | null)?.name ?? organization;
+      } catch {
+        /* cosmetic only */
+      }
+    } else if (admin) {
+      // API-key principals (the terminal client) carry no user id, so the name
+      // has to come from the organization the key belongs to.
+      try {
+        const { data: org } = await admin
+          .from("organizations")
+          .select("name")
+          .eq("id", principal.organizationId)
+          .maybeSingle();
+        if (org?.name) organization = org.name;
+      } catch {
+        /* cosmetic only */
+      }
     }
-  } else if (admin) {
-    // API-key principals (the terminal client) carry no user id, so the name
-    // has to come from the organization the key belongs to.
-    try {
-      const { data: org } = await admin
-        .from("organizations")
-        .select("name")
-        .eq("id", principal.organizationId)
-        .maybeSingle();
-      if (org?.name) organization = org.name;
-    } catch {
-      /* cosmetic only */
-    }
+    return { userName, organization };
   }
 
-  // Assemble context + history before opening the stream.
-  const repoSearchMessage = await repositorySearchText(admin, threadId, principal, message);
-  const [balance, catalog, repo] = await Promise.all([
+  // Identity, quota-adjacent reads, and recent-turn lookup overlap. Repo
+  // inspection still waits for the search text because it needs the mention.
+  const [identity, repoSearchMessage, balance, catalog] = await Promise.all([
+    loadDisplayIdentity(),
+    repositorySearchText(admin, threadId, principal, message),
     loadBalance(principal),
     loadCatalog(principal),
-    loadRepoContext(repoSearchMessage, principal),
   ]);
+  const { userName, organization } = identity;
+  const repo = await loadRepoContext(repoSearchMessage, principal);
 
   const turns: GeminiTurn[] = [];
   if (admin && threadId) {

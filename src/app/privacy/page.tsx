@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import LegalPage, { Fill, Note, type LegalSection } from "@/components/legal/LegalPage";
 import "../legal/legal.css";
+import "../landing.css";
 
 export const metadata: Metadata = {
   title: "Privacy Policy — QRouter",

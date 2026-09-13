@@ -32,6 +32,10 @@ class CompilerTest(unittest.TestCase):
         worker.TOKEN = "test-worker-token"
         worker.REQUIRE_GPU = False
         worker.MAX_QUEUED_JOBS = 10
+        worker._BACKEND_INFO = None
+        worker._COMPILE_CACHE.clear()
+        worker._IBM_BACKENDS.clear()
+        worker._SIM_CIRCUITS.clear()
         worker.initialize_database()
         self.client = TestClient(worker.app)
         self.client.__enter__()
@@ -149,6 +153,49 @@ class CompilerTest(unittest.TestCase):
         self.assertEqual(result["artifactQasm"].splitlines()[0], "OPENQASM 3.0;")
         self.assertEqual(circuit.num_qubits, 3)
         self.assertEqual(circuit.count_ops()["cx"], 1)
+
+    def test_skips_qasm3_for_ionq_and_reuses_compile_cache(self):
+        payload = TranspileInput(
+            qasm=BELL,
+            target=TranspileTarget(
+                backend_id="ionq-aria-1",
+                provider="ionq",
+                num_qubits=25,
+                basis_gates=["x", "y", "z", "h", "rx", "ry", "rz", "cx", "measure"],
+                connectivity="all-to-all",
+            ),
+            optimization_level=1,
+            verify_equivalence=False,
+        )
+        first = compile_circuit(payload)
+        second = compile_circuit(payload)
+        self.assertIsNone(first["artifactQasm"])
+        self.assertEqual(first["qasm"], second["qasm"])
+        self.assertEqual(first["providerProgram"], second["providerProgram"])
+
+    def test_compile_cache_key_includes_ibm_revision(self):
+        payload = TranspileInput(
+            qasm=BELL,
+            target=TranspileTarget(
+                backend_id="ibm-brisbane",
+                provider="ibm",
+                backend_name="ibm_brisbane",
+                num_qubits=127,
+                basis_gates=["x", "sx", "rz", "cz", "measure"],
+                connectivity="target",
+            ),
+        )
+        left = worker._compile_cache_key(payload, "1.2.3")
+        right = worker._compile_cache_key(payload, "1.2.4")
+        same = worker._compile_cache_key(payload, "1.2.3")
+        self.assertEqual(left, same)
+        self.assertNotEqual(left, right)
+
+    def test_backend_info_retries_after_a_cached_failure(self):
+        worker._BACKEND_INFO = (False, None, "GPU missing", time.time() - 1)
+        name, device = worker.backend_info()
+        self.assertTrue(name)
+        self.assertIn(device, {"CPU", "GPU"})
 
     def test_rejects_unknown_hardware_topology(self):
         with self.assertRaisesRegex(ValueError, "requires a live provider target"):
