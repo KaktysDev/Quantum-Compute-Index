@@ -7,6 +7,8 @@ import { buildEncodingPreview, type EncodingPreviewInput, type EncodingPreviewPl
 export function useEncodingPreview(input: EncodingPreviewInput): EncodingPreviewPlan {
   return useMemo(
     () => buildEncodingPreview(input),
+    // Field list, not `input`: callers pass a fresh object every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see above
     [
       input.targetId,
       input.selectedId,

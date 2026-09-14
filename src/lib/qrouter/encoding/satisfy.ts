@@ -118,13 +118,12 @@ export function staticProfile(backend: Backend, adapterName: string, extra?: Par
   const tokens = [...new Set([...backend.basisGates, ...backend.nativeGates])];
   const now = new Date().toISOString();
   const gateCapable = kinds.includes("gate");
-  const {
-    schema_version: _schemaVersion,
-    backend_id: _backendId,
-    adapter: _adapter,
-    fingerprint: _fingerprint,
-    ...overrides
-  } = extra ?? {};
+  const extraFields = extra ?? {};
+  const overrides = { ...extraFields };
+  delete overrides.schema_version;
+  delete overrides.backend_id;
+  delete overrides.adapter;
+  delete overrides.fingerprint;
   const base: Omit<CapabilityProfile, "fingerprint"> = {
     schema_version: CAP_SCHEMA,
     backend_id: backend.id,

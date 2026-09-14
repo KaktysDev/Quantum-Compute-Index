@@ -439,7 +439,9 @@ describe("webhooks must not include circuit source", () => {
     expect(insert.length).toBeGreaterThan(0);
     expect(insert).not.toMatch(/current_job\.source/);
     expect(insert).not.toMatch(/['"]source['"]\s*,/);
-    expect(insert).not.toMatch(/normalizedQasm2|selected_bundle|OPENQASM/);
+    expect(insert).not.toMatch(/selected_bundle|OPENQASM/);
+    expect(insert).toMatch(/- 'source'/);
+    expect(insert).toMatch(/- 'normalizedQasm2'/);
     expect(insert).toMatch(/providerResult/);
   });
 });

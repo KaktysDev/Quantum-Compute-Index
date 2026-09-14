@@ -140,7 +140,8 @@ export function payloadByteLength(payload: string): number {
 function publicBundle<T extends { payload?: string; payload_bytes?: number }>(bundle: T): T {
   const payload_bytes = bundle.payload != null ? payloadByteLength(bundle.payload) : bundle.payload_bytes;
   if (bundle.payload == null && payload_bytes == null) return bundle;
-  const { payload: _omit, ...rest } = bundle;
+  const rest = { ...bundle };
+  delete (rest as { payload?: string }).payload;
   return { ...rest, payload_bytes } as T;
 }
 

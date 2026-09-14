@@ -3,6 +3,7 @@
  * stand-in, not a generated Database schema: mutations accept objects, and
  * rows are indexable so `.map` / `.find` callbacks are not implicit `any`.
  */
+/* eslint-disable @typescript-eslint/no-explicit-any -- this module is the untyped query-builder stand-in */
 type LooseRow = { [key: string]: any };
 type LooseResult<T> = { data: T; error: any; count?: number | null };
 
