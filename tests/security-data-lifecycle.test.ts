@@ -55,9 +55,12 @@ describe("v2 circuit release purges every copy of the customer's circuit", () =>
       executions: [{ key: "only", target: "qci-aer-gpu", shots: 32, routing_mode: "balanced", optimization_level: 2, failover: false, max_attempts: 1, timeout_seconds: 60, constraints: {} }],
     }, "purge-job", "request-purge");
 
-    // Sanity: the circuit really is recoverable before the release.
-    const before = allStrings(await getExecutionGroup(owner, group.id));
-    expect(before.some((value) => value.includes("OPENQASM"))).toBe(true);
+    // Owner stores still hold source until release. Public execution-group
+    // summaries must not — GET /api/v2/jobs/{id} is a poll surface, not the
+    // owner circuit-detail/transpiled artifact endpoints.
+    const beforeStores = allStrings([...demoV2Circuits.values(), ...demoJobs.values()]);
+    expect(beforeStores.some((value) => value.includes("OPENQASM"))).toBe(true);
+    expect(allStrings(await getExecutionGroup(owner, group.id)).filter((value) => value.includes("OPENQASM") || value.includes("qreg q[2]"))).toEqual([]);
 
     await releaseCircuitResource(owner, circuit.id);
 

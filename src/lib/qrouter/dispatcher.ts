@@ -25,6 +25,7 @@ import { normalizeProviderResult } from "./results";
 import { analysisFromTranspilation, transpileForBackend } from "./transpiler";
 import type { CircuitAnalysis, InputFormat, JobStatus, RouteDecision, TranspilationResult } from "./types";
 import type { createAdminClient } from "@/lib/supabase/admin";
+import { logRedactedError } from "@/lib/security/log";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 type PersistedAnalysis = CircuitAnalysis & { transpilation?: Omit<TranspilationResult, "providerProgram"> };
@@ -58,7 +59,7 @@ async function finishJob(admin: AdminClient, job: OrchestratedJob, status: "comp
     p_job_id: job.id,
     p_status: status,
     p_result: input.result ?? null,
-    p_error: input.error ?? null,
+    p_error: input.error ? input.error : null,
     p_actual_provider_cost: input.actualProviderCost ?? null,
   });
   if (error) throw error;
@@ -248,7 +249,7 @@ export async function dispatchJob(admin: AdminClient, job: OrchestratedJob) {
     if (updateError) throw updateError;
     if (!changed) {
       await cancelProviderJob(candidate.backend.id, submission.providerJobId).catch((cancelError) => {
-        console.error(`Failed to cancel raced submission ${submission.providerJobId}`, cancelError);
+        logRedactedError(`Failed to cancel raced submission ${submission.providerJobId}`, cancelError);
       });
       return;
     }
@@ -257,7 +258,7 @@ export async function dispatchJob(admin: AdminClient, job: OrchestratedJob) {
     if (status === "completed") {
       await finishJob(admin, { ...job, status: "dispatching" }, "completed", { result: normalizedResult });
       if (normalizedResult) await storeArtifact({ jobId: job.id, organizationId: job.organization_id, kind: "result", content: JSON.stringify(normalizedResult) }).catch((artifactError) => {
-        console.error(`Failed to store result artifact for ${job.id}`, artifactError);
+        logRedactedError(`Failed to store result artifact for ${job.id}`, artifactError);
       });
     }
   } catch (executionError) {
@@ -291,7 +292,7 @@ export async function pollJob(admin: AdminClient, job: OrchestratedJob) {
     if (provider.status === "completed") {
       await finishJob(admin, job, "completed", { result: normalizedResult, actualProviderCost: provider.actualProviderCost });
       await storeArtifact({ jobId: job.id, organizationId: job.organization_id, kind: "result", content: JSON.stringify(normalizedResult) }).catch((artifactError) => {
-        console.error(`Failed to store result artifact for ${job.id}`, artifactError);
+        logRedactedError(`Failed to store result artifact for ${job.id}`, artifactError);
       });
       return;
     }
@@ -312,7 +313,7 @@ export async function pollJob(admin: AdminClient, job: OrchestratedJob) {
     const { data: changed } = await admin.from("jobs").update({ status: provider.status, lease_expires_at: null, updated_at: new Date().toISOString() }).eq("id", job.id).eq("status", job.status).select("id").maybeSingle();
     if (changed && provider.status !== job.status) await admin.from("job_events").insert({ job_id: job.id, type: `job.${provider.status}`, from_status: job.status, to_status: provider.status });
   } catch (pollError) {
-    console.error(`Failed to poll job ${job.id}`, pollError);
+    logRedactedError(`Failed to poll job ${job.id}`, pollError);
     await admin.from("jobs").update({ lease_expires_at: null, updated_at: new Date().toISOString() }).eq("id", job.id).eq("status", job.status);
   }
 }

@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { AIInferenceError } from "@/lib/ai/inference";
-import { logRedactedError } from "@/lib/security/log";
+import { logRedactedError, redactSecrets } from "@/lib/security/log";
 import { AuthenticationError, RateLimitError } from "./auth";
 import { BackendUnavailableError, resolutionFor } from "./availability";
 import { CircuitValidationError } from "./analyze";
@@ -82,7 +82,7 @@ export function apiError(error: unknown, requestIdValue?: string) {
     // outage, not a bug in the caller's request. It carries an actionable
     // message, so it is forwarded verbatim like the other modelled errors.
     return NextResponse.json(
-      { error: { type: "compiler_unavailable", message: error.message } },
+      { error: { type: "compiler_unavailable", message: redactSecrets(error.message) } },
       { status: 503, headers: { ...headers, "retry-after": "30" } },
     );
   }

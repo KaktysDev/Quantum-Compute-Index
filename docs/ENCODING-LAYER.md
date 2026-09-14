@@ -49,6 +49,30 @@ library** (Section 5.12), never as an implicit router behaviour. Category 1 is w
 engineering rigour goes. Section 4.6 argues this at length, because it is the single most
 important design decision in the document.
 
+### What landed (this revision)
+
+Coupling is now a first-class satisfaction check, not a hardcoded empty `pairs` list.
+`deriveRequirements()` records every undirected two-qubit pair; `satisfies()` accepts all-to-all
+backends, does **not** fail when a catalog backend advertises connectivity `"target"` with no
+published map (IBM / Rigetti / IQM — the compiler routes), and on a non-empty map (Starmon-5)
+fails with code `"connectivity"` only when a pair is disconnected. Routable non-adjacent pairs
+get a SWAP-hops note. `routeToCoupling()` inserts SWAPs along the shortest undirected path so
+every remaining `cx`/`cz` sits on the map. That pass runs **once**, in the local transpiler
+(and as a fallback when an adapter is called without a transpile). `nativeProgramFor` is a
+pure converter and does not import coupling. Local SWAP layouts stay off `decode_map`
+(measures are already remapped to logical bits); Qiskit layouts still decode.
+
+Submit now prefers the hashed execution bundle: IonQ JSON `circuit` + `measurement_map`, Braket
+`text/qasm3` source, IBM Runtime `text/qasm3` (stdgates), Aer `text/qasm2` payload, QI `text/cqasm`.
+Omitting the bundle keeps the previous rebuild fallback (existing tests). Braket lowering
+decomposes `u3`/`u` as `rz(λ); ry(θ); rz(φ)` (same convention as the existing `u2` rewrite, which
+is not reordered). IonQ decode treats every `/^\d+$/` key as an integer when the source order is
+`q0_left`, so `"10"` at width 4 is decimal ten, not a two-bit string. `expandDialects` is cached
+by SHA-256 (32-entry LRU).
+
+Public API layers strip native programs: list/poll/quote/transpile/cancel/webhooks never ship
+QASM, QPY, or encoding `payload`. Test keys cannot pin QPUs, including on `/api/v1/transpile`.
+
 ---
 
 ## 1. How to read this

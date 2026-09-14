@@ -6,6 +6,7 @@
  */
 
 import type { Backend } from "../types";
+import { couplingSatisfaction, twoQubitPairs } from "./coupling";
 import { jcsHash } from "./jcs";
 import { LOWERABLE } from "./lowering";
 import { opIdsFromTokens, resolveOpId } from "./ops";
@@ -93,6 +94,7 @@ export function deriveRequirements(workload: Workload): RequirementSet {
   }
   const qubits = program ? program.qubits.reduce((sum, register) => sum + register.size, 0) : 0;
   const classicalBits = program ? program.clbits.reduce((sum, register) => sum + register.size, 0) : 0;
+  const pairs = program ? twoQubitPairs(program) : [];
   const shots = "shots" in workload ? workload.shots : "reads" in workload ? workload.reads : 0;
   return {
     schema_version: REQ_SCHEMA,
@@ -100,7 +102,7 @@ export function deriveRequirements(workload: Workload): RequirementSet {
     qubits,
     clbits: classicalBits,
     instructions: [...seen.values()],
-    connectivity: { pairs: [], needs_routing: twoQubitGates > 0 },
+    connectivity: { pairs, needs_routing: pairs.length > 0 || twoQubitGates > 0 },
     classical: { mid_circuit_measurement: mid, feedback, control_flow },
     timing: { explicit_delays: delays, stretch: workload.kind === "timed", pulse_level: workload.kind === "timed" },
     results: workload.kind === "photonic" ? ["photon_pattern"] : workload.kind === "annealing" ? ["annealing"] : ["counts", "probabilities"],
@@ -116,13 +118,12 @@ export function staticProfile(backend: Backend, adapterName: string, extra?: Par
   const tokens = [...new Set([...backend.basisGates, ...backend.nativeGates])];
   const now = new Date().toISOString();
   const gateCapable = kinds.includes("gate");
-  const {
-    schema_version: _schemaVersion,
-    backend_id: _backendId,
-    adapter: _adapter,
-    fingerprint: _fingerprint,
-    ...overrides
-  } = extra ?? {};
+  const extraFields = extra ?? {};
+  const overrides = { ...extraFields };
+  delete overrides.schema_version;
+  delete overrides.backend_id;
+  delete overrides.adapter;
+  delete overrides.fingerprint;
   const base: Omit<CapabilityProfile, "fingerprint"> = {
     schema_version: CAP_SCHEMA,
     backend_id: backend.id,
@@ -208,5 +209,24 @@ export function satisfies(req: RequirementSet, cap: CapabilityProfile): Verdict 
       failures.push({ code: "result_type", message: `backend cannot return ${result}` });
     }
   }
-  return failures.length ? { ok: false, failures } : { ok: true, notes: [`${cap.backend_id} satisfies ${req.workload_kind} requirements`] };
+  const notes: string[] = [];
+  if (cap.connectivity.kind === "all-to-all") {
+    notes.push(`${cap.backend_id} is all-to-all; no coupling routing is required`);
+  } else {
+    const map = cap.connectivity.coupling_map;
+    if (!map?.length) {
+      notes.push("No coupling map published; the compiler will route two-qubit gates");
+    } else if (req.connectivity.pairs.length) {
+      const coupling = couplingSatisfaction(req.connectivity.pairs, map);
+      if (!coupling.ok) {
+        failures.push({ code: "connectivity", message: coupling.message });
+      } else if (coupling.needsRouting) {
+        notes.push(`SWAP routing required (~${coupling.hops} hops on the coupling map)`);
+      } else {
+        notes.push("all two-qubit pairs are adjacent on the coupling map");
+      }
+    }
+  }
+  if (failures.length) return { ok: false, failures };
+  return { ok: true, notes: [`${cap.backend_id} satisfies ${req.workload_kind} requirements`, ...notes] };
 }

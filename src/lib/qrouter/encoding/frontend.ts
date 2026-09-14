@@ -31,11 +31,14 @@ export function stripComments(source: string) {
 }
 
 export function assertIncludePolicy(source: string) {
-  for (const match of source.matchAll(/\binclude\s+"([^"]+)"\s*;/gi)) {
-    const name = match[1].replace(/\\/g, "/").split("/").pop() ?? match[1];
-    if (match[1].includes("..") || match[1].startsWith("/") || match[1].includes("\\") || !ALLOWED_INCLUDES.has(name)) {
+  // Double quotes are the OpenQASM form; single quotes and a bare path are
+  // rejected too so a filesystem include cannot skip the allow-list (D17).
+  for (const match of source.matchAll(/\binclude\s+(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_./\\-]+))/gi)) {
+    const path = match[1] ?? match[2] ?? match[3] ?? "";
+    const name = path.replace(/\\/g, "/").split("/").pop() ?? path;
+    if (path.includes("..") || path.startsWith("/") || path.includes("\\") || !ALLOWED_INCLUDES.has(name)) {
       throw new EncodingError(
-        `Filesystem and non-standard includes are not allowed. "${match[1]}" is not in the standard include allow-list (${[...ALLOWED_INCLUDES].join(", ")}).`,
+        `Filesystem and non-standard includes are not allowed. Only the standard include allow-list is accepted (${[...ALLOWED_INCLUDES].join(", ")}).`,
       );
     }
   }
@@ -270,6 +273,33 @@ function registerOffsets(registers: Array<{ name: string; size: number }>): Map<
   return offsets;
 }
 
+const qubitOffsetCache = new WeakMap<GateProgram, Map<string, RegisterOffset>>();
+const clbitOffsetCache = new WeakMap<GateProgram, Map<string, RegisterOffset>>();
+
+export function qubitOffsetMap(program: GateProgram) {
+  const hit = qubitOffsetCache.get(program);
+  if (hit) return hit;
+  const map = registerOffsets(program.qubits);
+  qubitOffsetCache.set(program, map);
+  return map;
+}
+
+export function clbitOffsetMap(program: GateProgram) {
+  const hit = clbitOffsetCache.get(program);
+  if (hit) return hit;
+  const map = registerOffsets(program.clbits);
+  clbitOffsetCache.set(program, map);
+  return map;
+}
+
+export function expandQubitRef(offsets: Map<string, RegisterOffset>, ref: QubitRef): number[] {
+  const register = offsets.get(ref.register);
+  if (!register) throw new EncodingError(`Unknown qubit register "${ref.register}".`);
+  if (ref.index == null) return Array.from({ length: register.size }, (_, index) => register.offset + index);
+  if (ref.index >= register.size) throw new EncodingError(`Qubit index out of range: ${ref.register}[${ref.index}].`);
+  return [register.offset + ref.index];
+}
+
 function flattenRef(offsets: Map<string, RegisterOffset>, ref: QubitRef | ClbitRef, kind: "qubit" | "clbit"): number {
   const register = offsets.get(ref.register);
   if (!register) throw new EncodingError(`Unknown ${kind} register "${ref.register}".`);
@@ -279,16 +309,16 @@ function flattenRef(offsets: Map<string, RegisterOffset>, ref: QubitRef | ClbitR
 }
 
 export function flattenQubit(program: GateProgram, ref: QubitRef): number {
-  return flattenRef(registerOffsets(program.qubits), ref, "qubit");
+  return flattenRef(qubitOffsetMap(program), ref, "qubit");
 }
 
 export function flattenClbit(program: GateProgram, ref: ClbitRef): number {
-  return flattenRef(registerOffsets(program.clbits), ref, "clbit");
+  return flattenRef(clbitOffsetMap(program), ref, "clbit");
 }
 
 export function measurementMap(program: GateProgram): Array<{ qubit: number; clbit: number }> {
-  const qubits = registerOffsets(program.qubits);
-  const clbits = registerOffsets(program.clbits);
+  const qubits = qubitOffsetMap(program);
+  const clbits = clbitOffsetMap(program);
   const map: Array<{ qubit: number; clbit: number }> = [];
   walk(program.body, (statement) => {
     if (statement.op !== "measure") return;

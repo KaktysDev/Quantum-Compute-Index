@@ -10,6 +10,9 @@
  * A comment is not a proof — the CI gate is.
  */
 
+import { createHash } from "crypto";
+import { lruGet, lruSet } from "./encoding/cache";
+
 const PI = Math.PI;
 
 /** Gates passed through untouched. Everything downstream accepts these. */
@@ -196,6 +199,13 @@ function expandStatement(statement: Statement, depth = 0): Statement[] {
 
 const GATE_CALL = /^([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(([^)]*)\))?\s+(.+)$/s;
 
+const EXPAND_CACHE_MAX = 32;
+const expandCache = new Map<string, string>();
+
+export function resetExpandDialectsCache() {
+  expandCache.clear();
+}
+
 /**
  * Rewrites provider-native and extended gates in an OpenQASM 2 program into the
  * core qelib1 set. Register declarations, includes, measure, barrier, and reset
@@ -203,6 +213,13 @@ const GATE_CALL = /^([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(([^)]*)\))?\s+(.+)$/s;
  * gates stay as-is. Unknown gates raise DialectError.
  */
 export function expandDialects(source: string): string {
+  const key = createHash("sha256").update(source).digest("hex");
+  const cached = lruGet(expandCache, key);
+  if (cached !== undefined) return cached;
+  return lruSet(expandCache, key, expandDialectsUncached(source), EXPAND_CACHE_MAX);
+}
+
+function expandDialectsUncached(source: string): string {
   const text = stripComments(source);
   const registers = new Map<string, number>();
   for (const match of text.matchAll(/\bqreg\s+([A-Za-z_][A-Za-z0-9_]*)\s*\[(\d+)]/g)) {

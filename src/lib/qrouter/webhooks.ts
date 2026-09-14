@@ -4,6 +4,7 @@ import { isIP } from "net";
 import { request as insecureRequest, type IncomingMessage } from "node:http";
 import { request as secureRequest } from "node:https";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
+import { slimError, slimResult } from "@/lib/qrouter/encoding/public";
 import { redactError } from "@/lib/security/log";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -52,6 +53,46 @@ export function webhookFailureReason(stored: unknown): WebhookFailureReason | nu
   if (typeof stored !== "string" || !stored) return null;
   const known = (WEBHOOK_FAILURE_REASONS as readonly string[]).includes(stored);
   return known ? (stored as WebhookFailureReason) : "delivery_failed";
+}
+
+/**
+ * Customer webhook body for a job lifecycle event. Circuit source, encoding
+ * payloads, and compile artifacts stay off this shape — SQL enqueue in
+ * `finalize_qrouter_job` must match.
+ */
+export function publicWebhookJobPayload(input: {
+  id: string;
+  type: string;
+  created: string;
+  job: {
+    id: string;
+    organization_id: string;
+    status: string;
+    selected_backend_id?: string | null;
+    result?: unknown;
+    error?: unknown;
+    created_at: string;
+    completed_at?: string | null;
+  };
+}) {
+  const { job } = input;
+  return {
+    id: input.id,
+    type: input.type,
+    created: input.created,
+    data: {
+      object: {
+        id: job.id,
+        organization_id: job.organization_id,
+        status: job.status,
+        selected_backend_id: job.selected_backend_id ?? null,
+        result: slimResult(job.result ?? null),
+        error: slimError(job.error ?? null),
+        created_at: job.created_at,
+        completed_at: job.completed_at ?? null,
+      },
+    },
+  };
 }
 
 /**

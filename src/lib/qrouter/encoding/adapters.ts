@@ -7,9 +7,11 @@
 
 import { createHash } from "crypto";
 import { getBackend } from "../catalog";
+import { qasm2ToIonqCircuit, qasm2ToQasm3 } from "../execution";
 import type { Backend, CircuitAnalysis, TranspilationResult } from "../types";
 import { buildBundle, verificationFromTranspile } from "./bundle";
 import { lruGet, lruSet } from "./cache";
+import { qasmRespectingCoupling } from "./coupling";
 import { measurementMap, registerLayout } from "./frontend";
 import { nativeProgramFor, type NativeProgram } from "./native";
 import { opIdsFromTokens } from "./ops";
@@ -90,7 +92,11 @@ function decodeMapFor(program: GateProgram | null, bitOrder: DecodeMap["bit_orde
 }
 
 function layoutFrom(transpilation: TranspilationResult | null): DecodeMap["layout"] {
-  const layout = transpilation?.layout;
+  // Local SWAP routing rewrites `measure q[physical] -> c[logical]`, so the
+  // histogram is already in logical order. Copying that layout onto decode_map
+  // would permute bits twice. Qiskit layouts still need an explicit decode.
+  if (transpilation?.compiler !== "qiskit") return null;
+  const layout = transpilation.layout;
   if (!layout || typeof layout !== "object") return null;
   const logical = (layout as { logicalToPhysical?: Record<string, number> }).logicalToPhysical;
   const routing = (layout as { routingPermutation?: number[] }).routingPermutation;
@@ -99,6 +105,15 @@ function layoutFrom(transpilation: TranspilationResult | null): DecodeMap["layou
     logical_to_physical: Object.fromEntries(Object.entries(logical).map(([key, value]) => [Number(key), Number(value)])),
     routing_permutation: routing ?? [],
   };
+}
+
+function qasmForNativeEncode(input: {
+  analysis: CircuitAnalysis;
+  transpilation: TranspilationResult | null;
+  backend: Backend;
+}): string {
+  if (input.transpilation?.qasm) return input.transpilation.qasm;
+  return qasmRespectingCoupling(input.analysis.normalizedQasm2, input.backend.couplingMap).qasm;
 }
 
 function metricsFrom(transpilation: TranspilationResult | null, analysis: CircuitAnalysis): ExecutionBundle["metrics"] {
@@ -150,9 +165,10 @@ const ibm: EncodingAdapter = {
   validate: (env, cap) => satisfies(env.requirements, cap),
   encode: (input) => {
     const qpy = input.transpilation?.providerProgram;
+    const compiled = input.transpilation?.artifactQasm ?? input.transpilation?.qasm ?? input.analysis.normalizedQasm2;
     const payload = qpy && typeof qpy === "object" && "data" in qpy
       ? JSON.stringify(qpy)
-      : input.transpilation?.artifactQasm ?? input.transpilation?.qasm ?? input.analysis.normalizedQasm2;
+      : qasm2ToQasm3(compiled, "stdgates");
     const mediaType = qpy && typeof qpy === "object" ? "application/qpy" : "text/qasm3";
     return buildBundle({
       envelope: input.envelope,
@@ -178,10 +194,12 @@ const ionq: EncodingAdapter = {
     const program = programOf(input.envelope);
     const decodeMap = decodeMapFor(program, "q0_left", layoutFrom(input.transpilation));
     if (!decodeMap.measurement_map.length) throw new EncodingError("IonQ encoding refused: the measurement map is empty; a circuit is never submitted without its classical mapping.");
+    const qasm = input.transpilation?.qasm ?? input.analysis.normalizedQasm2;
     const payload = JSON.stringify({
       qubits: input.analysis.qubits,
       gateset: "qis",
-      qasm: input.transpilation?.qasm ?? input.analysis.normalizedQasm2,
+      circuit: qasm2ToIonqCircuit(qasm),
+      qasm,
       measurement_map: decodeMap.measurement_map,
       registers: decodeMap.registers,
     });
@@ -205,18 +223,21 @@ const braket: EncodingAdapter = {
   handles: (backend) => backend.provider === "aws-braket",
   profile: (backend) => staticProfile(backend, "aws-braket", { routable: true }),
   validate: (env, cap) => satisfies(env.requirements, cap),
-  encode: (input) => buildBundle({
-    envelope: input.envelope,
-    backendId: input.backend.id,
-    payload: input.transpilation?.artifactQasm ?? input.transpilation?.qasm ?? input.analysis.normalizedQasm2,
-    mediaType: "text/qasm3",
-    decodeMap: decodeMapFor(programOf(input.envelope), "q0_right", layoutFrom(input.transpilation)),
-    capability: input.capability,
-    compiler: compilerOf(input.transpilation),
-    verification: verificationFromTranspile(input.transpilation, input.capability),
-    metrics: metricsFrom(input.transpilation, input.analysis),
-    quoteBinding: input.quoteBinding,
-  }),
+  encode: (input) => {
+    const compiledQasm = input.transpilation?.artifactQasm ?? input.transpilation?.qasm ?? input.analysis.normalizedQasm2;
+    return buildBundle({
+      envelope: input.envelope,
+      backendId: input.backend.id,
+      payload: qasm2ToQasm3(compiledQasm, "braket"),
+      mediaType: "text/qasm3",
+      decodeMap: decodeMapFor(programOf(input.envelope), "q0_right", layoutFrom(input.transpilation)),
+      capability: input.capability,
+      compiler: compilerOf(input.transpilation),
+      verification: verificationFromTranspile(input.transpilation, input.capability),
+      metrics: metricsFrom(input.transpilation, input.analysis),
+      quoteBinding: input.quoteBinding,
+    });
+  },
 };
 
 const photonic: EncodingAdapter = {
@@ -233,8 +254,7 @@ const photonic: EncodingAdapter = {
   }),
   validate: (env, cap) => satisfies(env.requirements, cap),
   encode: (input) => {
-    const qasm = input.transpilation?.qasm ?? input.analysis.normalizedQasm2;
-    const program = reusedNativeProgram(input.transpilation) ?? nativeProgramFor(input.backend, qasm);
+    const program = reusedNativeProgram(input.transpilation) ?? nativeProgramFor(input.backend, qasmForNativeEncode(input));
     return buildBundle({
       envelope: input.envelope,
       backendId: input.backend.id,
@@ -258,8 +278,7 @@ const quantumInspire: EncodingAdapter = {
   }),
   validate: (env, cap) => satisfies(env.requirements, cap),
   encode: (input) => {
-    const qasm = input.transpilation?.qasm ?? input.analysis.normalizedQasm2;
-    const program = reusedNativeProgram(input.transpilation) ?? nativeProgramFor(input.backend, qasm);
+    const program = reusedNativeProgram(input.transpilation) ?? nativeProgramFor(input.backend, qasmForNativeEncode(input));
     return buildBundle({
       envelope: input.envelope,
       backendId: input.backend.id,

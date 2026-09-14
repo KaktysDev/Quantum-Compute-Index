@@ -1,6 +1,7 @@
 import { circuitToQASM, optimizeCircuit, parseQASM } from "quantum-computer-js";
 import { analyzeCircuit } from "./analyze";
 import { verificationStatusOf } from "./encoding/bundle";
+import { routeToCoupling } from "./encoding/coupling";
 import { nativeProgramFor, usesNativeEncoder } from "./encoding/native";
 import type { Backend, CircuitAnalysis, TranspilationMetrics, TranspilationResult } from "./types";
 
@@ -45,14 +46,24 @@ function requiresQiskitCompiler(backend: Backend) {
 
 function withNativeProgram(result: TranspilationResult, backend: Backend): TranspilationResult {
   if (!usesNativeEncoder(backend)) return result;
-  const program = nativeProgramFor(backend, result.qasm);
+  let next = result;
+  if (backend.couplingMap?.length && !result.layout) {
+    const routed = routeToCoupling(result.qasm, backend.couplingMap);
+    next = {
+      ...result,
+      qasm: routed.qasm,
+      layout: routed.layout,
+      verificationNote: [result.verificationNote, `Local SWAP routing applied for ${backend.id} coupling map.`].filter(Boolean).join(" "),
+    };
+  }
+  const program = nativeProgramFor(backend, next.qasm);
   const note = program.format === "cqasm-1.0"
     ? `Native cQASM 1.0 program attached for ${backend.displayName}.`
     : `Native ${program.dialect} dual-rail program attached for ${backend.displayName}.`;
   return {
-    ...result,
+    ...next,
     providerProgram: JSON.stringify(program),
-    verificationNote: [result.verificationNote, note].filter(Boolean).join(" "),
+    verificationNote: [next.verificationNote, note].filter(Boolean).join(" "),
   };
 }
 
@@ -106,6 +117,14 @@ function localTranspile(backend: Backend, analysis: CircuitAnalysis, optimizatio
     note = "Local all-to-all simulator optimization; full Qiskit verification requires QROUTER_COMPILER_URL.";
     compiled = analyzeCircuit(qasm, "openqasm2");
   }
+  let layout: TranspilationResult["layout"] = null;
+  if (backend.couplingMap?.length) {
+    const routed = routeToCoupling(qasm, backend.couplingMap);
+    qasm = routed.qasm;
+    layout = routed.layout;
+    compiled = analyzeCircuit(qasm, "openqasm2");
+    note = `${note} Local SWAP routing applied for ${backend.id} coupling map.`;
+  }
   return {
     qasm,
     backendId: backend.id,
@@ -114,7 +133,7 @@ function localTranspile(backend: Backend, analysis: CircuitAnalysis, optimizatio
     seedTranspiler: 42,
     before: metrics(analysis),
     after: metrics(compiled),
-    layout: null,
+    layout,
     equivalent: null,
     verificationStatus: verificationStatusOf(null, note),
     verificationNote: note,

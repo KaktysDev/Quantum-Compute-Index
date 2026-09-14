@@ -21,9 +21,8 @@ function isBinary(value: string) {
   return /^[01]+$/.test(value);
 }
 
-function integerToBits(value: string, width: number, sourceOrder: BitOrder) {
-  const bits = Number(value).toString(2).padStart(width, "0");
-  return sourceOrder === "q0_left" ? bits : bits;
+function integerToBits(value: string, width: number) {
+  return Number(value).toString(2).padStart(width, "0");
 }
 
 export function normalizeBitOrder(bits: string, source: BitOrder, target: BitOrder = PLATFORM_BIT_ORDER) {
@@ -55,7 +54,8 @@ export function rewriteStates(
     if (registersPreserved) {
       const fields = state.trim().split(/\s+/).map((field) => {
         const clean = field.replace(/[|>]/g, "");
-        const bits = /^\d+$/.test(clean) && !isBinary(clean) ? integerToBits(clean, clean.length, sourceOrder) : clean;
+        const asInteger = sourceOrder === "q0_left" ? /^\d+$/.test(clean) : /^\d+$/.test(clean) && !isBinary(clean);
+        const bits = asInteger ? integerToBits(clean, Math.max(clean.length, Number(clean).toString(2).length)) : clean;
         return normalizeBitOrder(bits, sourceOrder);
       });
       const key = fields.join(" ");
@@ -63,9 +63,8 @@ export function rewriteStates(
       continue;
     }
     const clean = state.replace(/[|>]/g, "");
-    const bits = /^\d+$/.test(clean) && !isBinary(clean)
-      ? integerToBits(clean, width, sourceOrder)
-      : padBits(clean, width);
+    const asInteger = sourceOrder === "q0_left" ? /^\d+$/.test(clean) : /^\d+$/.test(clean) && !isBinary(clean);
+    const bits = asInteger ? integerToBits(clean, width) : padBits(clean, width);
     const key = normalizeBitOrder(bits, sourceOrder);
     map[key] = (map[key] ?? 0) + value;
   }
