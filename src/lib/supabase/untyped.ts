@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- query-builder stand-in for untyped supabase tables */
 /**
  * supabase-js 2.108 types untyped tables as `never`. This is a query-builder
  * stand-in, not a generated Database schema: mutations accept objects, and

@@ -9,7 +9,7 @@ import { resolvePrincipal } from "@/lib/qrouter/auth";
 import { apiError } from "@/lib/qrouter/http";
 import { prepareExecution } from "@/lib/qrouter/pipeline";
 import { loadRoutingContext } from "@/lib/qrouter/routingContext";
-import { publicEncoding, slimTranspilation } from "@/lib/qrouter/encoding";
+import { publicEncoding, slimAnalysis, slimTranspilation } from "@/lib/qrouter/encoding";
 import { publicTranspilation } from "@/lib/qrouter/transpiler";
 import { createJobSchema } from "@/lib/qrouter/validation";
 
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
         complexity: analysis.complexity,
         workloadKind: analysis.workloadKind,
       },
-      compiledAnalysis: prepared.executionAnalysis,
+      compiledAnalysis: slimAnalysis(prepared.executionAnalysis),
       transpilation: slimTranspilation(publicTranspilation(prepared.transpilation)),
       decision: {
         selected: {

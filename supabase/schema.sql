@@ -506,7 +506,7 @@ begin
     'data',jsonb_build_object('object',jsonb_build_object(
       'id',p_job_id,'organization_id',current_job.organization_id,'status',p_status,
       'selected_backend_id',current_job.selected_backend_id,
-      'result',case when p_status='completed' then p_result else null end,
+      'result',case when p_status='completed' then (coalesce(p_result,'{}'::jsonb) - 'source' - 'payload' #- '{metadata,providerResult}') else null end,
       'error',case when p_error is null then null else jsonb_build_object('message',p_error) end,
       'created_at',current_job.created_at,'completed_at',now()
     ))

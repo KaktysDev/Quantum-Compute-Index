@@ -29,6 +29,9 @@ import {
   ArrowUp,
   Check,
   CircleStop,
+  Download,
+  FileSpreadsheet,
+  FileText,
   Loader2,
   PanelLeft,
   Pencil,
@@ -512,6 +515,12 @@ function JobProposalCard({
     return <div className="qc-proposal dismissed"><X size={13} /> Proposal dismissed — nothing was run.</div>;
   }
 
+  const storedCounts = Object.entries(result?.counts ?? {})
+    .filter(([, count]) => typeof count === "number" && Number.isFinite(count))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8);
+  const peakCount = Math.max(...storedCounts.map(([, count]) => count), 0);
+
   const insufficient =
     quote.status === "ready" && balance !== null && typeof quote.total === "number" && quote.total > balance;
   const overlayLive = quoteOverlayApplies(quotedTarget.current, target);
@@ -727,25 +736,40 @@ function JobProposalCard({
       {phase === "done" && result ? (
         <div className="qc-run-result">
           <p>
-            <Check size={14} /> Task <b>{result.status}</b> on <b>{backendLabel(result.backend)}</b>
+            <Check size={14} /> Task <b>{result.status.replaceAll("_", " ")}</b> on <b>{backendLabel(result.backend)}</b>
             {typeof result.total === "number" && <> · settled <b>${result.total.toFixed(4)}</b></>}
             {runMs !== null && <> · <span className="qc-elapsed done">{formatDuration(runMs)}</span></>}
           </p>
-          {result.counts && (
-            <div className="qc-counts">
-              {Object.entries(result.counts)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 8)
-                .map(([state, count]) => (
-                  <div key={state}>
-                    <code>|{state}⟩</code>
-                    <i style={{ width: `${Math.max(4, (count / shots) * 100)}%` }} />
-                    <b>{count}</b>
-                  </div>
-                ))}
+          {storedCounts.length ? (
+            <div className="qc-counts" role="img" aria-label={`Top ${storedCounts.length} stored bitstrings`}>
+              {storedCounts.map(([state, count]) => (
+                <div key={state}>
+                  <code>|{state}⟩</code>
+                  <i style={{ width: `${Math.max(4, peakCount > 0 ? (count / peakCount) * 100 : 4)}%` }} />
+                  <b>{count.toLocaleString()}</b>
+                </div>
+              ))}
             </div>
+          ) : (
+            <p className="qc-run-empty">No measurement counts stored yet.</p>
           )}
-          <Link href={`/dashboard/tasks?job=${result.id}`}>View task details →</Link>
+          <div className="qc-run-actions">
+            <div className="qc-run-downloads" role="group" aria-label="Download this job report and stored results">
+              <a href={`/api/v1/jobs/${result.id}/report/pdf`} download={`job-${result.id}-report.pdf`}>
+                <FileText size={13} />
+                Report PDF
+              </a>
+              <a href={`/api/v1/jobs/${result.id}/result`} download={`job-${result.id}.json`}>
+                <Download size={13} />
+                JSON
+              </a>
+              <a href={`/api/v1/jobs/${result.id}/result.csv`} download={`job-${result.id}.csv`}>
+                <FileSpreadsheet size={13} />
+                CSV
+              </a>
+            </div>
+            <Link href={`/dashboard/tasks?job=${result.id}`}>View task details →</Link>
+          </div>
         </div>
       ) : (
         <footer>

@@ -4,7 +4,7 @@ import { POST as joinWaitlist } from "@/app/api/waitlist/route";
 import { CircuitValidationError } from "@/lib/qrouter/analyze";
 import { AuthenticationError, RateLimitError } from "@/lib/qrouter/auth";
 import { apiError } from "@/lib/qrouter/http";
-import { redactError } from "@/lib/security/log";
+import { redactError, redactSecrets } from "@/lib/security/log";
 import { PUBLIC_FORM_LIMIT } from "@/lib/security/public-form";
 import { resetRateLimitState } from "@/lib/security/rate-limit";
 import { authorizeCronRequest, timingSafeEqualStrings } from "@/lib/security/secrets";
@@ -127,6 +127,14 @@ describe("error log redaction", () => {
     expect(JSON.stringify(redacted)).not.toContain("OPENQASM");
     expect(redacted.details).toBeUndefined();
     expect(redacted.hint).toBeUndefined();
+  });
+
+  it("redacts bearer tokens and API key values from log strings", () => {
+    expect(redactSecrets("Authorization: Bearer sk-secret\nIBM_QUANTUM_TOKEN=abc qci_test_abcdefghijk")).toBe(
+      "Authorization: [redacted]\nIBM_QUANTUM_TOKEN=[redacted] qci_[redacted]",
+    );
+    const stacked = redactError(new Error("Authorization: Bearer sk-secret"));
+    expect(JSON.stringify(stacked)).not.toContain("sk-secret");
   });
 });
 

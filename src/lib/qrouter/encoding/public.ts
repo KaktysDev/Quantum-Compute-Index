@@ -4,6 +4,7 @@
  * responses must not ship QASM or native programs in React state.
  */
 
+import { redactSecrets } from "@/lib/security/log";
 import type { EncodingStage, EncodingTrace, VerificationStatus, WorkloadKind } from "./types";
 
 const WORKLOAD_LABEL: Record<WorkloadKind, string> = {
@@ -145,12 +146,45 @@ export function publicEncoding<T extends { selected_bundle?: { payload?: string;
   return { ...trace, selected_bundle: { ...rest, payload_bytes } as T["selected_bundle"] };
 }
 
+export function slimResult<T>(value: T): T {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const row = { ...(value as Record<string, unknown>) };
+  delete row.source;
+  delete row.payload;
+  delete row.normalizedQasm2;
+  delete row.analysis;
+  delete row.providerProgram;
+  delete row.providerResult;
+  delete row.qasm;
+  delete row.artifactQasm;
+  if (row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)) {
+    const metadata = { ...(row.metadata as Record<string, unknown>) };
+    delete metadata.providerResult;
+    delete metadata.raw;
+    delete metadata.source;
+    delete metadata.payload;
+    row.metadata = metadata;
+  }
+  return row as T;
+}
+
+export function slimError<T>(value: T): T {
+  if (typeof value === "string") return redactSecrets(value) as T;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const row = { ...(value as Record<string, unknown>) };
+  if (typeof row.message === "string") row.message = redactSecrets(row.message);
+  if (typeof row.stack === "string") row.stack = redactSecrets(row.stack);
+  delete row.stack;
+  return row as T;
+}
+
 export function slimTranspilation<T>(value: T): T {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const row = { ...(value as Record<string, unknown>) };
   delete row.qasm;
   delete row.artifactQasm;
   delete row.providerProgram;
+  if (typeof row.verificationNote === "string") row.verificationNote = redactSecrets(row.verificationNote);
   return row as T;
 }
 
@@ -162,6 +196,7 @@ export function slimAnalysis<T>(value: T): T {
   if (row.encoding && typeof row.encoding === "object" && !Array.isArray(row.encoding)) {
     row.encoding = publicEncoding(row.encoding as EncodingTrace);
   }
+  if (row.result) row.result = slimResult(row.result);
   return row as T;
 }
 
@@ -183,6 +218,8 @@ export function slimJobForOwner<T extends Record<string, unknown>>(job: T): T {
   const next: Record<string, unknown> = { ...job };
   if (next.analysis) next.analysis = slimAnalysis(next.analysis);
   if (next.route_decision) next.route_decision = slimRouteDecision(next.route_decision);
+  if (next.result) next.result = slimResult(next.result);
+  if (next.error) next.error = slimError(next.error);
   return next as T;
 }
 

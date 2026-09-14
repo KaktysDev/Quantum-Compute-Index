@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolvePrincipal } from "@/lib/qrouter/auth";
 import { demoJobs } from "@/lib/qrouter/demo-store";
+import { slimJobForOwner } from "@/lib/qrouter/encoding";
 import { cancelProviderJob } from "@/lib/qrouter/execution";
 import { apiError } from "@/lib/qrouter/http";
 import { requireScope } from "@/lib/qrouter/scopes";
@@ -17,14 +18,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       if (["processing", "completed", "failed", "cancelled"].includes(job.status)) return NextResponse.json({ error: { type: "not_cancellable", message: "This job can no longer be cancelled." } }, { status: 409 });
       job.status = "cancelled";
       job.updated_at = new Date().toISOString();
-      return NextResponse.json(job);
+      return NextResponse.json(slimJobForOwner(job as unknown as Record<string, unknown>));
     }
     const admin = createAdminClient();
     const { data: job, error } = await admin.from("jobs").select("*, quotes!job_id(total)").eq("id", id).eq("organization_id", principal.organizationId).maybeSingle();
     if (error) throw error;
     if (!job) return NextResponse.json({ error: { type: "not_found", message: "Job not found." } }, { status: 404 });
     if (["completed", "failed", "cancelled"].includes(job.status)) return NextResponse.json({ error: { type: "not_cancellable", message: "This job is already terminal." } }, { status: 409 });
-    if (job.status === "cancellation_requested") return NextResponse.json(job);
+    if (job.status === "cancellation_requested") return NextResponse.json(slimJobForOwner(job as Record<string, unknown>));
     if (["submitted", "processing"].includes(job.status) && job.provider_job_id) {
       // Clearing the deadline keeps the poller's timeout-failover branch from
       // resurrecting a job the user explicitly cancelled.
@@ -38,7 +39,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         throw cancelError;
       }
       await admin.from("job_events").insert({ job_id: id, type: "job.cancellation_requested", from_status: job.status, to_status: "cancellation_requested" });
-      return NextResponse.json({ ...job, status: "cancellation_requested" }, { status: 202 });
+      return NextResponse.json(slimJobForOwner({ ...job, status: "cancellation_requested" } as Record<string, unknown>), { status: 202 });
     }
 
     const completedAt = new Date().toISOString();
@@ -46,7 +47,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (updateError) throw updateError;
     if (!changed) return NextResponse.json({ error: { type: "conflict", message: "The job changed while cancellation was requested." } }, { status: 409 });
     await admin.from("job_events").insert({ job_id: id, type: "job.cancelled", from_status: job.status, to_status: "cancelled" });
-    return NextResponse.json({ ...job, status: "cancelled", completed_at: completedAt });
+    return NextResponse.json(slimJobForOwner({ ...job, status: "cancelled", completed_at: completedAt } as Record<string, unknown>));
   } catch (error) {
     return apiError(error);
   }

@@ -49,7 +49,12 @@ interface Job {
   };
   attempts?: Array<{ attempt: number; backend_id: string; status: string; error?: { message?: string } | null; started_at?: string | null; finished_at?: string | null }>;
   events?: Array<{ type?: string; from_status?: string; to_status?: string; created_at?: string; payload?: Record<string, unknown> }>;
-  result?: { counts?: Record<string, number> };
+  result?: {
+    counts?: Record<string, number>;
+    probabilities?: Record<string, number>;
+    shots?: number;
+    metadata?: Record<string, unknown>;
+  };
   error?: { message?: string };
   created_at: string;
   updated_at?: string | null;
@@ -115,7 +120,7 @@ const TaskRow = memo(function TaskRow({
       </span>
       <span>
         <b>{backendLabel(job.selected_backend_id)}</b>
-        <small>{job.analysis ? `${job.analysis.qubits}q · ${job.analysis.depth} depth` : "Analyzing"}</small>
+        <small>{job.analysis ? `${job.analysis.qubits}q · ${job.analysis.depth} depth · ${job.shots.toLocaleString()} shots` : "Analyzing"}</small>
       </span>
       <span>
         {new Date(job.created_at).toLocaleDateString()}
@@ -163,11 +168,15 @@ const TaskInspector = memo(function TaskInspector({
         events={job.events}
         attempts={job.attempts}
         counts={job.result?.counts}
+        result={job.result}
         error={job.error?.message}
         jobId={job.id}
         jobStatus={job.status}
         shots={job.shots}
         qubits={job.analysis?.qubits}
+        durationMs={elapsedMs(job)}
+        createdAt={job.created_at}
+        completedAt={job.completed_at}
         phase={job.status === "failed" || job.status === "cancelled" ? "failed" : job.status === "completed" ? "done" : !isTerminal(job.status) ? "running" : "ready"}
       />
       <div className="task-encoding-actions">

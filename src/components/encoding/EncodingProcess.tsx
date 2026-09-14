@@ -1,7 +1,9 @@
 "use client";
 
 import { memo, useMemo, useState, type KeyboardEvent, type ReactNode, type SyntheticEvent } from "react";
+import dynamic from "next/dynamic";
 import { Check, ChevronRight, Loader2, X } from "lucide-react";
+import type { JobResultView } from "@/components/results/JobResultsPanel";
 import { overlayExecute } from "@/lib/qrouter/encoding/stages";
 import {
   bitOrderLabel,
@@ -17,6 +19,20 @@ import { formatPayloadBytes, type EncodingPreviewInput } from "@/lib/qrouter/enc
 import type { EncodingStage, EncodingTrace } from "@/lib/qrouter/encoding/types";
 import { getBackend } from "@/lib/qrouter/catalog";
 import { useEncodingPreview } from "@/components/encoding/useEncodingPreview";
+
+const JobResultsPanel = dynamic(
+  () => import("@/components/results/JobResultsPanel").then((mod) => mod.JobResultsPanel),
+  {
+    loading: () => (
+      <div className="jr-empty pending" role="status">
+        <Loader2 className="spin" size={16} />
+        <b>Loading results</b>
+        <p>Opening the stored report for this job.</p>
+      </div>
+    ),
+    ssr: false,
+  },
+);
 
 export { overlayExecute };
 
@@ -461,40 +477,69 @@ function TimelinePane({ events, attempts }: { events?: JobEvent[]; attempts?: Jo
   );
 }
 
-const RESULT_CAP = 24;
-
 function ResultPane({
-  counts,
-  error,
   jobId,
+  status,
+  backendId,
+  qubits,
+  depth,
+  shots,
+  cost,
+  durationMs,
+  createdAt,
+  completedAt,
+  result,
+  encoding,
+  transpilation,
+  error,
 }: {
-  counts?: Record<string, number>;
-  error?: string;
   jobId?: string;
+  status?: string;
+  backendId?: string;
+  qubits?: number;
+  depth?: number;
+  shots?: number;
+  cost?: number | null;
+  durationMs?: number | null;
+  createdAt?: string;
+  completedAt?: string | null;
+  result?: JobResultView | null;
+  encoding?: EncodingTrace;
+  transpilation?: CompileMetrics;
+  error?: string;
 }) {
-  if (counts && Object.keys(counts).length) {
-    const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-    const shown = entries.slice(0, RESULT_CAP);
-    const max = Math.max(...shown.map(([, count]) => count), 1);
+  if (!jobId) {
     return (
-      <div className="enc-pane">
-        <div className="mini-counts">
-          {shown.map(([state, count]) => (
-            <div key={state}>
-              <code>|{state}⟩</code>
-              <i style={{ width: `${Math.max(4, (count / max) * 100)}%` }} />
-              <b>{count}</b>
-            </div>
-          ))}
-        </div>
-        {entries.length > RESULT_CAP && (
-          <p className="muted">Showing the top {RESULT_CAP} of {entries.length} states.</p>
-        )}
-        {jobId && <a className="artifact-link" href={`/api/v1/jobs/${jobId}/result`}>Download JSON</a>}
+      <div className={`jr-empty${error ? " bad" : ""}`} role="status">
+        <b>{error ? "This job did not return results" : "Waiting for results"}</b>
+        <p>{error ?? "Results appear after this job runs."}</p>
       </div>
     );
   }
-  return <p className="muted">{error ?? "Result unlocks when execution finishes."}</p>;
+  const bundle = encoding?.selected_bundle;
+  const layout = bundle?.decode_map.layout;
+  return (
+    <div className="enc-pane">
+      <JobResultsPanel
+        jobId={jobId}
+        status={status}
+        backendId={backendId}
+        backendName={backendId ? backendLabel(backendId) : undefined}
+        qubits={qubits ?? encoding?.requirements.qubits}
+        depth={depth ?? transpilation?.after.depth ?? bundle?.metrics.depth}
+        shots={shots}
+        cost={cost}
+        durationMs={durationMs}
+        createdAt={createdAt}
+        completedAt={completedAt}
+        result={result}
+        measurementMap={bundle?.decode_map.measurement_map}
+        layoutMapped={layout ? Object.keys(layout.logical_to_physical).length : null}
+        transpile={transpilation}
+        error={error}
+      />
+    </div>
+  );
 }
 
 export const EncodingDeepDive = memo(function EncodingDeepDive({
@@ -506,6 +551,7 @@ export const EncodingDeepDive = memo(function EncodingDeepDive({
   events,
   attempts,
   counts,
+  result,
   error,
   jobId,
   jobStatus,
@@ -521,6 +567,9 @@ export const EncodingDeepDive = memo(function EncodingDeepDive({
   qubits,
   phase,
   updating,
+  durationMs,
+  createdAt,
+  completedAt,
 }: {
   encoding?: EncodingTrace;
   stages: EncodingStage[];
@@ -530,6 +579,7 @@ export const EncodingDeepDive = memo(function EncodingDeepDive({
   events?: JobEvent[];
   attempts?: JobAttempt[];
   counts?: Record<string, number>;
+  result?: JobResultView | null;
   error?: string;
   jobId?: string;
   jobStatus?: string;
@@ -545,8 +595,13 @@ export const EncodingDeepDive = memo(function EncodingDeepDive({
   qubits?: number;
   phase?: EncodingPreviewInput["phase"];
   updating?: boolean;
+  durationMs?: number | null;
+  createdAt?: string;
+  completedAt?: string | null;
 }) {
-  const [tab, setTab] = useState<TabId>(error && !counts ? "result" : "route");
+  const resolvedResult = result ?? (counts ? { counts } : null);
+  const hasCounts = Boolean(resolvedResult?.counts && Object.keys(resolvedResult.counts).length);
+  const [tab, setTab] = useState<TabId>(error && !hasCounts ? "result" : hasCounts || jobStatus === "completed" ? "result" : "route");
   const selectedName = selectedId ? backendLabel(selectedId) : undefined;
   const stories = useMemo(() => {
     const ctx = { encoding, transpilation, candidates, selectedName };
@@ -612,7 +667,24 @@ export const EncodingDeepDive = memo(function EncodingDeepDive({
         {tab === "route" && <RoutePane encoding={encoding} candidates={candidates} explanation={explanation} selectedId={selectedId} />}
         {tab === "encode" && <EncodePane encoding={encoding} transpilation={transpilation} shots={shots} />}
         {tab === "timeline" && <TimelinePane events={events} attempts={attempts} />}
-        {tab === "result" && <ResultPane counts={counts} error={error} jobId={jobId} />}
+        {tab === "result" && (
+          <ResultPane
+            jobId={jobId}
+            status={jobStatus}
+            backendId={selectedId}
+            qubits={qubits}
+            depth={transpilation?.after.depth ?? encoding?.selected_bundle?.metrics.depth}
+            shots={shots}
+            cost={quoteTotal}
+            durationMs={durationMs}
+            createdAt={createdAt}
+            completedAt={completedAt}
+            result={resolvedResult}
+            encoding={encoding}
+            transpilation={transpilation}
+            error={error}
+          />
+        )}
       </div>
     </div>
   );
