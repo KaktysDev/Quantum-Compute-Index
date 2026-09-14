@@ -110,11 +110,9 @@ describe("route + compile + submit for every catalog family", () => {
     expect(resolveProviderLabel("quantum inspire")).toBe("Quantum Inspire");
   });
 
-  it.each([
-    ["qi-starmon-5", "quantum-inspire"],
-    ["xanadu-borealis", "xanadu"],
-    ["quandela-mosaiq", "quandela"],
-  ] as const)("routes a Bell circuit to %s when the backend is configured", (id) => {
+  it.each(["qi-starmon-5", "xanadu-borealis", "quandela-mosaiq"] as const)(
+    "routes a Bell circuit to %s when the backend is configured",
+    (id) => {
     const decision = routeCircuit({
       analysis, shots: 128, target: id, mode: "balanced",
       backends: withAvailable([id]),
