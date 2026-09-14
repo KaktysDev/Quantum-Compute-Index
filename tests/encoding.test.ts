@@ -33,7 +33,7 @@ import {
   stageStory,
   whyRouted,
 } from "@/lib/qrouter/encoding";
-import { qasm2ToIonqCircuit, ionqMeasurementMap, qasm2ToQasm3 } from "@/lib/qrouter/execution";
+import { qasm2ToIonqCircuit, ionqMeasurementMap, qasm2ToQasm3, submitToProvider } from "@/lib/qrouter/execution";
 import { prepareExecution } from "@/lib/qrouter/pipeline";
 import * as providerTargets from "@/lib/qrouter/providerTargets";
 import { simulateCircuit } from "@/lib/qrouter/simulator";
@@ -155,6 +155,33 @@ describe("provider wire encodings", () => {
     expect(nativeProgramFor(catalog("qi-starmon-5"), analysis.normalizedQasm2).format).toBe("cqasm-1.0");
     expect(nativeProgramFor(catalog("xanadu-borealis"), analysis.normalizedQasm2).format).toBe("photonic-dual-rail");
   });
+
+  it("decomposes Braket u3/u as rz(λ); ry(θ); rz(φ)", () => {
+    const u3 = qasm2ToQasm3(`${HEADER}qreg q[1];\nu3(0.1,0.2,0.3) q[0];`, "braket");
+    expect(u3).toMatch(/rz\(0\.3\);\s*ry\(0\.1\);\s*rz\(0\.2\)/);
+    expect(u3).not.toMatch(/\bu3\b/);
+    const u = qasm2ToQasm3(`${HEADER}qreg q[1];\nu(0.4,0.5,0.6) q[0];`, "braket");
+    expect(u).toMatch(/rz\(0\.6\);\s*ry\(0\.4\);\s*rz\(0\.5\)/);
+  });
+
+  it("puts an IonQ QIS circuit array and measurement_map in the hashed payload", () => {
+    const analysis = analyzeCircuit(BELL, "openqasm2");
+    const envelope = buildExecutionEnvelope({ source: BELL, format: "openqasm2", shots: 32, routing_mode: "balanced" });
+    const bundle = encodeForBackend({
+      envelope,
+      backend: catalog("ionq-aria-1", true),
+      analysis,
+      transpilation: null,
+      quoteBinding: "binding",
+    });
+    const payload = JSON.parse(bundle.payload) as { circuit: Array<{ gate: string }>; measurement_map: Array<{ qubit: number; clbit: number }> };
+    expect(Array.isArray(payload.circuit)).toBe(true);
+    expect(payload.circuit.map((gate) => gate.gate)).toEqual(["h", "cnot"]);
+    expect(payload.measurement_map).toEqual([
+      { qubit: 0, clbit: 0 },
+      { qubit: 1, clbit: 1 },
+    ]);
+  });
 });
 
 describe("typed decode (C1.2, D2–D4)", () => {
@@ -191,6 +218,27 @@ describe("typed decode (C1.2, D2–D4)", () => {
     const quasi = decoded.data.find((item) => item.type === "quasi");
     expect(quasi && "quasi" in quasi ? quasi.quasi : {}).toEqual({ "00": 1.2, "11": -0.2 });
     expect(decoded.provenance.synthetic.some((item) => item.field === "counts")).toBe(false);
+  });
+
+  it("treats IonQ integer key 10 as decimal ten, not a bitstring, at width 4", () => {
+    const decoded = decodeProviderResult({
+      backendId: "ionq-aria-1",
+      raw: { probabilities: { "10": 0.5, "3": 0.5 }, shots: 100 },
+      expectedShots: 100,
+      decodeMap: {
+        bit_order: "q0_left",
+        registers: [{ name: "c", width: 4, offset: 0 }],
+        measurement_map: [],
+        layout: null,
+        result_types: ["probabilities"],
+      },
+    });
+    const probs = decoded.data.find((item) => item.type === "probabilities");
+    const map = probs && "probabilities" in probs ? probs.probabilities : {};
+    // "10" → 1010 → reverse 0101; "3" → 0011 → reverse 1100.
+    // Collapsing "10" as a bitstring would have produced "0100" instead of "0101".
+    expect(map).toEqual({ "0101": 0.5, "1100": 0.5 });
+    expect(map["0100"]).toBeUndefined();
   });
 });
 
@@ -675,6 +723,37 @@ describe("encoding preview plan", () => {
     expect(quoteOverlayApplies("ibm-brisbane", "auto")).toBe(false);
     expect(quoteOverlayApplies(null, "auto")).toBe(false);
     expect(quoteOverlayApplies(undefined, "qci-aer-gpu")).toBe(false);
+  });
+});
+
+describe("hashed bundle submit", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    delete process.env.IONQ_API_KEY;
+  });
+
+  it("submitToProvider ionq with a bundle uses circuit from the payload", async () => {
+    process.env.IONQ_API_KEY = "test-token";
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ id: "ionq-job-bundle" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const analysis = analyzeCircuit(BELL, "openqasm2");
+    const circuit = [
+      { gate: "x", target: 0 },
+      { gate: "cnot", control: 0, target: 1 },
+    ];
+    const measurement_map = [
+      { qubit: 0, clbit: 0 },
+      { qubit: 1, clbit: 1 },
+    ];
+    await expect(submitToProvider("ionq-aria-1", analysis, 64, "job-bundle", {
+      media_type: "application/json",
+      payload: JSON.stringify({ circuit, measurement_map }),
+    })).resolves.toMatchObject({ providerJobId: "ionq-job-bundle" });
+    const body = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body)) as {
+      input: { circuit: unknown };
+    };
+    expect(body.input.circuit).toEqual(circuit);
   });
 });
 

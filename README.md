@@ -132,7 +132,7 @@ contract is published at `/openapi.json`.
 - IBM uses a live `BackendV2` target, QPY handoff, and the official Qiskit Runtime `SamplerV2` client.
 - IonQ uses the v0.4 QIS API directly, with Braket as the configured fallback.
 - Amazon SV1 and IQM Garnet use Braket; Garnet connectivity comes from current device capabilities before routing.
-- Quantum Inspire encodes OpenQASM to cQASM 1.0 and submits through `QI_EXECUTION_URL` when set, otherwise the Quantum Inspire REST API.
+- Quantum Inspire encodes OpenQASM to cQASM 1.0 (SWAP-routed onto the Starmon-5 plus map) and submits through `QI_EXECUTION_URL` when set, otherwise the Quantum Inspire REST API.
 - Xanadu and Quandela encode gate-model OpenQASM into a dual-rail photonic program and submit it through the configured native-input execution bridge. Without that bridge they are credential-gated, not silently translated.
 
 ### Production checklist

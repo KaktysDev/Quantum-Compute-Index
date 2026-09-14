@@ -23,9 +23,9 @@ const DISMISS_KEY = "qrouter.getStartedDismissed";
 // as documentation pinned above an empty chat — the point is orientation, and
 // orientation is three nouns and a promise, not three paragraphs.
 const STEPS = [
-  { icon: GitBranch, title: "Point at a repo", body: "Use a URL or connected repo name." },
-  { icon: FileCode2, title: "Say what to run", body: "Plain language, or raw OpenQASM." },
-  { icon: ShieldCheck, title: "Approve the quote", body: "Nothing runs until you confirm." },
+  { icon: GitBranch, title: "Bring a circuit", body: "A connected repo, a GitHub URL, or paste OpenQASM." },
+  { icon: FileCode2, title: "Say what to run", body: "Shots, a backend, or a starter prompt." },
+  { icon: ShieldCheck, title: "Confirm the quote", body: "Nothing runs until you approve it." },
 ];
 
 export default function GetStartedPanel({ onDismissed }: { onDismissed?: () => void }) {

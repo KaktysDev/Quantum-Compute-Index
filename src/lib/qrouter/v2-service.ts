@@ -8,7 +8,7 @@ import { cancelProviderJob } from "./execution";
 import { prepareExecution } from "./pipeline";
 import { loadRoutingContext } from "./routingContext";
 import { assertTargetAllowedV2, backendsForPrincipal } from "./scopes";
-import { slimRouteDecision } from "./encoding/public";
+import { slimAnalysis, slimError, slimRouteDecision } from "./encoding/public";
 import { publicTranspilation } from "./transpiler";
 import type { InputFormat } from "./types";
 import { normalizeProviderResult } from "./results";
@@ -75,7 +75,7 @@ function circuitResource(row: DbRow): CircuitResource {
   return {
     id: String(row.id), organization_id: String(row.organization_id), name: row.name == null ? null : String(row.name),
     format: (row.input_format ?? row.format) === "openqasm3" ? "openqasm3" : "openqasm2", source_hash: String(row.source_hash),
-    analysis: (row.analysis ?? {}) as Record<string, unknown>, created_at: String(row.created_at),
+    analysis: slimAnalysis((row.analysis ?? {}) as Record<string, unknown>), created_at: String(row.created_at),
     expires_at: row.expires_at == null ? null : String(row.expires_at), released_at: row.released_at == null ? null : String(row.released_at),
   };
 }
@@ -84,9 +84,9 @@ function executionSummary(row: DbRow, quote?: DbRow) {
   return {
     id: row.id, key: row.execution_key, status: row.status, target: row.target, selected_backend_id: row.selected_backend_id,
     shots: row.shots, routing_mode: row.routing_mode,
-    analysis: row.analysis,
+    analysis: slimAnalysis(row.analysis),
     route_decision: slimRouteDecision(row.route_decision),
-    error: row.error, result_available: row.status === "completed", created_at: row.created_at,
+    error: slimError(row.error), result_available: row.status === "completed", created_at: row.created_at,
     updated_at: row.updated_at, completed_at: row.completed_at,
     ...(quote ? { quote } : {}),
   };

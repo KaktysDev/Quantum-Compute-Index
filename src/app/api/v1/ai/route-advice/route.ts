@@ -8,9 +8,11 @@ import { apiError } from "@/lib/qrouter/http";
 import { prepareExecution } from "@/lib/qrouter/pipeline";
 import { routeCircuit } from "@/lib/qrouter/route";
 import { loadRoutingContext } from "@/lib/qrouter/routingContext";
-import { publicEncoding, slimTranspilation } from "@/lib/qrouter/encoding";
+import { publicEncoding, slimRouteDecision, slimTranspilation } from "@/lib/qrouter/encoding";
+import { assertTargetAllowed, backendsForPrincipal } from "@/lib/qrouter/scopes";
 import { publicTranspilation } from "@/lib/qrouter/transpiler";
 import { createJobSchema } from "@/lib/qrouter/validation";
+import { redactSecrets } from "@/lib/security/log";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +20,7 @@ const adviceSchema = createJobSchema.extend({
   question: z.string().trim().max(600).optional(),
 });
 
-function publicCandidates(decision: ReturnType<typeof routeCircuit>) {
+function publicCandidates(decision: { candidates: ReturnType<typeof routeCircuit>["candidates"] }) {
   return decision.candidates.slice(0, 6).map((candidate) => ({
     backend: {
       id: candidate.backend.id,
@@ -69,7 +71,7 @@ async function explainRoute(prompt: unknown, fallback: string, signal: AbortSign
       });
       return { advice: result.content, model: result.model, provider: "gemini", usage: result.usage, warnings };
     } catch (error) {
-      warnings.push(error instanceof Error ? error.message : "Gemini commentary failed.");
+      warnings.push(error instanceof Error ? redactSecrets(error.message) : "Gemini commentary failed.");
     }
   }
 
@@ -91,7 +93,7 @@ async function explainRoute(prompt: unknown, fallback: string, signal: AbortSign
         warnings,
       };
     } catch (error) {
-      warnings.push(error instanceof Error ? error.message : "Optional AI commentary failed.");
+      warnings.push(error instanceof Error ? redactSecrets(error.message) : "Optional AI commentary failed.");
     }
   }
 
@@ -108,8 +110,9 @@ export async function POST(request: Request) {
     const input = parsed.data;
     const analysis = analyzeCircuit(input.circuit, input.format);
     const { snapshot, backends } = await loadRoutingContext(principal.demo);
+    assertTargetAllowed(principal, input.target, backends);
     const prepared = await prepareExecution({
-      backends,
+      backends: backendsForPrincipal(principal, backends),
       analysis,
       shots: input.shots,
       target: input.target,
@@ -121,7 +124,8 @@ export async function POST(request: Request) {
       source: input.circuit,
       format: input.format,
     });
-    const { decision, quote } = prepared;
+    const { quote } = prepared;
+    const decision = slimRouteDecision(prepared.decision);
     const candidates = publicCandidates(decision);
 
     const prompt = {

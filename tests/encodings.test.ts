@@ -286,8 +286,8 @@ describe("catalog adapter coverage", () => {
         expect(JSON.parse(bundle.payload)).toMatchObject({ format: "photonic-dual-rail", qubits: 2, modes: 4 });
       }
       if (backend.provider === "quantum-inspire") {
-        expect(bundle.payload).toMatch(/^version 1\.0\nqubits 2\n/m);
-        expect(bundle.payload).toContain("CNOT q[0], q[1]");
+        expect(bundle.payload).toMatch(/^version 1\.0\nqubits \d+\n/m);
+        expect(bundle.payload).toContain("CNOT");
       }
     }
   });

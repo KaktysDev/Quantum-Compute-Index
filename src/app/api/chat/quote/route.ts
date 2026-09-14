@@ -9,7 +9,8 @@ import { resolvePrincipal } from "@/lib/qrouter/auth";
 import { apiError } from "@/lib/qrouter/http";
 import { prepareExecution } from "@/lib/qrouter/pipeline";
 import { loadRoutingContext } from "@/lib/qrouter/routingContext";
-import { publicEncoding, slimTranspilation } from "@/lib/qrouter/encoding";
+import { publicEncoding, slimAnalysis, slimRouteDecision, slimTranspilation } from "@/lib/qrouter/encoding";
+import { assertTargetAllowed, backendsForPrincipal } from "@/lib/qrouter/scopes";
 import { publicTranspilation } from "@/lib/qrouter/transpiler";
 import { createJobSchema } from "@/lib/qrouter/validation";
 
@@ -29,8 +30,9 @@ export async function POST(request: Request) {
     const analysis = analyzeCircuit(input.circuit, input.format);
 
     const { snapshot, backends } = await loadRoutingContext(principal.demo);
+    assertTargetAllowed(principal, input.target, backends);
     const prepared = await prepareExecution({
-      backends,
+      backends: backendsForPrincipal(principal, backends),
       analysis,
       shots: input.shots,
       target: input.target,
@@ -42,7 +44,8 @@ export async function POST(request: Request) {
       source: input.circuit,
       format: input.format,
     });
-    const { decision, quote } = prepared;
+    const { quote } = prepared;
+    const decision = slimRouteDecision(prepared.decision);
 
     return NextResponse.json({
       analysis: {
@@ -53,7 +56,7 @@ export async function POST(request: Request) {
         complexity: analysis.complexity,
         workloadKind: analysis.workloadKind,
       },
-      compiledAnalysis: prepared.executionAnalysis,
+      compiledAnalysis: slimAnalysis(prepared.executionAnalysis),
       transpilation: slimTranspilation(publicTranspilation(prepared.transpilation)),
       decision: {
         selected: {

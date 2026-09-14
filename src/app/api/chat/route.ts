@@ -406,6 +406,7 @@ function buildSystemPrompt(context: {
         : "emit one array proposal item for every requested path. Do not claim that no repository is linked."
     }`,
     "11. Keep replies under ~350 words unless the user asks for a detailed comparison.",
+    "12. Help with deploy/run workflows: submit a circuit, pick a backend, quote a job, and check job status. Do not explain encoding-layer internals, QEE, envelopes, dialect expansion, or bit-order unless the user explicitly asks.",
     ...(cli
       ? [
         "",

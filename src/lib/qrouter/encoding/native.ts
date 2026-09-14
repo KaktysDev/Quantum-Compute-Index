@@ -301,11 +301,16 @@ export type NativeProgram =
   | { format: "cqasm-1.0"; source: string; qubits: number }
   | PhotonicProgram;
 
+/**
+ * Converts already-routed core-gate OpenQASM 2 into a native program.
+ * SWAP routing is a single pass in the local transpiler (`routeToCoupling`);
+ * this function must not import coupling.ts (that cycle re-routed circuits).
+ */
 export function nativeProgramFor(backend: Pick<Backend, "id" | "provider" | "displayName">, qasm: string): NativeProgram {
   if (backend.provider === "quantum-inspire") {
-    const source = qasm2ToCqasm(qasm);
-    const qubits = Number(/^qubits\s+(\d+)/m.exec(source)?.[1] ?? 0);
-    return { format: "cqasm-1.0", source, qubits };
+    const cqasm = qasm2ToCqasm(qasm);
+    const qubits = Number(/^qubits\s+(\d+)/m.exec(cqasm)?.[1] ?? 0);
+    return { format: "cqasm-1.0", source: cqasm, qubits };
   }
   if (backend.provider === "xanadu") return qasm2ToPhotonicProgram(qasm, "xanadu-blackbird");
   if (backend.provider === "quandela") return qasm2ToPhotonicProgram(qasm, "quandela-perceval");

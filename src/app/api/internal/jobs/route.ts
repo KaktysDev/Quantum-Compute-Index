@@ -15,6 +15,7 @@ import { mapWithConcurrency } from "@/lib/qrouter/concurrency";
 import { dispatchJob, pollJob, type OrchestratedJob } from "@/lib/qrouter/dispatcher";
 import { JOB_LEASE_SECONDS } from "@/lib/qrouter/orchestration";
 import { processWebhookDeliveries } from "@/lib/qrouter/webhooks";
+import { logRedactedError } from "@/lib/security/log";
 import { authorizeCronRequest } from "@/lib/security/secrets";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
       await dispatchJob(admin, job);
       return { id: job.id, action: "dispatched" as const };
     } catch (error) {
-      console.error(`Failed to dispatch job ${job.id}`, error);
+      logRedactedError(`Failed to dispatch job ${job.id}`, error);
       return { id: job.id, action: "dispatch_failed" as const };
     }
   });
@@ -46,7 +47,7 @@ export async function POST(request: Request) {
       await pollJob(admin, job);
       return { id: job.id, action: "polled" as const };
     } catch (error) {
-      console.error(`Failed to poll job ${job.id}`, error);
+      logRedactedError(`Failed to poll job ${job.id}`, error);
       return { id: job.id, action: "poll_failed" as const };
     }
   });

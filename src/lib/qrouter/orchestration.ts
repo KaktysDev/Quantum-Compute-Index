@@ -1,4 +1,5 @@
 import type { RouteCandidate, RouteDecision } from "./types";
+import { redactSecrets } from "@/lib/security/log";
 
 export const JOB_LEASE_SECONDS = 120;
 
@@ -36,5 +37,6 @@ export function nextAttemptCandidate(input: {
 }
 
 export function orchestrationError(error: unknown, fallback = "Provider execution failed.") {
-  return error instanceof Error && error.message ? error.message : fallback;
+  const message = error instanceof Error && error.message ? error.message : fallback;
+  return redactSecrets(message);
 }
