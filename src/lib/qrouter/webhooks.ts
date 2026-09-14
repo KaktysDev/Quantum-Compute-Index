@@ -4,6 +4,7 @@ import { isIP } from "net";
 import { request as insecureRequest, type IncomingMessage } from "node:http";
 import { request as secureRequest } from "node:https";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
+import { slimResult } from "@/lib/qrouter/encoding/public";
 import { redactError } from "@/lib/security/log";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -48,6 +49,30 @@ export function encryptWebhookSecret(secret: string) {
 }
 
 /** Maps a stored delivery error onto the closed vocabulary; anything else collapses to the catch-all. */
+/** Customer webhook bodies must not carry circuit source or raw provider dumps. */
+export function slimWebhookPayload<T>(value: T): T {
+  if (Array.isArray(value)) return value.map((item) => slimWebhookPayload(item)) as T;
+  if (!value || typeof value !== "object") return value;
+  const row = { ...(value as Record<string, unknown>) };
+  delete row.source;
+  delete row.payload;
+  delete row.normalizedQasm2;
+  delete row.providerProgram;
+  delete row.providerResult;
+  if (row.result) row.result = slimResult(row.result);
+  if (row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)) {
+    const metadata = { ...(row.metadata as Record<string, unknown>) };
+    delete metadata.providerResult;
+    delete metadata.raw;
+    delete metadata.source;
+    row.metadata = metadata;
+  }
+  for (const key of ["data", "object", "job"] as const) {
+    if (row[key] && typeof row[key] === "object") row[key] = slimWebhookPayload(row[key]);
+  }
+  return row as T;
+}
+
 export function webhookFailureReason(stored: unknown): WebhookFailureReason | null {
   if (typeof stored !== "string" || !stored) return null;
   const known = (WEBHOOK_FAILURE_REASONS as readonly string[]).includes(stored);
@@ -301,7 +326,7 @@ export async function processWebhookDeliveries(limit = 25) {
       if (endpointError) throw endpointError;
       if (!endpoint?.enabled || !endpoint.signing_secret_encrypted) throw new WebhookDeliveryError("endpoint_disabled", "Webhook endpoint is disabled or missing.");
       const target = await resolveWebhookTarget(endpoint.url);
-      const body = JSON.stringify(delivery.payload);
+      const body = JSON.stringify(slimWebhookPayload(delivery.payload));
       const timestamp = Math.floor(Date.now() / 1000);
       const secret = decryptSecret(endpoint.signing_secret_encrypted);
       const signature = createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex");

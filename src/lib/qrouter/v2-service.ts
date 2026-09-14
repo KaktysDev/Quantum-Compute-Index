@@ -8,7 +8,7 @@ import { cancelProviderJob } from "./execution";
 import { prepareExecution } from "./pipeline";
 import { loadRoutingContext } from "./routingContext";
 import { assertTargetAllowedV2, backendsForPrincipal } from "./scopes";
-import { slimRouteDecision } from "./encoding/public";
+import { slimAnalysis, slimError, slimResult, slimRouteDecision } from "./encoding/public";
 import { publicTranspilation } from "./transpiler";
 import type { InputFormat } from "./types";
 import { normalizeProviderResult } from "./results";
@@ -35,11 +35,34 @@ function groupStatusFrom(statuses: string[]): V2GroupStatus {
   return "cancelled";
 }
 
+function slimPublicExecution<T extends Record<string, unknown>>(execution: T): T {
+  const next: Record<string, unknown> = { ...execution };
+  if (next.analysis) next.analysis = slimAnalysis(next.analysis);
+  if (next.route_decision) next.route_decision = slimRouteDecision(next.route_decision);
+  if (next.error) next.error = slimError(next.error);
+  if (next.result) next.result = slimResult(next.result);
+  return next as T;
+}
+
+function publicResultJson(raw: unknown): string {
+  try {
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new V2ApiError(409, "result_not_available", "Result is not available.");
+    }
+    return JSON.stringify(slimResult(parsed));
+  } catch (error) {
+    if (error instanceof V2ApiError) throw error;
+    throw new V2ApiError(409, "result_not_available", "Result is not available.");
+  }
+}
+
 function groupResource(group: DemoGroup): ExecutionGroup {
   return {
     id: group.id, circuit_id: group.circuit_id, organization_id: group.organization_id, status: group.status,
-    metadata: group.metadata, executions: group.executions, created_at: group.created_at,
-    updated_at: group.updated_at, completed_at: group.completed_at, error: group.error,
+    metadata: group.metadata, executions: group.executions.map((execution) => slimPublicExecution(execution)),
+    created_at: group.created_at, updated_at: group.updated_at, completed_at: group.completed_at,
+    error: slimError(group.error),
   };
 }
 
@@ -81,15 +104,15 @@ function circuitResource(row: DbRow): CircuitResource {
 }
 
 function executionSummary(row: DbRow, quote?: DbRow) {
-  return {
+  return slimPublicExecution({
     id: row.id, key: row.execution_key, status: row.status, target: row.target, selected_backend_id: row.selected_backend_id,
     shots: row.shots, routing_mode: row.routing_mode,
     analysis: row.analysis,
-    route_decision: slimRouteDecision(row.route_decision),
+    route_decision: row.route_decision,
     error: row.error, result_available: row.status === "completed", created_at: row.created_at,
     updated_at: row.updated_at, completed_at: row.completed_at,
     ...(quote ? { quote } : {}),
-  };
+  });
 }
 
 async function existingCircuit(principal: Principal, idempotencyKey: string, requestHash: string) {
@@ -445,7 +468,7 @@ export async function getExecutionArtifact(principal: Principal, executionId: st
     const job = demoJobs.get(executionId);
     if (!job || job.organization_id !== principal.organizationId) throw new V2ApiError(404, "execution_not_found", "Execution not found.");
     if (kind === "result" && !job.result) throw new V2ApiError(409, "result_not_available", "Result is not available.");
-    if (kind === "result") return JSON.stringify(job.result);
+    if (kind === "result") return publicResultJson(job.result);
     const transpilation = job.analysis.transpilation;
     const artifact = transpilation?.artifactQasm ?? transpilation?.qasm ?? job.analysis.normalizedQasm2;
     if (!artifact) throw new V2ApiError(409, "transpiled_not_available", "Transpiled circuit is not available.");
@@ -456,7 +479,7 @@ export async function getExecutionArtifact(principal: Principal, executionId: st
   if (!data) throw new V2ApiError(404, "execution_not_found", "Execution not found.");
   const artifact = await loadArtifact(executionId, kind);
   if (!artifact) throw new V2ApiError(409, `${kind}_not_available`, `${kind === "result" ? "Result" : "Transpiled circuit"} is not available.`);
-  return artifact;
+  return kind === "result" ? publicResultJson(artifact) : artifact;
 }
 
 export async function cancelExecution(principal: Principal, executionId: string) {

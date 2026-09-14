@@ -459,6 +459,23 @@ describe("console encoding copy + client slimming", () => {
     expect(row).not.toHaveProperty("error");
     expect(row.analysis).not.toHaveProperty("encoding");
   });
+
+  it("strips providerResult and secrets from owner-visible results", () => {
+    const owner = slimJobForOwner({
+      id: "job-result",
+      source: "OPENQASM 2.0;\nqreg q[1];",
+      result: {
+        counts: { "0": 10 },
+        metadata: { providerResult: { raw: "OPENQASM 2.0;" }, bit_order: "q0_right" },
+      },
+      error: { message: "Bearer sk-secret failed", stack: "IBM_QUANTUM_TOKEN=abc" },
+    });
+    expect(owner.source).toBe("OPENQASM 2.0;\nqreg q[1];");
+    expect(owner.result).toEqual({ counts: { "0": 10 }, metadata: { bit_order: "q0_right" } });
+    expect(JSON.stringify(owner.result)).not.toContain("providerResult");
+    expect(owner.error).toEqual({ message: "Bearer [redacted] failed" });
+    expect(owner.error).not.toHaveProperty("stack");
+  });
 });
 
 function fakeTranspile(backend: Backend, qasm: string): TranspilationResult {

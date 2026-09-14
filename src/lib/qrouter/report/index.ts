@@ -1,0 +1,11 @@
+export { computeAnalytics, asNumericMap, countsAreSynthetic, HISTOGRAM_CAP, TOP_CAP } from "./analytics";
+export { answerReportQuestion, ASK_SYSTEM_PROMPT, QUESTION_MAX } from "./ask";
+export { assembleJobReport } from "./assemble";
+export { getCachedPdf, getCachedNarrative, reportCacheKey, resetReportCaches, setCachedPdf } from "./cache";
+export { aiPayloadFrom, buildReportContext, jobMetaFrom, resultHashOf } from "./context";
+export { resultCsv } from "./csv";
+export { loadOwnedJob, loadOwnedResult, notFound, parseResultJson, RESULT_JSON_MAX_BYTES } from "./load";
+export { deterministicNarrative, generateReportNarrative, REPORT_SYSTEM_PROMPT } from "./narrative";
+export { buildReportPdf, pdfFileName } from "./pdf";
+export { REPORT_SCHEMA } from "./types";
+export type { JobReportContext, ReportAskTurn, ReportNarrative, ResultAnalytics } from "./types";

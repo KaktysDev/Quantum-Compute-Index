@@ -1,7 +1,9 @@
 import { createHmac } from "crypto";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as listWebhookDeliveries } from "@/app/api/v1/webhooks/deliveries/route";
-import { isPubliclyRoutableAddress, processWebhookDeliveries, validateWebhookDestination, WEBHOOK_FAILURE_REASONS, type WebhookFailureReason } from "@/lib/qrouter/webhooks";
+import { isPubliclyRoutableAddress, processWebhookDeliveries, slimWebhookPayload, validateWebhookDestination, WEBHOOK_FAILURE_REASONS, type WebhookFailureReason } from "@/lib/qrouter/webhooks";
 
 // Everything below is stubbed before the module graph loads: these tests must
 // never open a socket, resolve a name, or reach Supabase.
@@ -117,11 +119,11 @@ type DeliveryUpdate = {
 
 const logs: unknown[][] = [];
 
-function stubDeliveryQueue(endpoint: { url: string; enabled?: boolean }) {
+function stubDeliveryQueue(endpoint: { url: string; enabled?: boolean }, payload: Record<string, unknown> = { id: "evt_test", type: "job.completed" }) {
   const updates: DeliveryUpdate[] = [];
   supabase.use({
     rpc: async () => ({
-      data: [{ id: "delivery-under-test", endpoint_id: "endpoint-under-test", payload: { id: "evt_test", type: "job.completed" }, attempt: 0 }],
+      data: [{ id: "delivery-under-test", endpoint_id: "endpoint-under-test", payload, attempt: 0 }],
       error: null,
     }),
     from: (table: string) => (table === "webhook_endpoints"
@@ -338,5 +340,100 @@ describe("webhook SSRF defences", () => {
     expect(Object.keys(payload.data[0])).toEqual(Object.keys(rows[0]));
     expect(payload.data[0]).toMatchObject({ id: "delivery-1", attempt: 4, response_status: null, webhook_endpoints: { url: "https://hooks.example.com/hooks" } });
     expect(JSON.stringify(payload)).not.toMatch(/ECONNREFUSED|169\.254/);
+  });
+});
+
+const LEAK_KEYS = ["source", "payload", "providerResult", "providerProgram", "normalizedQasm2"] as const;
+
+const leakyJobCompleted = {
+  id: "evt_leaky",
+  type: "job.completed",
+  source: "OPENQASM 2.0;\ninclude \"qelib1.inc\";",
+  payload: { circuit: "OPENQASM 2.0;" },
+  providerProgram: "OPENQASM 2.0;\nqreg q[2];",
+  normalizedQasm2: "OPENQASM 2.0;\ninclude \"qelib1.inc\";",
+  providerResult: { raw: "OPENQASM 2.0;" },
+  data: {
+    object: {
+      id: "job-leaky",
+      status: "completed",
+      result: {
+        counts: { "00": 512, "11": 488 },
+        source: "OPENQASM 2.0;\nqreg q[2];",
+        payload: { native: "OPENQASM 2.0;" },
+        providerProgram: "OPENQASM 2.0;",
+        normalizedQasm2: "OPENQASM 2.0;",
+        metadata: { providerResult: { raw: "OPENQASM 2.0;" }, bit_order: "q0_right" },
+      },
+    },
+  },
+};
+
+function functionBody(sql: string, name: string) {
+  const start = sql.indexOf(`create or replace function public.${name}(`);
+  expect(start, `${name} is missing from the migration`).toBeGreaterThan(-1);
+  const bodyStart = sql.indexOf("$$", start);
+  const bodyEnd = sql.indexOf("$$", bodyStart + 2);
+  return sql.slice(bodyStart + 2, bodyEnd);
+}
+
+describe("webhook payload leak strip", () => {
+  beforeEach(() => {
+    network.reset();
+    dns.answers.clear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("slimWebhookPayload drops source, payload, providerResult, providerProgram, and normalizedQasm2", () => {
+    const slimmed = slimWebhookPayload(leakyJobCompleted);
+
+    for (const key of LEAK_KEYS) {
+      expect(slimmed, key).not.toHaveProperty(key);
+    }
+    expect(slimmed.data.object.result).not.toHaveProperty("source");
+    expect(slimmed.data.object.result).not.toHaveProperty("payload");
+    expect(slimmed.data.object.result).not.toHaveProperty("providerProgram");
+    expect(slimmed.data.object.result).not.toHaveProperty("normalizedQasm2");
+    expect(slimmed.data.object.result.metadata).not.toHaveProperty("providerResult");
+    expect(slimmed.data.object.result).toMatchObject({
+      counts: { "00": 512, "11": 488 },
+      metadata: { bit_order: "q0_right" },
+    });
+    expect(JSON.stringify(slimmed)).not.toMatch(/OPENQASM|providerResult|providerProgram|normalizedQasm2/);
+  });
+
+  it("processWebhookDeliveries posts a body without circuit source or provider dumps", async () => {
+    dns.answers.set("hooks.example.com", ["93.184.216.34"]);
+    network.respondWith({ status: 200 });
+    stubDeliveryQueue({ url: "https://hooks.example.com/hooks" }, leakyJobCompleted);
+    await processWebhookDeliveries(1);
+
+    expect(network.calls).toHaveLength(1);
+    const body = JSON.parse(network.calls[0].body) as Record<string, unknown>;
+    for (const key of LEAK_KEYS) {
+      expect(body, key).not.toHaveProperty(key);
+    }
+    expect(JSON.stringify(body)).not.toMatch(/OPENQASM|providerResult|providerProgram|normalizedQasm2/);
+    expect(body).toMatchObject({
+      id: "evt_leaky",
+      type: "job.completed",
+      data: { object: { id: "job-leaky", status: "completed", result: { counts: { "00": 512, "11": 488 }, metadata: { bit_order: "q0_right" } } } },
+    });
+  });
+
+  it("finalize_qrouter_job jsonb-subtracts source/payload/providerResult and never embeds current_job.source", () => {
+    const qrouter = readFileSync(fileURLToPath(new URL("../supabase/qrouter.sql", import.meta.url)), "utf8");
+    const schema = readFileSync(fileURLToPath(new URL("../supabase/schema.sql", import.meta.url)), "utf8");
+    const strip = /coalesce\(p_result,'\{\}'::jsonb\) - 'source' - 'payload' #- '\{metadata,providerResult\}'/;
+
+    for (const [name, sql] of [["qrouter.sql", qrouter], ["schema.sql", schema]] as const) {
+      const body = functionBody(sql, "finalize_qrouter_job");
+      expect(body, `${name} no longer strips webhook result leaks`).toMatch(strip);
+      expect(body, `${name} embeds current_job.source in the webhook payload`).not.toMatch(/current_job\.source/);
+    }
   });
 });

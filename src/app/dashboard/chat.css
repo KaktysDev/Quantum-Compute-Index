@@ -560,10 +560,39 @@
 .qc-run-result { padding: 0.75rem 0.9rem; border-top: 1px solid var(--qr-line); }
 .qc-run-result > p { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin: 0; color: var(--qr-text); font-size: 0.725rem; }
 .qc-run-result > p > svg { color: var(--qr-success); }
-.qc-run-result > a { display: inline-block; margin-top: 0.6rem; color: var(--qr-text); font-size: 0.68rem; text-decoration: underline; text-underline-offset: 2px; }
+.qc-run-empty { margin: 0.65rem 0 0; color: var(--qr-dim); font-size: 0.66rem; }
+.qc-run-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 0.85rem;
+  margin-top: 0.7rem;
+}
+.qc-run-downloads { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.qc-run-downloads a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 28px;
+  padding: 0 0.55rem;
+  border: 1px solid var(--qr-line-strong);
+  border-radius: var(--qr-radius-sm);
+  background: var(--qr-panel);
+  color: var(--qr-text);
+  font-size: 0.62rem;
+  font-weight: 550;
+  text-decoration: none;
+}
+.qc-run-downloads a:hover { background: var(--qr-hover); }
+.qc-run-actions > a {
+  color: var(--qr-text);
+  font-size: 0.68rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .qc-counts { display: grid; gap: 0.3rem; margin-top: 0.7rem; }
-.qc-counts > div { display: grid; grid-template-columns: 52px 1fr 48px; align-items: center; gap: 0.5rem; }
-.qc-counts code { padding: 0; border: 0; background: transparent; color: var(--qr-muted); font-size: 0.64rem; }
+.qc-counts > div { display: grid; grid-template-columns: minmax(4.5rem, 28%) 1fr 3.2rem; align-items: center; gap: 0.5rem; }
+.qc-counts code { overflow: hidden; padding: 0; border: 0; background: transparent; color: var(--qr-muted); font-size: 0.64rem; text-overflow: ellipsis; white-space: nowrap; }
 .qc-counts i { display: block; height: 7px; border-radius: 3px; background: var(--qr-accent); transform-origin: left; animation: qc-grow 480ms ease; }
 .qc-counts b { color: var(--qr-text); font: 600 0.64rem var(--qr-mono); font-variant-numeric: tabular-nums; text-align: right; }
 @keyframes qc-grow { from { transform: scaleX(0); } }
