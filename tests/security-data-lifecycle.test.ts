@@ -55,8 +55,9 @@ describe("v2 circuit release purges every copy of the customer's circuit", () =>
       executions: [{ key: "only", target: "qci-aer-gpu", shots: 32, routing_mode: "balanced", optimization_level: 2, failover: false, max_attempts: 1, timeout_seconds: 60, constraints: {} }],
     }, "purge-job", "request-purge");
 
-    // Sanity: the circuit really is recoverable before the release.
-    const before = allStrings(await getExecutionGroup(owner, group.id));
+    // Sanity: the circuit is still stored internally before release.
+    // Public GET /api/v2/jobs/{id} is slimmed and must not carry QASM.
+    const before = allStrings([...demoV2Circuits.values(), ...demoJobs.values()]);
     expect(before.some((value) => value.includes("OPENQASM"))).toBe(true);
 
     await releaseCircuitResource(owner, circuit.id);

@@ -110,7 +110,7 @@ function fixtureJob(id: string, organizationId = "demo"): StoredJob {
     created_at: "2026-09-14T00:00:00.000Z",
     updated_at: "2026-09-14T00:00:02.000Z",
     completed_at: "2026-09-14T00:00:02.000Z",
-  };
+  } as unknown as StoredJob;
 }
 
 function seedJob(job: StoredJob) {
