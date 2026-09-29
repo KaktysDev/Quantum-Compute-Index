@@ -4,10 +4,6 @@
 // each deployment created.
 
 import Link from "next/link";
-<<<<<<< Updated upstream
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, Clock3, FileCode2, GitBranch, Loader2, Play, RefreshCw, Route, Terminal } from "lucide-react";
-=======
 import { Loader2, Play } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { EmptyState, InlineAlert, Panel, StatusBadge, Timestamp } from "@/components/console/ui";
@@ -16,7 +12,6 @@ import { useAdvance } from "@/lib/client/use-advance";
 import { onVisibleInterval } from "@/lib/client/visible-interval";
 import { BACKENDS } from "@/lib/qrouter/catalog";
 import { costView, formatUsd } from "@/lib/qrouter/cost";
->>>>>>> Stashed changes
 import type { ProjectSettings, QRouterProject, RepositoryInspection } from "@/lib/qrouter/repositories";
 import { isSettled } from "@/lib/qrouter/status";
 
@@ -96,17 +91,10 @@ export default function RepositoryDeployments({ requestedTarget }: { requestedTa
 
   const inFlight = deployments.some((deployment) => !isSettled(deployment.status));
   useEffect(() => {
-<<<<<<< Updated upstream
-    if (!selectedId) return;
-    const timer = window.setInterval(() => loadDeployments(selectedId), 5000);
-    return () => window.clearInterval(timer);
-  }, [loadDeployments, selectedId]);
-=======
     if (!selectedId || !inFlight) return;
     return onVisibleInterval(() => void loadDeployments(selectedId), 5000);
   }, [inFlight, loadDeployments, selectedId]);
   useAdvance(deployments, () => selectedId && void loadDeployments(selectedId));
->>>>>>> Stashed changes
 
   async function deploy(event: FormEvent) {
     event.preventDefault();

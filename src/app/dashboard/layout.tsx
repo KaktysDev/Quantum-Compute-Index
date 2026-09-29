@@ -4,10 +4,6 @@ import { checkIsAdmin } from "@/lib/admin";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { canAccessConsole, consoleDevBypassEnabled } from "@/lib/access";
-<<<<<<< Updated upstream
-import "./console.css";
-import "./chat.css";
-=======
 import "./styles/tokens.css";
 import "./styles/shell.css";
 import "./styles/primitives.css";
@@ -22,7 +18,6 @@ import "./styles/features/qci.css";
 import "./styles/features/encoding.css";
 import "./styles/features/results.css";
 import "./styles/features/run.css";
->>>>>>> Stashed changes
 
 export const dynamic = "force-dynamic";
 

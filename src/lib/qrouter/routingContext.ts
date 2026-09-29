@@ -53,3 +53,13 @@ export async function loadRoutingContext(demo: boolean) {
     backends: applyProviderHealth(withQciSnapshot(snapshot.components), health),
   };
 }
+
+/** Public backends catalog: the same snapshot and health overlay, without the admin client. */
+export async function loadPublicRoutingContext() {
+  const snapshot = sampleRoutingSnapshot(await getLatestSnapshot());
+  const health = await loadPersistedBackendHealth();
+  return {
+    snapshot,
+    backends: applyProviderHealth(withQciSnapshot(snapshot.components), health),
+  };
+}

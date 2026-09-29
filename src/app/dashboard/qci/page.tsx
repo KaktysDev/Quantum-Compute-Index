@@ -1,10 +1,5 @@
 import Link from "next/link";
-<<<<<<< Updated upstream
-import { ArrowRight, Cpu, Route, Terminal } from "lucide-react";
 import QciMap from "@/components/QciMap";
-=======
-import nextDynamic from "next/dynamic";
->>>>>>> Stashed changes
 import QciSeriesPanel from "@/components/QciSeriesPanel";
 import { EmptyState, PageHeader, Panel, Stat, StatGrid } from "@/components/console/ui";
 import { getQciView } from "@/lib/qci/v2/store";

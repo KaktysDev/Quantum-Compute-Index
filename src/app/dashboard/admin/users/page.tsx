@@ -43,15 +43,11 @@ export default async function AdminUsersPage() {
     const credit = orgId ? creditByOrg.get(orgId) : undefined;
     const usage = jobsByUser.get(profile.id);
     return {
-<<<<<<< Updated upstream
-      ...p,
-=======
       id: String(profile.id),
       email: profile.email,
       name: profile.full_name,
       company: profile.company,
       created_at: profile.created_at,
->>>>>>> Stashed changes
       balance: Number(credit?.available ?? 0),
       purchased: orgId ? purchasedByOrg.get(orgId) ?? 0 : 0,
       spent: orgId ? spendByOrg.get(orgId) ?? 0 : 0,

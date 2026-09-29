@@ -26,10 +26,6 @@ import {
   Trash2,
   Unplug,
 } from "lucide-react";
-<<<<<<< Updated upstream
-import MagnetField from "@/components/routing/MagnetField";
-=======
->>>>>>> Stashed changes
 import { fetchJsonWithRetry } from "@/lib/client/fetch-json";
 import type { QRouterProject, RepositoryInspection } from "@/lib/qrouter/repositories";
 

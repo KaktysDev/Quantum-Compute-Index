@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
 import { resolvePrincipal } from "@/lib/qrouter/auth";
 import { demoJobs } from "@/lib/qrouter/demo-store";
-<<<<<<< Updated upstream
-=======
 import { slimJobForOwner } from "@/lib/qrouter/encoding";
 import { chargedFromLedger } from "@/lib/qrouter/cost";
->>>>>>> Stashed changes
 import { apiError } from "@/lib/qrouter/http";
 import { requireScope } from "@/lib/qrouter/scopes";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -20,7 +17,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (principal.demo) {
       const job = demoJobs.get(id);
       if (!job || job.organization_id !== principal.organizationId) return NextResponse.json({ error: { type: "not_found", message: "Job not found." } }, { status: 404 });
-      return NextResponse.json(job);
+      return NextResponse.json(slimJobForOwner(job as unknown as Record<string, unknown>));
     }
     const admin = createAdminClient();
     const { data: job, error } = await admin.from("jobs").select("*").eq("id", id).eq("organization_id", principal.organizationId).maybeSingle();
@@ -32,11 +29,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       admin.from("job_attempts").select("attempt,backend_id,provider_job_id,status,error,started_at,finished_at").eq("job_id", id).order("attempt"),
       admin.from("ledger_entries").select("type,amount").eq("job_id", id).eq("organization_id", principal.organizationId),
     ]);
-<<<<<<< Updated upstream
-    return NextResponse.json({ ...job, quote, attempts, events });
-=======
     return NextResponse.json(slimJobForOwner({ ...job, quote, attempts, events, charged: chargedFromLedger(ledger) } as Record<string, unknown>));
->>>>>>> Stashed changes
   } catch (error) {
     return apiError(error);
   }
