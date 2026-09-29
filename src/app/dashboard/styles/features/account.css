@@ -1,0 +1,19 @@
+/* ── Billing and API keys ──────────────────────────────────────────────── */
+
+.amount-picker { width: max-content; }
+.amount-picker button { min-width: 64px; justify-content: center; }
+.ledger-credit { color: var(--qr-success); }
+
+.api-layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: var(--qr-space-4); align-items: start; }
+@media (max-width: 1000px) { .api-layout { grid-template-columns: 1fr; } }
+
+/* ── Support ───────────────────────────────────────────────────────────── */
+.support-layout { display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); gap: var(--qr-space-5); align-items: start; }
+.console-shell textarea.prose-input { font-family: var(--qr-sans); font-size: var(--qr-fs-base); }
+.report { display: grid; gap: var(--qr-space-2); padding: var(--qr-space-4); }
+.report-body { white-space: pre-wrap; }
+.report-reply { display: grid; gap: 4px; margin-top: var(--qr-space-2); padding: var(--qr-space-3); border-left: 2px solid var(--qr-line-strong); background: var(--qr-bg-2); }
+@media (max-width: 1000px) { .support-layout { grid-template-columns: 1fr; } }
+.report-actions { display: grid; grid-template-columns: 160px minmax(0, 1fr) auto; gap: var(--qr-space-2); margin-top: var(--qr-space-2); }
+.row-read td { color: var(--qr-muted); }
+@media (max-width: 760px) { .report-actions { grid-template-columns: 1fr; } }

@@ -78,6 +78,101 @@ export const createExecutionGroupSchema = z.object({
   }
 });
 
+// ── Lists ─────────────────────────────────────────────────────────────────
+
+const limitSchema = z.coerce.number().int().min(1).max(100).default(20);
+
+export const listJobsQuerySchema = z.object({
+  limit: limitSchema,
+  cursor: z.string().min(1).max(200).optional(),
+  status: z.string().max(200).optional().transform((value, context) => {
+    if (!value) return undefined;
+    const statuses = [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
+    if (statuses.some((status) => !(V2_GROUP_STATUSES as readonly string[]).includes(status))) {
+      context.addIssue({ code: "custom", message: "Unknown status filter." });
+      return z.NEVER;
+    }
+    return statuses as V2GroupStatus[];
+  }),
+  circuit_id: z.string().uuid().optional(),
+});
+
+export const listCircuitsQuerySchema = z.object({
+  limit: limitSchema,
+  cursor: z.string().min(1).max(200).optional(),
+  include_released: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
+});
+
+export type ListJobsQuery = Omit<z.infer<typeof listJobsQuerySchema>, "status"> & { status?: V2GroupStatus[] };
+export type ListCircuitsQuery = z.infer<typeof listCircuitsQuerySchema>;
+
+export interface ExecutionListItem {
+  id: string;
+  key: string | null;
+  status: string;
+  target: string;
+  selected_backend_id: string | null;
+  shots: number;
+  routing_mode: string;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  quote: { total: number } | null;
+  charged: number | null;
+  result_available: boolean;
+}
+
+export interface JobListItem {
+  id: string;
+  circuit_id: string;
+  circuit_name: string | null;
+  status: V2GroupStatus;
+  metadata: Record<string, string>;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  error: Record<string, unknown> | null;
+  totals: { quoted: number | null; charged: number | null };
+  executions: ExecutionListItem[];
+}
+
+export interface CircuitListItem extends CircuitResource {
+  job_count: number;
+  last_job_at: string | null;
+}
+
+export interface ListPage<T> {
+  data: T[];
+  has_more: boolean;
+  next_cursor: string | null;
+}
+
+const CURSOR_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})$/;
+const CURSOR_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Opaque keyset cursor: the last row's creation time and id. */
+export function encodeCursor(createdAt: string, id: string): string {
+  return Buffer.from(`${createdAt}|${id}`, "utf8").toString("base64url");
+}
+
+/**
+ * Returns null for anything malformed. Both parts end up inside a PostgREST
+ * filter string, so they are held to strict formats rather than escaped.
+ */
+export function decodeCursor(cursor: string): { createdAt: string; id: string } | null {
+  let decoded: string;
+  try {
+    decoded = Buffer.from(cursor, "base64url").toString("utf8");
+  } catch {
+    return null;
+  }
+  const [createdAt, id, extra] = decoded.split("|");
+  if (extra !== undefined || !createdAt || !id) return null;
+  if (!CURSOR_TIME.test(createdAt) || !CURSOR_ID.test(id) || Number.isNaN(Date.parse(createdAt))) return null;
+  return { createdAt, id };
+}
+
 export type CreateCircuitInput = z.infer<typeof createCircuitSchema>;
 export type CreateExecutionGroupInput = z.infer<typeof createExecutionGroupSchema>;
 

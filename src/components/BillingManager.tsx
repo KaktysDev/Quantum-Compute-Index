@@ -1,32 +1,17 @@
 "use client";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Billing.
-//
-// The page used to be a dead end whenever `billing_setup_complete` was false:
-// "Purchase" was disabled and the only guidance was to add a card "during
-// onboarding", which never runs twice. Two things fix that here:
-//
-//   · State is read from /api/billing/status, which reconciles the stored flag
-//     against Stripe instead of trusting a webhook that may never have fired.
-//   · The card form lives on this page, so adding or replacing a payment method
-//     never requires going back through onboarding.
-// ─────────────────────────────────────────────────────────────────────────────
+// Billing: balance, credit purchases, the saved card, and the ledger. State is
+// read from /api/billing/status, which reconciles the stored flag with Stripe,
+// and the card form lives here so a card can be added without re-onboarding.
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
-import {
-  AlertCircle,
-  Check,
-  Coins,
-  CreditCard,
-  Loader2,
-  Plus,
-  ShieldCheck,
-  Unplug,
-} from "lucide-react";
+import Link from "next/link";
+import { Loader2 } from "lucide-react";
+import { ConfirmDialog, InlineAlert, Panel, Stat, StatGrid, Timestamp } from "@/components/console/ui";
+import { formatUsd } from "@/lib/qrouter/cost";
 
 const AMOUNTS = [25, 50, 100, 250];
 
@@ -51,19 +36,12 @@ export interface LedgerEntry {
 
 const LEDGER_LABEL: Record<string, string> = {
   purchase: "Credit purchase",
-  reserve: "Reserved for job",
+  reserve: "Reserved for a run",
   release: "Reservation released",
-  charge: "Job charged",
-  refund: "Refunded",
+  charge: "Run charged",
+  refund: "Refund",
   adjustment: "Adjustment",
 };
-
-/** Green when credits arrive, red when they leave, neutral while merely held. */
-function ledgerTone(type: string) {
-  if (type === "purchase" || type === "refund" || type === "release") return "credit";
-  if (type === "charge") return "debit";
-  return "neutral";
-}
 
 function CardForm({ onSaved }: { onSaved: () => void }) {
   const stripe = useStripe();
@@ -90,12 +68,14 @@ function CardForm({ onSaved }: { onSaved: () => void }) {
   }
 
   return (
-    <form onSubmit={submit} className="stripe-form">
+    <form onSubmit={submit} className="stack">
       <PaymentElement />
-      <button className="console-primary full" disabled={busy || !stripe}>
-        {busy ? <Loader2 className="spin" size={16} /> : <Check size={15} />} Save payment method
-      </button>
-      {error && <p className="form-error">{error}</p>}
+      {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
+      <div className="form-actions">
+        <button className="btn btn-primary" disabled={busy || !stripe}>
+          {busy ? <Loader2 className="spin" size={14} /> : null} Save payment method
+        </button>
+      </div>
     </form>
   );
 }
@@ -124,6 +104,7 @@ export default function BillingManager({
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [stripePromise, setStripePromise] = useState<Promise<Stripe | null> | null>(null);
   const [dark, setDark] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
 
   // Stripe Elements is not theme-aware on its own; it has to be told, and the
   // appearance is fixed at mount, so watch the console's theme attribute.
@@ -204,7 +185,7 @@ export default function BillingManager({
   }
 
   async function disconnect() {
-    if (!confirm("Remove every saved payment method? Running jobs are not affected.")) return;
+    setConfirmRemove(false);
     setBusy(true);
     setError(null);
     const response = await fetch("/api/billing/disconnect", { method: "DELETE" });
@@ -218,154 +199,139 @@ export default function BillingManager({
     }
   }
 
+  const card = status.card
+    ? `${status.card.brand[0].toUpperCase()}${status.card.brand.slice(1)} ending ${status.card.last4}`
+    : status.billingComplete
+      ? "Card on file"
+      : "No payment method";
+
   return (
-    <div className="console-grid billing-grid">
-      <section className="console-panel balance-panel">
-        <p className="qr-eyebrow">Available balance</p>
-        <strong>${status.available.toFixed(2)}</strong>
-        <span>Compute credits{status.reserved > 0 ? ` · $${status.reserved.toFixed(2)} reserved` : ""}</span>
-        <div>
-          <ShieldCheck size={14} /> Reserved only on approved quotes.
-        </div>
-      </section>
+    <div className="stack">
+      <StatGrid>
+        <Stat label="Available balance" value={formatUsd(status.available)} meta="Reserved only when you approve a quote" />
+        <Stat label="Reserved" value={formatUsd(status.reserved)} meta="Held for runs in progress" />
+      </StatGrid>
 
-      <section className="console-panel add-credit">
-        <div className="panel-title">
-          <Plus size={16} />
-          <h2>Add credits</h2>
-        </div>
-        <div className="amount-options">
-          {AMOUNTS.map((value) => (
-            <button className={amount === value ? "active" : ""} onClick={() => setAmount(value)} key={value}>
-              ${value}
-            </button>
-          ))}
-        </div>
-        <button className="console-primary full" disabled={busy || !status.billingComplete} onClick={purchase}>
-          {busy ? <Loader2 className="spin" size={16} /> : <CreditCard size={15} />} Purchase ${amount}
-        </button>
-        {/* The terms still have to be linked at the point of purchase — they
-            just do not need three lines of preamble to get there. */}
-        <p className="billing-fineprint">
-          By purchasing you accept the{" "}
-          <a href="/terms#credits" className="underline underline-offset-2">
-            credit terms
-          </a>{" "}
-          and{" "}
-          <a href="/terms#refunds" className="underline underline-offset-2">
-            refund policy
-          </a>
-          .
-        </p>
-        {!status.billingComplete && (
-          <p className="form-error">
-            <AlertCircle size={12} /> Add a payment method before buying credits.
-          </p>
-        )}
-        {message && <p className="form-message">{message}</p>}
-        {error && <p className="form-error">{error}</p>}
-      </section>
+      {message ? <InlineAlert tone="success">{message}</InlineAlert> : null}
+      {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
+      {!status.stripeConfigured && !status.demo ? <InlineAlert tone="warning">Stripe is not configured on this deployment.</InlineAlert> : null}
 
-      <section className="console-panel billing-connection">
-        <div className="panel-title">
-          <CreditCard size={16} />
-          <h2>Payment method</h2>
-        </div>
-        <div className="connection-state">
-          <i className={status.billingComplete ? "connected" : ""} />
-          <span>
-            <b>
-              {status.card
-                ? `${status.card.brand.toUpperCase()} ···· ${status.card.last4}`
-                : status.billingComplete
-                  ? "Card on file"
-                  : "No payment method"}
-            </b>
-            <small>
-              {status.card
-                ? `Expires ${String(status.card.expMonth).padStart(2, "0")}/${String(status.card.expYear).slice(-2)} · off-session purchases enabled`
-                : status.billingComplete
-                  ? "Ready for off-session credit purchases"
-                  : "Add a card to buy credits and run physical QPUs"}
-            </small>
-          </span>
-        </div>
-
-        {clientSecret && stripePromise ? (
-          <Elements
-            stripe={stripePromise}
-            options={{
-              clientSecret,
-              appearance: {
-                theme: dark ? "night" : "stripe",
-                variables: {
-                  colorPrimary: dark ? "#ffffff" : "#0a0a0a",
-                  colorBackground: dark ? "#0a0a0a" : "#ffffff",
-                  colorText: dark ? "#ededed" : "#0a0a0a",
-                  borderRadius: "6px",
-                },
-              },
-            }}
-          >
-            <CardForm onSaved={onCardSaved} />
-          </Elements>
-        ) : (
-          <div className="billing-connection-actions">
-            <button className="console-secondary" onClick={startCardSetup} disabled={busy}>
-              {busy ? <Loader2 className="spin" size={14} /> : <CreditCard size={14} />}
-              {status.billingComplete ? "Replace card" : "Add payment method"}
-            </button>
-            {status.billingComplete && (
-              <button className="console-danger" onClick={disconnect} disabled={busy}>
-                <Unplug size={14} /> Remove
-              </button>
-            )}
-          </div>
-        )}
-        {!status.stripeConfigured && !status.demo && (
-          <p className="form-error">
-            <AlertCircle size={12} /> Stripe is not configured on this deployment.
-          </p>
-        )}
-      </section>
-
-      <section className="console-panel billing-history">
-        <div className="panel-title">
-          <Coins size={16} />
-          <div>
-            <h2>Transactions</h2>
-            <small>Purchases, reservations, and charges</small>
-          </div>
-          <span>{ledger.length} recent</span>
-        </div>
-        <div className="billing-history-head">
-          <span>Event</span>
-          <span>When</span>
-          <span>Amount</span>
-          <span>Balance after</span>
-        </div>
-        {ledger.length === 0 ? (
-          <div className="console-empty">
-            <CreditCard />
-            <p>No transactions yet</p>
-            <small>Credit purchases and job charges appear here.</small>
-          </div>
-        ) : (
-          ledger.map((entry) => (
-            <div className={`billing-history-row ${ledgerTone(entry.type)}`} key={entry.id}>
-              <span>
-                <b>{LEDGER_LABEL[entry.type] ?? entry.type}</b>
-                {entry.job_id && <small>job {entry.job_id.slice(0, 8)}</small>}
-              </span>
-              <span>{new Date(entry.created_at).toLocaleString()}</span>
-              <span className="billing-amount">
-                {Number(entry.amount) >= 0 ? "+" : "−"}${Math.abs(Number(entry.amount)).toFixed(4)}
-              </span>
-              <span>${Number(entry.balance_after).toFixed(2)}</span>
+      <div className="grid-2">
+        <Panel title="Add credits" description="Runs waiting for credits start automatically after a purchase.">
+          <div className="stack">
+            <div className="segmented amount-picker" role="group" aria-label="Amount">
+              {AMOUNTS.map((value) => (
+                <button type="button" key={value} aria-pressed={amount === value} onClick={() => setAmount(value)}>
+                  ${value}
+                </button>
+              ))}
             </div>
-          ))
-        )}
-      </section>
+            {!status.billingComplete ? <p className="muted">Add a payment method before buying credits.</p> : null}
+            <div className="row-between">
+              <small className="dim">
+                Subject to the <a href="/terms#credits" className="underline">credit terms</a> and <a href="/terms#refunds" className="underline">refund policy</a>.
+              </small>
+              <button className="btn btn-primary" disabled={busy || !status.billingComplete} onClick={purchase}>
+                {busy ? <Loader2 className="spin" size={14} /> : null} Buy ${amount} in credits
+              </button>
+            </div>
+          </div>
+        </Panel>
+
+        <Panel title="Payment method" description={status.billingComplete ? "Used for off-session credit purchases." : "Required to buy credits and run on QPUs."}>
+          {clientSecret && stripePromise ? (
+            <Elements
+              stripe={stripePromise}
+              options={{
+                clientSecret,
+                appearance: {
+                  theme: dark ? "night" : "stripe",
+                  variables: {
+                    colorPrimary: dark ? "#ffffff" : "#0a0a0a",
+                    colorBackground: dark ? "#0a0a0a" : "#ffffff",
+                    colorText: dark ? "#ededed" : "#0a0a0a",
+                    borderRadius: "4px",
+                  },
+                },
+              }}
+            >
+              <CardForm onSaved={onCardSaved} />
+            </Elements>
+          ) : (
+            <div className="row-between">
+              <span className="cell-main">
+                <b>{card}</b>
+                <small>
+                  {status.card
+                    ? `Expires ${String(status.card.expMonth).padStart(2, "0")}/${String(status.card.expYear).slice(-2)}`
+                    : status.billingComplete ? "Ready for purchases" : "Not set up"}
+                </small>
+              </span>
+              <span className="row">
+                {status.billingComplete ? (
+                  <button className="btn btn-ghost" onClick={() => setConfirmRemove(true)} disabled={busy}>Remove</button>
+                ) : null}
+                <button className="btn btn-secondary" onClick={startCardSetup} disabled={busy}>
+                  {busy ? <Loader2 className="spin" size={14} /> : null}
+                  {status.billingComplete ? "Replace card" : "Add payment method"}
+                </button>
+              </span>
+            </div>
+          )}
+        </Panel>
+      </div>
+
+      <Panel title="Transactions" description="Most recent 50 ledger entries." flush>
+        <div className="table-wrap">
+          <table className="qr-table">
+            <thead>
+              <tr>
+                <th>Event</th>
+                <th className="hide-sm">When</th>
+                <th className="num">Amount</th>
+                <th className="num hide-sm">Balance after</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ledger.length === 0 ? (
+                <tr><td colSpan={4} className="empty-row">No transactions yet. Purchases and run charges appear here.</td></tr>
+              ) : (
+                ledger.map((entry) => {
+                  const amountValue = Number(entry.amount);
+                  return (
+                    <tr key={entry.id}>
+                      <td>
+                        <span className="cell-main">
+                          <b>{LEDGER_LABEL[entry.type] ?? entry.type}</b>
+                          {entry.job_id ? (
+                            <small><Link href={`/dashboard/activity?job=${entry.job_id}`} className="mono">{entry.job_id.slice(0, 8)}</Link></small>
+                          ) : null}
+                        </span>
+                      </td>
+                      <td className="hide-sm"><Timestamp value={entry.created_at} /></td>
+                      <td className={`num${amountValue > 0 ? " ledger-credit" : ""}`}>
+                        {amountValue > 0 ? "+" : amountValue < 0 ? "−" : ""}{formatUsd(Math.abs(amountValue))}
+                      </td>
+                      <td className="num hide-sm">{formatUsd(Number(entry.balance_after))}</td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+
+      <ConfirmDialog
+        open={confirmRemove}
+        title="Remove payment method?"
+        body="Saved cards are removed from this workspace. Runs already in progress are not affected, but you will not be able to buy credits until you add a card again."
+        confirmLabel="Remove"
+        tone="danger"
+        busy={busy}
+        onConfirm={disconnect}
+        onClose={() => setConfirmRemove(false)}
+      />
     </div>
   );
 }

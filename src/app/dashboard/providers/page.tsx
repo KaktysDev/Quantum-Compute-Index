@@ -1,8 +1,11 @@
 import ProviderCatalog from "@/components/ProviderCatalog";
-import { getLatestSnapshot } from "@/lib/qci/store";
-import { withQciSnapshot } from "@/lib/qrouter/catalog";
+import { loadPublicRoutingContext } from "@/lib/qrouter/routingContext";
 
+export const metadata = { title: "QRouter Console — Providers" };
+
+// Same snapshot and health overlay the quote engine prices from, so the rates
+// shown here are the rates a run is quoted at.
 export default async function ProvidersPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  const [latest, query] = await Promise.all([getLatestSnapshot(), searchParams]);
-  return <ProviderCatalog backends={withQciSnapshot(latest.components)} initialQuery={query.q ?? ""} />;
+  const [{ backends }, query] = await Promise.all([loadPublicRoutingContext(), searchParams]);
+  return <ProviderCatalog backends={backends} initialQuery={query.q ?? ""} />;
 }

@@ -42,7 +42,7 @@ export class RateLimitError extends Error {
  *
  * The old limiter bucketed per API key, so N keys bought N x the budget. Moving
  * to one bucket per organization closes that, but it also means every console
- * tab now draws from the same allowance: TasksTable and RepositoryDeployments
+ * tab now draws from the same allowance: Activity and RepositoryDeployments
  * each poll every 5s (12 req/min per open tab). The default is 600 so a team
  * can keep tens of tabs open without tripping it; lower it with
  * QROUTER_RATE_LIMIT_PER_MINUTE once real traffic is understood.

@@ -1,25 +1,14 @@
 "use client";
 
-// Appearance switch. Writes data-theme on <html> and remembers the choice in
-// localStorage; the inline script in the root layout replays it before first
-// paint so there is no flash. Light is the default (no attribute set).
+// Light/dark switch for the public docs. The console has its own control in
+// the account menu; both share the storage contract in @/lib/client/theme.
 
 import { useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";
 
-type Theme = "light" | "dark";
-export const THEME_STORAGE_KEY = "qrouter-theme";
+import { applyThemePreference } from "@/lib/client/theme";
 
-function applyTheme(theme: Theme) {
-  const root = document.documentElement;
-  if (theme === "dark") root.setAttribute("data-theme", "dark");
-  else root.setAttribute("data-theme", "light");
-  try {
-    localStorage.setItem(THEME_STORAGE_KEY, theme);
-  } catch {
-    /* private browsing — the choice just will not persist */
-  }
-}
+type Theme = "light" | "dark";
 
 export default function ThemeToggle() {
   const [theme, setTheme] = useState<Theme>("light");
@@ -31,7 +20,7 @@ export default function ThemeToggle() {
 
   function choose(next: Theme) {
     setTheme(next);
-    applyTheme(next);
+    applyThemePreference(next);
   }
 
   return (

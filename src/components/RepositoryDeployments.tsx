@@ -1,9 +1,24 @@
 "use client";
 
+// Deploy a project's OpenQASM entrypoint at a pinned ref, then track the jobs
+// each deployment created.
+
 import Link from "next/link";
+<<<<<<< Updated upstream
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, Clock3, FileCode2, GitBranch, Loader2, Play, RefreshCw, Route, Terminal } from "lucide-react";
+=======
+import { Loader2, Play } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { EmptyState, InlineAlert, Panel, StatusBadge, Timestamp } from "@/components/console/ui";
+import { apiErrorMessage, backendLabel } from "@/lib/client/activity";
+import { useAdvance } from "@/lib/client/use-advance";
+import { onVisibleInterval } from "@/lib/client/visible-interval";
+import { BACKENDS } from "@/lib/qrouter/catalog";
+import { costView, formatUsd } from "@/lib/qrouter/cost";
+>>>>>>> Stashed changes
 import type { ProjectSettings, QRouterProject, RepositoryInspection } from "@/lib/qrouter/repositories";
+import { isSettled } from "@/lib/qrouter/status";
 
 interface Deployment {
   id: string;
@@ -14,15 +29,19 @@ interface Deployment {
   updated_at: string;
   quote?: { total?: number };
   quotes?: { total?: number } | Array<{ total?: number }>;
-  analysis?: { transpilation?: { compiler?: string; before?: { depth: number }; after?: { depth: number } } };
+  analysis?: { transpilation?: { compiler?: string } };
   error?: { message?: string };
 }
 
-const TERMINAL_IDLE = [
-  { kind: "prompt", text: "$ qrouter deploy --source git" },
-  { kind: "muted", text: "waiting for a project deployment" },
-];
+type Outcome = { tone: "success" | "warning"; jobId: string; text: string };
+
 const DEFAULT_SETTINGS: ProjectSettings = { shots: 1024, target: "auto", routingMode: "balanced", optimizationLevel: 2, failover: true, maxAttempts: 3, timeoutSeconds: 7200 };
+
+function quoteOf(deployment: Deployment) {
+  const embedded = Array.isArray(deployment.quotes) ? deployment.quotes[0] : deployment.quotes;
+  const total = Number(embedded?.total ?? deployment.quote?.total);
+  return Number.isFinite(total) ? total : null;
+}
 
 export default function RepositoryDeployments({ requestedTarget }: { requestedTarget?: string }) {
   const [projects, setProjects] = useState<QRouterProject[]>([]);
@@ -34,13 +53,13 @@ export default function RepositoryDeployments({ requestedTarget }: { requestedTa
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [logs, setLogs] = useState(TERMINAL_IDLE);
   const [error, setError] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
   const selected = projects.find((project) => project.id === selectedId) ?? null;
 
   const loadDeployments = useCallback(async (projectId: string) => {
     const response = await fetch(`/api/v1/repository-jobs?project_id=${encodeURIComponent(projectId)}`, { cache: "no-store" });
-    const data = await response.json();
+    const data = await response.json().catch(() => null);
     if (response.ok) setDeployments(data.data);
   }, []);
 
@@ -49,7 +68,7 @@ export default function RepositoryDeployments({ requestedTarget }: { requestedTa
       try {
         const response = await fetch("/api/v1/projects", { cache: "no-store" });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error?.message ?? "Could not load projects.");
+        if (!response.ok) throw new Error(apiErrorMessage(data, "Could not load projects."));
         setProjects(data.data);
         setSelectedId(data.data[0]?.id ?? "");
       } catch (value) {
@@ -66,8 +85,8 @@ export default function RepositoryDeployments({ requestedTarget }: { requestedTa
     setRef(selected.production_branch);
     setCircuitPath(selected.circuit_path);
     setInspection(null);
-    setLogs(TERMINAL_IDLE);
-    loadDeployments(selected.id);
+    setOutcome(null);
+    void loadDeployments(selected.id);
     (async () => {
       const query = new URLSearchParams({ repository: selected.repository, ref: selected.production_branch });
       const response = await fetch(`/api/v1/repositories/inspect?${query}`, { cache: "no-store" });
@@ -75,115 +94,226 @@ export default function RepositoryDeployments({ requestedTarget }: { requestedTa
     })();
   }, [loadDeployments, requestedTarget, selected]);
 
+  const inFlight = deployments.some((deployment) => !isSettled(deployment.status));
   useEffect(() => {
+<<<<<<< Updated upstream
     if (!selectedId) return;
     const timer = window.setInterval(() => loadDeployments(selectedId), 5000);
     return () => window.clearInterval(timer);
   }, [loadDeployments, selectedId]);
+=======
+    if (!selectedId || !inFlight) return;
+    return onVisibleInterval(() => void loadDeployments(selectedId), 5000);
+  }, [inFlight, loadDeployments, selectedId]);
+  useAdvance(deployments, () => selectedId && void loadDeployments(selectedId));
+>>>>>>> Stashed changes
 
-  async function deploy() {
+  async function deploy(event: FormEvent) {
+    event.preventDefault();
     if (!selected) return;
-    setBusy(true); setError(null);
-    setLogs([
-      { kind: "prompt", text: `$ qrouter deploy ${selected.repository} --ref ${ref}` },
-      { kind: "path", text: `source  ${circuitPath}` },
-      { kind: "muted", text: "fetching commit-pinned source..." },
-    ]);
+    setBusy(true);
+    setError(null);
+    setOutcome(null);
     try {
       const updateResponse = await fetch(`/api/v1/projects/${selected.id}`, {
-        method: "PATCH", headers: { "content-type": "application/json" },
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ production_branch: ref, circuit_path: circuitPath, settings }),
       });
-      if (!updateResponse.ok) {
-        const update = await updateResponse.json();
-        throw new Error(update.error?.message ?? "Could not update the project source.");
-      }
-      setLogs((current) => [...current, { kind: "keyword", text: "parse   OpenQASM validated" }, { kind: "keyword", text: "route   scoring eligible compute targets" }]);
+      if (!updateResponse.ok) throw new Error(apiErrorMessage(await updateResponse.json().catch(() => null), "Could not update the project source."));
       const response = await fetch("/api/v1/repository-jobs", {
-        method: "POST", headers: { "content-type": "application/json" },
+        method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ project_id: selected.id, ref, circuit_path: circuitPath, settings, deployment_id: crypto.randomUUID() }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error?.message ?? "Repository deployment failed.");
-      setLogs((current) => [
-        ...current,
-        { kind: "keyword", text: `compile ${data.analysis?.transpilation?.compiler ?? "target"} → ${data.selected_backend_id}` },
-        { kind: "value", text: `quote   $${Number(data.quote?.total ?? 0).toFixed(6)} reserved` },
-        { kind: "success", text: `${data.status.padEnd(8)} job ${data.id}` },
-      ]);
+      const data = await response.json().catch(() => null);
+      const parkedId = data?.error?.job_id;
+      if (response.status === 402 && typeof parkedId === "string") {
+        setOutcome({ tone: "warning", jobId: parkedId, text: "Deployment is waiting for credits and starts automatically once they are added." });
+      } else if (!response.ok) {
+        throw new Error(apiErrorMessage(data, "Repository deployment failed."));
+      } else {
+        const total = Number(data.quote?.total);
+        setOutcome({
+          tone: "success",
+          jobId: data.id,
+          text: `Deployed ${circuitPath} at ${ref} to ${backendLabel(data.selected_backend_id)}${Number.isFinite(total) ? `, ${formatUsd(total)} reserved` : ""}.`,
+        });
+      }
       await loadDeployments(selected.id);
     } catch (value) {
-      const message = value instanceof Error ? value.message : "Repository deployment failed.";
-      setError(message);
-      setLogs((current) => [...current, { kind: "error", text: `error   ${message}` }]);
+      setError(value instanceof Error ? value.message : "Repository deployment failed.");
     } finally {
       setBusy(false);
     }
   }
 
-  const summary = useMemo(() => ({
+  const counts = useMemo(() => ({
     total: deployments.length,
-    active: deployments.filter((deployment) => !["completed", "failed", "cancelled"].includes(deployment.status)).length,
-    completed: deployments.filter((deployment) => deployment.status === "completed").length,
+    active: deployments.filter((deployment) => !isSettled(deployment.status)).length,
   }), [deployments]);
 
-  if (loading) return <div className="console-empty deployment-loading"><Loader2 className="spin" /><p>Loading projects</p></div>;
-  if (!projects.length) return <section className="console-panel repo-empty-state"><GitBranch size={22} /><p>No repository projects</p><span>Import a GitHub repository and select its OpenQASM entrypoint before sending work to QRouter.</span><Link href="/dashboard/github" className="console-primary"><GitBranch size={14} /> Import repository</Link></section>;
+  if (loading) return <div className="empty"><Loader2 size={16} className="spin" /></div>;
+  if (!projects.length) {
+    return (
+      <section className="panel">
+        <EmptyState
+          title="No repository projects"
+          body="Import a GitHub repository and choose its OpenQASM entrypoint first."
+          action={<Link href="/dashboard/repositories" className="btn btn-primary">Import a repository</Link>}
+        />
+      </section>
+    );
+  }
+
+  const set = <K extends keyof ProjectSettings>(key: K, value: ProjectSettings[K]) => setSettings((current) => ({ ...current, [key]: value }));
 
   return (
-    <div className="deployments-workspace">
-      <div className="project-switcher">
-        <span>Project</span>
-        <select value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>{projects.map((project) => <option key={project.id} value={project.id}>{project.repository}</option>)}</select>
-        <Link href="/dashboard/github">Manage repositories <ArrowRight size={12} /></Link>
+    <div className="stack">
+      <div className="row-between">
+        <label className="select-wrap" style={{ width: "min(420px, 100%)" }}>
+          <select className="input" value={selectedId} onChange={(event) => setSelectedId(event.target.value)} aria-label="Project">
+            {projects.map((project) => <option key={project.id} value={project.id}>{project.repository}</option>)}
+          </select>
+        </label>
+        <span className="dim">{counts.total} deployments{counts.active ? ` · ${counts.active} in progress` : ""}</span>
       </div>
 
-      <section className="deployment-summary" aria-label="Deployment summary">
-        <div><span>Deployments</span><b>{summary.total}</b></div><div><span>In flight</span><b>{summary.active}</b></div><div><span>Completed</span><b>{summary.completed}</b></div><div><span>Production ref</span><b>{ref}</b></div>
-      </section>
-
-      <div className="deployment-grid">
-        <section className="console-panel deployment-config">
-          <div className="panel-title"><GitBranch size={16} /><div><h2>Production source</h2><small>Repository configuration</small></div></div>
-          <div className="deployment-fields">
-            <label><span>Branch or ref</span><div className="terminal-input"><GitBranch size={13} /><input value={ref} onChange={(event) => setRef(event.target.value)} /></div></label>
-            <label><span>Circuit entrypoint</span>{inspection?.files.length ? <select value={circuitPath} onChange={(event) => setCircuitPath(event.target.value)}>{inspection.files.map((file) => <option key={file.sha} value={file.path}>{file.path}</option>)}</select> : <div className="terminal-input"><FileCode2 size={13} /><input value={circuitPath} onChange={(event) => setCircuitPath(event.target.value)} /></div>}</label>
-            <div className="deployment-field-grid">
-              <label><span>Shots</span><input type="number" min={1} max={1_000_000} value={settings.shots} onChange={(event) => setSettings({ ...settings, shots: Number(event.target.value) })} /></label>
-              <label><span>Routing</span><select value={settings.routingMode} onChange={(event) => setSettings({ ...settings, routingMode: event.target.value as ProjectSettings["routingMode"] })}><option value="balanced">balanced</option><option value="cost">cost</option><option value="speed">speed</option><option value="quality">quality</option></select></label>
-              <label><span>Target</span><select value={settings.target} onChange={(event) => setSettings({ ...settings, target: event.target.value })}><option value="auto">auto</option><option value="qci-aer-gpu">QCI Aer CPU</option><option value="ibm-brisbane">IBM Brisbane</option><option value="ionq-aria-1">IonQ Aria 1</option><option value="iqm-garnet">IQM Garnet</option></select></label>
-              <label><span>Optimization</span><select value={settings.optimizationLevel} onChange={(event) => setSettings({ ...settings, optimizationLevel: Number(event.target.value) })}><option value={0}>0</option><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option></select></label>
-              <label className="deployment-toggle"><span>Provider failover</span><input type="checkbox" checked={settings.failover} onChange={(event) => setSettings({ ...settings, failover: event.target.checked })} /></label>
-              <label><span>Maximum attempts</span><select value={settings.maxAttempts} disabled={!settings.failover} onChange={(event) => setSettings({ ...settings, maxAttempts: Number(event.target.value) })}><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option><option value={4}>4</option><option value={5}>5</option></select></label>
-              <label><span>Execution timeout (seconds)</span><input type="number" min={60} max={604800} value={settings.timeoutSeconds} onChange={(event) => setSettings({ ...settings, timeoutSeconds: Number(event.target.value) })} /></label>
-            </div>
-            <button className="console-primary deploy-command" onClick={deploy} disabled={busy || !circuitPath}>{busy ? <Loader2 className="spin" size={14} /> : <Play size={14} fill="currentColor" />} Deploy from repository</button>
-            {error && <p className="form-error">{error}</p>}
+      <Panel title="Deploy" description="Runs the entrypoint as a single job at the ref you choose.">
+        <form className="stack" onSubmit={deploy}>
+          <div className="form-grid two" style={{ padding: 0 }}>
+            <label className="field">
+              Branch or ref
+              <input className="input mono" value={ref} onChange={(event) => setRef(event.target.value)} required />
+            </label>
+            <label className="field">
+              Entrypoint
+              {inspection?.files.length ? (
+                <select className="input" value={circuitPath} onChange={(event) => setCircuitPath(event.target.value)}>
+                  {inspection.files.map((file) => <option key={file.sha} value={file.path}>{file.path}</option>)}
+                </select>
+              ) : (
+                <input className="input mono" value={circuitPath} onChange={(event) => setCircuitPath(event.target.value)} required />
+              )}
+            </label>
           </div>
-        </section>
+          <div className="form-grid four" style={{ padding: 0 }}>
+            <label className="field">
+              Target
+              <select className="input" value={settings.target} onChange={(event) => set("target", event.target.value)}>
+                <option value="auto">Automatic</option>
+                {BACKENDS.map((backend) => <option key={backend.id} value={backend.id}>{backend.displayName}</option>)}
+              </select>
+            </label>
+            <label className="field">
+              Shots
+              <input className="input" type="number" min={1} max={1_000_000} value={settings.shots} onChange={(event) => set("shots", Math.max(1, Number(event.target.value) || 1))} />
+            </label>
+            <label className="field">
+              Routing mode
+              <select className="input" value={settings.routingMode} onChange={(event) => set("routingMode", event.target.value as ProjectSettings["routingMode"])}>
+                <option value="balanced">Balanced</option>
+                <option value="cost">Cost</option>
+                <option value="speed">Speed</option>
+                <option value="quality">Quality</option>
+              </select>
+            </label>
+            <label className="field">
+              Optimization level
+              <select className="input" value={settings.optimizationLevel} onChange={(event) => set("optimizationLevel", Number(event.target.value))}>
+                {[0, 1, 2, 3].map((level) => <option key={level} value={level}>{level}</option>)}
+              </select>
+            </label>
+          </div>
+          <details className="advanced">
+            <summary>Failover and timeout</summary>
+            <div className="form-grid three" style={{ padding: "12px 0 0" }}>
+              <label className="check-row" style={{ alignSelf: "end", height: 32 }}>
+                <input type="checkbox" checked={settings.failover} onChange={(event) => set("failover", event.target.checked)} />
+                Provider failover
+              </label>
+              <label className="field">
+                Max attempts
+                <select className="input" value={settings.maxAttempts} disabled={!settings.failover} onChange={(event) => set("maxAttempts", Number(event.target.value))}>
+                  {[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value}</option>)}
+                </select>
+              </label>
+              <label className="field">
+                Timeout (seconds)
+                <input className="input" type="number" min={60} max={604800} value={settings.timeoutSeconds} onChange={(event) => set("timeoutSeconds", Number(event.target.value))} />
+              </label>
+            </div>
+          </details>
 
-        <section className="console-panel deployment-terminal">
-          <div className="panel-title"><Terminal size={16} /><div><h2>Build output</h2><small>QRouter pipeline</small></div><span>{busy ? "RUNNING" : "READY"}</span></div>
-          <div className="terminal-screen">{logs.map((line, index) => <div className={line.kind} key={`${line.text}-${index}`}><span>{String(index + 1).padStart(2, "0")}</span><code>{line.text}</code></div>)}</div>
-          <div className="terminal-footer"><span><Route size={12} /> Route → transpile → price → execute</span><span>{selected?.repository}</span></div>
-        </section>
-      </div>
+          {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
+          {outcome ? (
+            <InlineAlert
+              tone={outcome.tone}
+              action={
+                outcome.tone === "warning" ? (
+                  <Link href="/dashboard/billing" className="btn btn-secondary btn-sm">Add credits</Link>
+                ) : (
+                  <Link href={`/dashboard/activity?job=${outcome.jobId}`} className="btn btn-secondary btn-sm">View job</Link>
+                )
+              }
+            >
+              {outcome.text}
+            </InlineAlert>
+          ) : null}
 
-      <section className="console-panel deployment-list">
-        <div className="panel-title"><Clock3 size={16} /><div><h2>Deployments</h2><small>Repository-triggered quantum jobs</small></div><button className="terminal-icon-button" onClick={() => selected && loadDeployments(selected.id)} title="Refresh"><RefreshCw size={13} /></button></div>
-        <div className="deployment-head"><span>Deployment</span><span>Source</span><span>Target</span><span>Compiler</span><span>Status</span><span>Created</span></div>
-        {!deployments.length ? <div className="console-empty"><Clock3 /><p>No deployments for this project</p></div> : deployments.map((deployment) => {
-          const quote = Array.isArray(deployment.quotes) ? deployment.quotes[0] : deployment.quotes;
-          return <Link href={`/dashboard/tasks?job=${deployment.id}`} className="deployment-row" key={deployment.id}>
-            <span><b>{deployment.id.slice(0, 8)}</b><small>{quote?.total != null ? `$${Number(quote.total).toFixed(6)}` : deployment.name}</small></span>
-            <span><FileCode2 size={12} />{selected?.circuit_path}</span>
-            <span>{deployment.selected_backend_id}</span>
-            <span>{deployment.analysis?.transpilation?.compiler ?? "pending"}</span>
-            <span className={`deployment-status ${deployment.status}`}><i />{deployment.status}</span>
-            <span>{new Date(deployment.created_at).toLocaleString()}</span>
-          </Link>;
-        })}
-      </section>
+          <div className="form-actions">
+            <button type="submit" className="btn btn-primary" disabled={busy || !circuitPath || !ref}>
+              {busy ? <Loader2 size={14} className="spin" /> : <Play size={13} />} Deploy
+            </button>
+          </div>
+        </form>
+      </Panel>
+
+      <Panel title="Deployments" flush>
+        <div className="table-wrap">
+          <table className="qr-table">
+            <thead>
+              <tr>
+                <th>Job</th>
+                <th>Status</th>
+                <th className="hide-sm">Backend</th>
+                <th className="hide-sm">Compiler</th>
+                <th className="num">Cost</th>
+                <th className="hide-sm">Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {deployments.length === 0 ? (
+                <tr><td colSpan={6} className="empty-row">No deployments for this project yet.</td></tr>
+              ) : (
+                deployments.map((deployment) => {
+                  const cost = costView({ status: deployment.status, quoted: quoteOf(deployment), charged: null });
+                  return (
+                    <tr key={deployment.id}>
+                      <td>
+                        <Link href={`/dashboard/activity?job=${deployment.id}`} className="cell-main">
+                          <b className="mono">{deployment.id.slice(0, 8)}</b>
+                          <small>{deployment.name ?? selected?.circuit_path}</small>
+                        </Link>
+                      </td>
+                      <td><StatusBadge status={deployment.status} /></td>
+                      <td className="hide-sm">{backendLabel(deployment.selected_backend_id)}</td>
+                      <td className="hide-sm muted">{deployment.analysis?.transpilation?.compiler ?? "—"}</td>
+                      <td className="num">
+                        <span className="cell-main">
+                          <span>{cost.amount === null ? "—" : formatUsd(cost.amount)}</span>
+                          <small>{cost.label === "Charged" ? "Quoted" : cost.label}</small>
+                        </span>
+                      </td>
+                      <td className="hide-sm"><Timestamp value={deployment.created_at} /></td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
     </div>
   );
 }

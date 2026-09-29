@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { Check, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { Check, Loader2, Mail, MailOpen } from "lucide-react";
-import GlassCard from "@/components/GlassCard";
+import { useState } from "react";
+import { InlineAlert, Panel, Timestamp } from "@/components/console/ui";
 
 export interface AdminReport {
   id: number;
@@ -26,14 +26,23 @@ export interface AdminContact {
   created_at: string;
 }
 
-const STATUSES = ["open", "in_progress", "resolved", "closed"] as const;
+const STATUSES = [
+  { value: "open", label: "Open", tone: "progress" },
+  { value: "in_progress", label: "In progress", tone: "progress" },
+  { value: "resolved", label: "Resolved", tone: "success" },
+  { value: "closed", label: "Closed", tone: "neutral" },
+] as const;
 
-const STATUS_STYLE: Record<string, string> = {
-  open: "text-amber-300 border-amber-300/30",
-  in_progress: "text-sky-300 border-sky-300/30",
-  resolved: "text-emerald-300 border-emerald-300/30",
-  closed: "text-[var(--muted)] border-white/10",
-};
+const FILTERS = [
+  { value: "active", label: "Active" },
+  { value: "resolved", label: "Resolved" },
+  { value: "closed", label: "Closed" },
+  { value: "all", label: "All" },
+];
+
+function statusMeta(value: string) {
+  return STATUSES.find((status) => status.value === value) ?? STATUSES[3];
+}
 
 function ReportCard({ report }: { report: AdminReport }) {
   const router = useRouter();
@@ -42,81 +51,74 @@ function ReportCard({ report }: { report: AdminReport }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const dirty = status !== report.status || notes !== (report.admin_notes ?? "");
+  const meta = statusMeta(report.status);
 
   async function save() {
     setSaving(true);
     setError(null);
+    setSaved(false);
     try {
-      const res = await fetch("/api/admin/reports", {
+      const response = await fetch("/api/admin/reports", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: report.id, status, admin_notes: notes || null }),
       });
-      if (!res.ok) throw new Error((await res.json()).error ?? "Save failed");
+      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error ?? "Save failed");
       setSaved(true);
       router.refresh();
-      setTimeout(() => setSaved(false), 2500);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "Save failed");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <GlassCard className="p-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className={`rounded border px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest ${STATUS_STYLE[status] ?? ""}`}>
-            {status.replace("_", " ")}
-          </span>
-          <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">{report.category}</span>
-          <span className="text-xs text-[var(--muted)]">{report.email ?? "unknown user"}</span>
-        </div>
-        <span className="font-mono text-[10px] text-[var(--muted)]">{new Date(report.created_at).toLocaleString()}</span>
-      </div>
-
-      <p className="mt-2 text-sm font-medium text-white">{report.subject}</p>
-      <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-[var(--muted)]">{report.message}</p>
-
-      <div className="mt-4 grid gap-3 sm:grid-cols-[160px_1fr_auto]">
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs text-white outline-none focus:border-[var(--qr-emerald,#34d399)]"
-        >
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>{s.replace("_", " ")}</option>
-          ))}
-        </select>
+    <article className="panel report">
+      <header className="row-between">
+        <span className="row" style={{ gap: 12, flexWrap: "wrap" }}>
+          <span className={`status ${meta.tone}`}>{meta.label}</span>
+          <span className="dim">{report.category}</span>
+          <span className="muted">{report.email ?? "Unknown user"}</span>
+        </span>
+        <span className="dim"><Timestamp value={report.created_at} /></span>
+      </header>
+      <b>{report.subject}</b>
+      <p className="muted report-body">{report.message}</p>
+      <div className="report-actions">
+        <label className="select-wrap">
+          <select className="input" value={status} onChange={(event) => { setStatus(event.target.value); setSaved(false); }} aria-label="Status">
+            {STATUSES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
         <input
+          className="input"
           value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Response / internal notes (visible to the user)"
-          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs text-white placeholder:text-[var(--muted)] outline-none focus:border-[var(--qr-emerald,#34d399)]"
+          onChange={(event) => { setNotes(event.target.value); setSaved(false); }}
+          placeholder="Reply to the user (visible on their Support page)"
+          aria-label="Reply"
         />
-        <button
-          onClick={save}
-          disabled={!dirty || saving}
-          className="console-primary justify-center disabled:opacity-40"
-        >
-          {saving ? <Loader2 size={13} className="animate-spin" /> : saved ? <Check size={13} /> : null}
-          {saving ? "Saving…" : saved ? "Saved" : "Save"}
+        <button type="button" className="btn btn-secondary" onClick={save} disabled={!dirty || saving}>
+          {saving ? <Loader2 size={13} className="spin" /> : saved ? <Check size={13} /> : null}
+          {saved ? "Saved" : "Save"}
         </button>
       </div>
-      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
-    </GlassCard>
+      {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
+    </article>
   );
 }
 
-function ContactCard({ item }: { item: AdminContact }) {
+export default function ReportsManager({ reports, contacts }: { reports: AdminReport[]; contacts: AdminContact[] }) {
   const router = useRouter();
-  const [busy, setBusy] = useState(false);
+  const [filter, setFilter] = useState("active");
+  const [busy, setBusy] = useState<number | null>(null);
+  const filtered = reports.filter((report) =>
+    filter === "all" ? true : filter === "active" ? report.status === "open" || report.status === "in_progress" : report.status === filter,
+  );
 
-  async function toggleRead() {
-    setBusy(true);
+  async function toggleRead(item: AdminContact) {
+    setBusy(item.id);
     try {
       await fetch("/api/admin/contact", {
         method: "PATCH",
@@ -125,79 +127,63 @@ function ContactCard({ item }: { item: AdminContact }) {
       });
       router.refresh();
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
   return (
-    <GlassCard className={`p-4 ${item.read ? "opacity-60" : ""}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-white">
-          <b>{item.name}</b> <span className="text-[var(--muted)]">· {item.email} · {item.phone}</span>
-        </p>
-        <div className="flex items-center gap-3">
-          <span className="font-mono text-[10px] text-[var(--muted)]">{new Date(item.created_at).toLocaleString()}</span>
-          <button onClick={toggleRead} disabled={busy} className="flex items-center gap-1 text-xs text-[var(--qr-emerald,#34d399)] hover:underline disabled:opacity-50">
-            {item.read ? <Mail size={12} /> : <MailOpen size={12} />}
-            {item.read ? "Mark unread" : "Mark read"}
-          </button>
-        </div>
-      </div>
-      <p className="mt-1.5 whitespace-pre-wrap text-sm text-[var(--muted)]">{item.message}</p>
-    </GlassCard>
-  );
-}
-
-export default function ReportsManager({
-  reports,
-  contacts,
-}: {
-  reports: AdminReport[];
-  contacts: AdminContact[];
-}) {
-  const [filter, setFilter] = useState<string>("active");
-  const filtered = reports.filter((r) =>
-    filter === "all" ? true : filter === "active" ? r.status === "open" || r.status === "in_progress" : r.status === filter,
-  );
-
-  return (
-    <div className="flex flex-col gap-8">
-      <section className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold text-white">Support reports</h2>
-          <div className="flex gap-1 rounded-lg border border-white/10 bg-black/30 p-1">
-            {["active", "resolved", "closed", "all"].map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`rounded px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest transition-colors ${
-                  filter === f ? "bg-[var(--qr-emerald,#34d399)]/15 text-[var(--qr-emerald,#34d399)]" : "text-[var(--muted)] hover:text-white"
-                }`}
-              >
-                {f}
+    <div className="stack">
+      <section className="stack-sm">
+        <div className="row-between">
+          <h2 className="section-title">Support reports</h2>
+          <div className="segmented" role="group" aria-label="Filter reports">
+            {FILTERS.map((option) => (
+              <button key={option.value} type="button" aria-pressed={filter === option.value} onClick={() => setFilter(option.value)}>
+                {option.label}
               </button>
             ))}
           </div>
         </div>
         {filtered.length === 0 ? (
-          <GlassCard className="p-8 text-center">
-            <p className="text-sm text-[var(--muted)]">No {filter === "all" ? "" : `${filter} `}reports.</p>
-          </GlassCard>
+          <Panel><p className="muted">No {filter === "all" ? "" : `${filter} `}reports.</p></Panel>
         ) : (
-          filtered.map((r) => <ReportCard key={r.id} report={r} />)
+          filtered.map((report) => <ReportCard key={report.id} report={report} />)
         )}
       </section>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-white">Contact / access requests</h2>
-        {contacts.length === 0 ? (
-          <GlassCard className="p-8 text-center">
-            <p className="text-sm text-[var(--muted)]">No contact submissions.</p>
-          </GlassCard>
-        ) : (
-          contacts.map((c) => <ContactCard key={c.id} item={c} />)
-        )}
-      </section>
+      <Panel title="Contact requests" description={`${contacts.filter((item) => !item.read).length} unread`} flush>
+        <div className="table-wrap">
+          <table className="qr-table">
+            <thead>
+              <tr><th>From</th><th>Message</th><th className="hide-sm">Received</th><th aria-label="Actions" /></tr>
+            </thead>
+            <tbody>
+              {contacts.length === 0 ? (
+                <tr><td colSpan={4} className="empty-row">No contact submissions.</td></tr>
+              ) : (
+                contacts.map((item) => (
+                  <tr key={item.id} className={item.read ? "row-read" : undefined}>
+                    <td>
+                      <span className="cell-main">
+                        <b>{item.name}</b>
+                        <small>{item.email}{item.phone ? ` · ${item.phone}` : ""}</small>
+                      </span>
+                    </td>
+                    <td className="report-body" style={{ maxWidth: 520 }}>{item.message}</td>
+                    <td className="hide-sm"><Timestamp value={item.created_at} /></td>
+                    <td className="num">
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => toggleRead(item)} disabled={busy === item.id}>
+                        {busy === item.id ? <Loader2 size={13} className="spin" /> : null}
+                        {item.read ? "Mark unread" : "Mark read"}
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
     </div>
   );
 }

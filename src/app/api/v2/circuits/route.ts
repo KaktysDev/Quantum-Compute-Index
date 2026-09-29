@@ -1,11 +1,23 @@
 import { resolvePrincipal } from "@/lib/qrouter/auth";
 import { requireScopeV2 } from "@/lib/qrouter/scopes";
-import { createCircuitSchema, idempotencyKey } from "@/lib/qrouter/v2";
+import { createCircuitSchema, idempotencyKey, listCircuitsQuerySchema } from "@/lib/qrouter/v2";
 import { V2ApiError, v2Json } from "@/lib/qrouter/v2-http";
 import { v2JsonBody, v2Route } from "@/lib/qrouter/v2-route";
-import { createCircuitResource } from "@/lib/qrouter/v2-service";
+import { createCircuitResource, listCircuits } from "@/lib/qrouter/v2-service";
 
 export const dynamic = "force-dynamic";
+
+/** Newest first, keyset-paginated with an opaque `cursor`. */
+export async function GET(request: Request) {
+  return v2Route(request, async (requestId) => {
+    const principal = await resolvePrincipal(request);
+    requireScopeV2(principal, "jobs:read");
+    const parsed = listCircuitsQuerySchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));
+    if (!parsed.success) throw new V2ApiError(400, "invalid_request", "Circuit list query is invalid.");
+    const result = await listCircuits(principal, parsed.data);
+    return v2Json({ object: "list", ...result }, requestId);
+  });
+}
 
 export async function POST(request: Request) {
   return v2Route(request, async (requestId) => {

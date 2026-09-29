@@ -1,12 +1,24 @@
 import { resolvePrincipal } from "@/lib/qrouter/auth";
 import { requireScopeV2 } from "@/lib/qrouter/scopes";
-import { createExecutionGroupSchema, idempotencyKey } from "@/lib/qrouter/v2";
+import { createExecutionGroupSchema, idempotencyKey, listJobsQuerySchema } from "@/lib/qrouter/v2";
 import { V2ApiError, v2Json } from "@/lib/qrouter/v2-http";
 import { v2JsonBody, v2Route } from "@/lib/qrouter/v2-route";
-import { createExecutionGroup } from "@/lib/qrouter/v2-service";
+import { createExecutionGroup, listExecutionGroups } from "@/lib/qrouter/v2-service";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+/** Newest first, keyset-paginated with an opaque `cursor`. */
+export async function GET(request: Request) {
+  return v2Route(request, async (requestId) => {
+    const principal = await resolvePrincipal(request);
+    requireScopeV2(principal, "jobs:read");
+    const parsed = listJobsQuerySchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));
+    if (!parsed.success) throw new V2ApiError(400, "invalid_request", "Job list query is invalid.");
+    const result = await listExecutionGroups(principal, parsed.data);
+    return v2Json({ object: "list", ...result }, requestId);
+  });
+}
 
 export async function POST(request: Request) {
   return v2Route(request, async (requestId) => {

@@ -1,6 +1,6 @@
 "use client";
 
-// First-run orientation for the Deploy tab. Three steps, then it goes away for
+// First-run orientation for the Run page. Three steps, then it goes away for
 // good.
 //
 // Dismissal is recorded twice on purpose. The durable record is

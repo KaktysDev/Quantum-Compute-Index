@@ -25,7 +25,7 @@ export default function RootLayout({
             themes never flashes the previous one. Light is the default. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{var t=localStorage.getItem("qrouter-theme");document.documentElement.setAttribute("data-theme",t==="dark"?"dark":"light")}catch(e){}`,
+            __html: `try{var t=localStorage.getItem("qrouter-theme");if(t==="system")t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";document.documentElement.setAttribute("data-theme",t==="dark"?"dark":"light")}catch(e){}`,
           }}
         />
       </head>

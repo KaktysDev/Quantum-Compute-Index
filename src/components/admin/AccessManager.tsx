@@ -1,17 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import {
-  Check,
-  ExternalLink,
-  Loader2,
-  ShieldCheck,
-  UserPlus,
-  UserX,
-  X,
-} from "lucide-react";
-import GlassCard from "@/components/GlassCard";
+import { useState, type FormEvent } from "react";
+import { InlineAlert, Panel } from "@/components/console/ui";
 
 export interface WaitlistEntry {
   id: number;
@@ -49,234 +41,167 @@ export default function AccessManager({
   const [notice, setNotice] = useState<string | null>(null);
   const [manual, setManual] = useState("");
 
-  const pending = waitlist.filter((w) => w.status === "pending" || w.status === "contacted");
-  const decided = waitlist.filter((w) => w.status === "approved" || w.status === "declined");
-  const granted = new Set(access.map((a) => a.email.toLowerCase()));
+  const pending = waitlist.filter((entry) => entry.status === "pending" || entry.status === "contacted");
+  const decided = waitlist.filter((entry) => entry.status === "approved" || entry.status === "declined");
+  const granted = new Set(access.map((entry) => entry.email.toLowerCase()));
 
   async function run(action: Action, email: string, key: string) {
     setBusy(key);
     setError(null);
     setNotice(null);
     try {
-      const res = await fetch("/api/admin/access", {
+      const response = await fetch("/api/admin/access", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, email }),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? "Request failed");
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error ?? "Request failed");
       setNotice(
-        action === "grant"
-          ? `${email} can now sign in to the console.`
-          : action === "revoke"
-            ? `Removed console access for ${email}.`
-            : `Declined ${email}.`,
+        action === "grant" ? `${email} can now sign in to the console.` : action === "revoke" ? `Removed console access for ${email}.` : `Declined ${email}.`,
       );
       if (action === "grant") setManual("");
       router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Request failed");
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "Request failed");
     } finally {
       setBusy(null);
     }
   }
 
+  function grantManual(event: FormEvent) {
+    event.preventDefault();
+    if (manual.trim()) void run("grant", manual.trim(), "manual");
+  }
+
+  const spinner = (key: string) => (busy === key ? <Loader2 size={13} className="spin" /> : null);
+
   return (
-    <div className="flex flex-col gap-3">
-      <p className="text-xs text-[var(--muted)]">
-        Approving someone lets them sign in right away; admins themselves are managed in the
-        Supabase SQL editor.
-      </p>
+    <div className="stack">
+      <p className="muted">Approving someone lets them sign in immediately. Admins are managed in the Supabase SQL editor.</p>
 
-      {migrationNeeded && (
-        <GlassCard className="border-amber-300/30 p-4">
-          <p className="text-xs text-amber-300">
-            Could not read the access lists. Run{" "}
-            <span className="font-mono">supabase/access.sql</span> in the Supabase SQL editor.
-          </p>
-        </GlassCard>
-      )}
-      {error && <p className="text-xs text-red-400">{error}</p>}
-      {notice && <p className="text-xs text-emerald-300">{notice}</p>}
+      {migrationNeeded ? (
+        <InlineAlert tone="warning" title="Access lists unavailable">
+          Run <code>supabase/access.sql</code> in the Supabase SQL editor.
+        </InlineAlert>
+      ) : null}
+      {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
+      {notice ? <InlineAlert tone="success">{notice}</InlineAlert> : null}
 
-      {/* Grant access directly, without a waitlist request. */}
-      <GlassCard className="p-5">
-        <p className="text-sm font-semibold text-white">Grant access directly</p>
-        <p className="mt-1 text-xs text-[var(--muted)]">
-          For teammates who never filled in the waitlist form.
-        </p>
-        <div className="mt-3 flex flex-wrap gap-2">
+      <Panel title="Grant access" description="For teammates who never filled in the waitlist form.">
+        <form className="row" onSubmit={grantManual} style={{ flexWrap: "wrap" }}>
           <input
             type="email"
+            className="input"
+            style={{ flex: 1, minWidth: 240 }}
             value={manual}
-            onChange={(e) => setManual(e.target.value)}
+            onChange={(event) => setManual(event.target.value)}
             placeholder="person@example.com"
-            className="min-w-[16rem] flex-1 rounded-lg border border-white/10 bg-black/30 px-3 py-2 font-mono text-xs text-white placeholder:text-[var(--muted)] outline-none focus:border-[var(--qr-emerald,#34d399)]"
+            aria-label="Email address"
           />
-          <button
-            onClick={() => run("grant", manual.trim(), "manual")}
-            disabled={busy !== null || !manual.trim()}
-            className="console-primary disabled:opacity-40"
-          >
-            {busy === "manual" ? <Loader2 size={13} className="animate-spin" /> : <UserPlus size={13} />}
-            Grant access
+          <button type="submit" className="btn btn-primary" disabled={busy !== null || !manual.trim()}>
+            {spinner("manual")} Grant access
           </button>
+        </form>
+      </Panel>
+
+      <Panel title="Waitlist" description={`${pending.length} pending`} flush>
+        <div className="table-wrap">
+          <table className="qr-table">
+            <thead>
+              <tr><th>Person</th><th className="hide-sm">Background</th><th className="hide-sm">Requested</th><th aria-label="Actions" /></tr>
+            </thead>
+            <tbody>
+              {pending.length === 0 ? (
+                <tr><td colSpan={4} className="empty-row">No pending requests.</td></tr>
+              ) : (
+                pending.map((entry) => (
+                  <tr key={entry.id}>
+                    <td>
+                      <span className="cell-main">
+                        <b>{entry.name}</b>
+                        <small className="mono">{entry.email}</small>
+                      </span>
+                    </td>
+                    <td className="hide-sm">
+                      <span className="cell-main">
+                        <span>{entry.jobTitle}</span>
+                        <small>
+                          {entry.quantumExperience} · via {entry.referralSource} ·{" "}
+                          <a href={entry.linkedinUrl} target="_blank" rel="noopener noreferrer" className="link-btn">LinkedIn</a>
+                        </small>
+                      </span>
+                    </td>
+                    <td className="hide-sm muted">{new Date(entry.createdAt).toLocaleDateString()}</td>
+                    <td className="num">
+                      <span className="row" style={{ justifyContent: "flex-end" }}>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => run("decline", entry.email, `decline-${entry.id}`)} disabled={busy !== null}>
+                          {spinner(`decline-${entry.id}`)} Decline
+                        </button>
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => run("grant", entry.email, `approve-${entry.id}`)} disabled={busy !== null}>
+                          {spinner(`approve-${entry.id}`)} Approve
+                        </button>
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
-      </GlassCard>
-
-      {/* Pending waitlist requests. */}
-      <GlassCard className="p-5">
-        <p className="text-sm font-semibold text-white">
-          Waitlist requests{" "}
-          <span className="ml-1 font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">
-            {pending.length} pending
-          </span>
-        </p>
-        {pending.length === 0 ? (
-          <p className="mt-2 text-xs text-[var(--muted)]">No pending requests.</p>
-        ) : (
-          <ul className="mt-3 flex flex-col gap-2">
-            {pending.map((w) => (
-              <li
-                key={w.id}
-                className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-white/10 bg-black/20 p-3"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm text-white">
-                    {w.name}{" "}
-                    <span className="font-mono text-xs text-[var(--muted)]">{w.email}</span>
-                  </p>
-                  <p className="mt-0.5 text-xs text-[var(--muted)]">
-                    {w.jobTitle} · {w.quantumExperience} · via {w.referralSource} ·{" "}
-                    {new Date(w.createdAt).toLocaleDateString()}
-                  </p>
-                  <a
-                    href={w.linkedinUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-1 inline-flex items-center gap-1 text-xs text-sky-300 hover:underline"
-                  >
-                    LinkedIn <ExternalLink size={11} />
-                  </a>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => run("grant", w.email, `approve-${w.id}`)}
-                    disabled={busy !== null}
-                    className="flex items-center gap-1.5 rounded-lg border border-emerald-300/30 px-3 py-1.5 text-xs text-emerald-300 transition-colors hover:bg-emerald-300/10 disabled:opacity-50"
-                  >
-                    {busy === `approve-${w.id}` ? (
-                      <Loader2 size={12} className="animate-spin" />
-                    ) : (
-                      <Check size={12} />
-                    )}
-                    Approve
-                  </button>
-                  <button
-                    onClick={() => run("decline", w.email, `decline-${w.id}`)}
-                    disabled={busy !== null}
-                    className="flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-[var(--muted)] transition-colors hover:bg-white/5 disabled:opacity-50"
-                  >
-                    {busy === `decline-${w.id}` ? (
-                      <Loader2 size={12} className="animate-spin" />
-                    ) : (
-                      <X size={12} />
-                    )}
-                    Decline
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {decided.length > 0 && (
-          <ul className="mt-3 flex flex-col gap-1 border-t border-white/10 pt-3">
-            {decided.slice(0, 20).map((w) => (
-              <li key={w.id} className="flex items-center justify-between gap-2 text-xs">
-                <span className="font-mono text-[var(--muted)]">{w.email}</span>
-                <span className="flex items-center gap-2">
-                  <span
-                    className={
-                      w.status === "approved" ? "text-emerald-300" : "text-[var(--muted)]"
-                    }
-                  >
-                    {w.status}
+        {decided.length > 0 ? (
+          <details className="panel-foot advanced" style={{ display: "block" }}>
+            <summary>Recently decided ({Math.min(decided.length, 20)})</summary>
+            <ul className="stack-sm" style={{ margin: "12px 0 0", padding: 0, listStyle: "none" }}>
+              {decided.slice(0, 20).map((entry) => (
+                <li key={entry.id} className="row-between">
+                  <span className="mono">{entry.email}</span>
+                  <span className="row">
+                    <span className={`status ${entry.status === "approved" ? "success" : "neutral"}`}>{entry.status === "approved" ? "Approved" : "Declined"}</span>
+                    {entry.status === "declined" && !granted.has(entry.email.toLowerCase()) ? (
+                      <button type="button" className="link-btn" onClick={() => run("grant", entry.email, `regrant-${entry.id}`)} disabled={busy !== null}>
+                        Approve anyway
+                      </button>
+                    ) : null}
                   </span>
-                  {w.status === "declined" && !granted.has(w.email.toLowerCase()) && (
-                    <button
-                      onClick={() => run("grant", w.email, `regrant-${w.id}`)}
-                      disabled={busy !== null}
-                      className="text-emerald-300 hover:underline disabled:opacity-50"
-                    >
-                      approve anyway
-                    </button>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </GlassCard>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+      </Panel>
 
-      {/* Everyone who can currently sign in. */}
-      <GlassCard className="p-5">
-        <p className="text-sm font-semibold text-white">
-          Console access{" "}
-          <span className="ml-1 font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">
-            {access.length} {access.length === 1 ? "account" : "accounts"}
-          </span>
-        </p>
-        {access.length === 0 ? (
-          <p className="mt-2 text-xs text-[var(--muted)]">
-            Nobody is on the list yet — run <span className="font-mono">supabase/access.sql</span>.
-          </p>
-        ) : (
-          <ul className="mt-3 flex flex-col gap-1">
-            {access.map((a) => (
-              <li
-                key={a.email}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/8 px-3 py-2"
-              >
-                <span className="flex items-center gap-2">
-                  <span className="font-mono text-xs text-white">{a.email}</span>
-                  {a.isAdmin && (
-                    <span className="flex items-center gap-1 rounded border border-emerald-300/30 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-emerald-300">
-                      <ShieldCheck size={10} /> admin
-                    </span>
-                  )}
-                </span>
-                <span className="flex items-center gap-3">
-                  <span className="font-mono text-[10px] text-[var(--muted)]">
-                    added by {a.addedBy ?? "—"}
-                  </span>
-                  {a.isAdmin ? (
-                    <span
-                      className="font-mono text-[10px] text-[var(--muted)]"
-                      title="Remove them from admin_emails in the SQL editor first."
-                    >
-                      protected
-                    </span>
-                  ) : (
-                    <button
-                      onClick={() => run("revoke", a.email, `revoke-${a.email}`)}
-                      disabled={busy !== null}
-                      className="flex items-center gap-1.5 text-xs text-red-400 transition-colors hover:underline disabled:opacity-50"
-                    >
-                      {busy === `revoke-${a.email}` ? (
-                        <Loader2 size={12} className="animate-spin" />
+      <Panel title="Console access" description={`${access.length} ${access.length === 1 ? "account" : "accounts"}`} flush>
+        <div className="table-wrap">
+          <table className="qr-table">
+            <thead>
+              <tr><th>Email</th><th>Role</th><th className="hide-sm">Added by</th><th aria-label="Actions" /></tr>
+            </thead>
+            <tbody>
+              {access.length === 0 ? (
+                <tr><td colSpan={4} className="empty-row">Nobody is on the list yet. Run <code>supabase/access.sql</code>.</td></tr>
+              ) : (
+                access.map((entry) => (
+                  <tr key={entry.email}>
+                    <td className="mono">{entry.email}</td>
+                    <td>{entry.isAdmin ? <span className="badge">admin</span> : <span className="muted">Member</span>}</td>
+                    <td className="hide-sm muted">{entry.addedBy ?? "—"}</td>
+                    <td className="num">
+                      {entry.isAdmin ? (
+                        <span className="dim" title="Remove them from admin_emails in the SQL editor first.">Protected</span>
                       ) : (
-                        <UserX size={12} />
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => run("revoke", entry.email, `revoke-${entry.email}`)} disabled={busy !== null}>
+                          {spinner(`revoke-${entry.email}`)} Revoke
+                        </button>
                       )}
-                      Revoke
-                    </button>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </GlassCard>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
     </div>
   );
 }

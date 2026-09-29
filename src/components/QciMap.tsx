@@ -579,19 +579,17 @@ export default function QciMap({
             aria-label="QRouter routing map over the Quantum Compute Index"
             preserveAspectRatio="xMidYMid meet"
           >
-            {/* The two fan headings and the intake. Set as micro-caps: they are
-                structural labels for the halves of the diagram, and in sentence
-                case at body size they read as stray copy floating in a corner. */}
+            {/* The two fan headings and the intake. */}
             <text className="qci-axis" x={CX - AXIS_X} y={24} textAnchor="middle">
-              WHERE IT CAN RUN
+              Where it can run
             </text>
             <text className="qci-axis" x={CX + AXIS_X} y={24} textAnchor="middle">
-              WHAT AN HOUR COSTS
+              What an hour costs
             </text>
             <g className="qci-intake">
               <line className="qci-conduit" x1={CX} y1={INTAKE_Y} x2={CX} y2={CY - HUB_R - EDGE_GAP} />
               <text className="qci-axis" x={CX} y={INTAKE_Y - 11} textAnchor="middle">
-                YOUR JOB
+                Your job
               </text>
             </g>
 
@@ -654,7 +652,7 @@ export default function QciMap({
               >
                 <circle className="qci-hub-ring" r={HUB_R} />
                 <text y={-13} textAnchor="middle" className="qci-hub-brand">
-                  QROUTER
+                  QRouter
                 </text>
                 <text y={10} textAnchor="middle" className="qci-hub-value">
                   ${money(shownPrice)}

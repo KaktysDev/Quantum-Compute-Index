@@ -1,57 +1,81 @@
 import Link from "next/link";
-import { ArrowRight, BookOpen } from "lucide-react";
-import MagnetField from "@/components/routing/MagnetField";
+import { ArrowRight } from "lucide-react";
 import RoutingDiagram from "@/components/routing/RoutingDiagram";
+import { PageHeader, Panel } from "@/components/console/ui";
 import { ROUTABLE_PROVIDERS } from "@/lib/qrouter/providers";
-
-// This tab used to be the routing fabric's reference sheet: the five-stage
-// execution path, the four policy weight tables, the hard-constraint list, a
-// live candidate table, and the route advisor. All of that is real, and all of
-// it answered a question you only have once you are already routing.
-//
-// What it never did was say what QRouter IS. So the tab is now the one picture
-// that does — you talk to one thing, it talks to all of them — and three ways
-// out: press a provider to start a task against it, read how it works, or go
-// and route something. The reference material lives in the docs; the candidate
-// table lives on Providers; the advisor is still in components/RouteAdvisor.tsx
-// if it should come back somewhere.
+import { routingWeights } from "@/lib/qrouter/route";
+import type { RoutingMode } from "@/lib/qrouter/types";
 
 export const metadata = { title: "QRouter Console — Routing" };
 
-/** Pressing a provider opens the assistant with that provider preselected. */
 const TARGETS = ROUTABLE_PROVIDERS.map((name) => ({
   name,
-  href: `/dashboard/deploy?route=${encodeURIComponent(name)}`,
+  href: `/dashboard/run?route=${encodeURIComponent(name)}`,
 }));
+
+const MODES: Array<{ mode: RoutingMode; summary: string }> = [
+  { mode: "balanced", summary: "Default. Weighs price, queue time and hardware quality evenly." },
+  { mode: "cost", summary: "Cheapest compatible backend that meets your constraints." },
+  { mode: "speed", summary: "Shortest expected queue." },
+  { mode: "quality", summary: "Highest fidelity and reliability." },
+];
+
+const pct = (value: number) => `${Math.round(value * 100)}%`;
 
 export default function RoutingPage() {
   return (
-    <div className="console-page routing-page">
-      <section className="rt-stage">
-        <MagnetField />
+    <div className="console-page">
+      <PageHeader
+        title="Routing"
+        description="Every request is analyzed, priced against each compatible backend, and sent to the best match for the routing mode you choose."
+        actions={
+          <Link className="btn btn-primary" href="/dashboard/run">
+            Run a circuit <ArrowRight size={14} />
+          </Link>
+        }
+      />
 
-        <div className="rt-content">
-          <header className="rt-lede">
-            <h1>One request. Every quantum machine.</h1>
-            <p>
-              QRouter sits in the middle. Send one circuit with one key — it prices every provider
-              you could run on, picks the machine that fits, compiles for that hardware and hands
-              the result back. No accounts to open, no SDKs to learn.
-            </p>
-          </header>
-
+      <Panel title="How a request is routed" description="Select a provider to start a run pinned to it.">
+        <div className="routing-figure">
           <RoutingDiagram providers={TARGETS} />
-
-          <div className="rt-actions">
-            <Link className="rt-btn rt-btn-quiet" href="/docs">
-              <BookOpen size={15} /> Read docs
-            </Link>
-            <Link className="rt-btn rt-btn-loud" href="/dashboard/deploy">
-              Start routing <ArrowRight size={15} />
-            </Link>
-          </div>
         </div>
-      </section>
+      </Panel>
+
+      <Panel title="Routing modes" description="Scores are normalized across the compatible candidates for each request." flush>
+        <div className="table-wrap">
+          <table className="qr-table">
+            <thead>
+              <tr>
+                <th>Mode</th>
+                <th className="hide-sm">Behavior</th>
+                <th className="num">Cost</th>
+                <th className="num">Speed</th>
+                <th className="num">Quality</th>
+                <th className="num">Reliability</th>
+              </tr>
+            </thead>
+            <tbody>
+              {MODES.map(({ mode, summary }) => {
+                const weights = routingWeights(mode);
+                return (
+                  <tr key={mode}>
+                    <td><code>{mode}</code></td>
+                    <td className="hide-sm muted">{summary}</td>
+                    <td className="num">{pct(weights.cost)}</td>
+                    <td className="num">{pct(weights.speed)}</td>
+                    <td className="num">{pct(weights.quality)}</td>
+                    <td className="num">{pct(weights.reliability)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="panel-foot">
+          <span>Hard constraints such as max cost, qubit count and provider allowlists are applied before scoring.</span>
+          <Link href="/docs" className="link-btn">Routing reference</Link>
+        </div>
+      </Panel>
     </div>
   );
 }

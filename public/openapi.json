@@ -237,7 +237,72 @@
           "updated_at": { "type": "string", "format": "date-time" },
           "completed_at": { "type": ["string", "null"], "format": "date-time" },
           "quote": { "type": "object", "description": "Present once the execution has been quoted." },
+          "charged": { "type": ["number", "null"], "description": "Amount billed from the credit ledger. Can be lower than quote.total; null until completed." },
           "error": { "type": ["object", "null"] }
+        }
+      },
+      "HostedExecutionSummary": {
+        "type": "object",
+        "required": ["id", "key", "status", "target", "shots", "routing_mode", "created_at", "updated_at", "quote", "charged", "result_available"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "key": { "type": ["string", "null"] },
+          "status": { "enum": ["quoted", "awaiting_payment", "funds_reserved", "queued", "dispatching", "submitted", "processing", "completed", "failed", "cancellation_requested", "cancelled"] },
+          "target": { "type": "string" },
+          "selected_backend_id": { "type": ["string", "null"] },
+          "shots": { "type": "integer" },
+          "routing_mode": { "enum": ["balanced", "cost", "speed", "quality"] },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" },
+          "started_at": { "type": ["string", "null"], "format": "date-time" },
+          "completed_at": { "type": ["string", "null"], "format": "date-time" },
+          "quote": { "type": ["object", "null"], "properties": { "total": { "type": "number" } } },
+          "charged": { "type": ["number", "null"], "description": "Amount billed from the credit ledger. Can be lower than the quote; null until completed." },
+          "result_available": { "type": "boolean" }
+        }
+      },
+      "HostedJobSummary": {
+        "type": "object",
+        "required": ["id", "circuit_id", "status", "metadata", "created_at", "updated_at", "totals", "executions"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "circuit_id": { "type": "string", "format": "uuid" },
+          "circuit_name": { "type": ["string", "null"] },
+          "status": { "enum": ["queued", "running", "awaiting_payment", "completed", "failed", "cancelled"] },
+          "metadata": { "$ref": "#/components/schemas/Metadata" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" },
+          "completed_at": { "type": ["string", "null"], "format": "date-time" },
+          "error": { "type": ["object", "null"] },
+          "totals": { "type": "object", "properties": { "quoted": { "type": ["number", "null"] }, "charged": { "type": ["number", "null"] } } },
+          "executions": { "type": "array", "items": { "$ref": "#/components/schemas/HostedExecutionSummary" } }
+        }
+      },
+      "HostedJobList": {
+        "type": "object",
+        "required": ["object", "data", "has_more", "next_cursor"],
+        "properties": {
+          "object": { "const": "list" },
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/HostedJobSummary" } },
+          "has_more": { "type": "boolean" },
+          "next_cursor": { "type": ["string", "null"], "description": "Pass as `cursor` to fetch the next page." }
+        }
+      },
+      "CircuitSummary": {
+        "description": "Circuit analysis is reduced to metrics; normalized QASM and compiled programs are never listed.",
+        "allOf": [
+          { "$ref": "#/components/schemas/Circuit" },
+          { "type": "object", "required": ["job_count", "last_job_at"], "properties": { "job_count": { "type": "integer" }, "last_job_at": { "type": ["string", "null"], "format": "date-time" } } }
+        ]
+      },
+      "CircuitList": {
+        "type": "object",
+        "required": ["object", "data", "has_more", "next_cursor"],
+        "properties": {
+          "object": { "const": "list" },
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/CircuitSummary" } },
+          "has_more": { "type": "boolean" },
+          "next_cursor": { "type": ["string", "null"], "description": "Pass as `cursor` to fetch the next page." }
         }
       },
       "HostedJob": {
@@ -644,6 +709,21 @@
       }
     },
     "/api/v2/circuits": {
+      "get": {
+        "summary": "List circuits, newest first",
+        "parameters": [
+          { "in": "query", "name": "limit", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } },
+          { "in": "query", "name": "cursor", "schema": { "type": "string" }, "description": "Opaque cursor from a previous page's next_cursor." },
+          { "in": "query", "name": "include_released", "schema": { "type": "string", "enum": ["true", "false"], "default": "true" } }
+        ],
+        "responses": {
+          "200": { "description": "A page of circuits", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CircuitList" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "description": "The API key lacks the jobs:read scope.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      },
       "post": {
         "summary": "Store an immutable OpenQASM circuit",
         "parameters": [{ "in": "header", "name": "Idempotency-Key", "required": true, "schema": { "type": "string", "minLength": 8, "maxLength": 255 } }],
@@ -700,6 +780,23 @@
       }
     },
     "/api/v2/jobs": {
+      "get": {
+        "summary": "List jobs, newest first",
+        "description": "Each job includes its executions with quoted and charged amounts. Circuit source, routing traces and results are not included; fetch those per execution.",
+        "parameters": [
+          { "in": "query", "name": "limit", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } },
+          { "in": "query", "name": "cursor", "schema": { "type": "string" }, "description": "Opaque cursor from a previous page's next_cursor." },
+          { "in": "query", "name": "status", "schema": { "type": "string" }, "description": "Comma-separated job statuses, e.g. running,awaiting_payment." },
+          { "in": "query", "name": "circuit_id", "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "A page of jobs", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostedJobList" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "description": "The API key lacks the jobs:read scope.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      },
       "post": {
         "summary": "Create a durable parent job with independent quantum executions",
         "parameters": [{ "in": "header", "name": "Idempotency-Key", "required": true, "schema": { "type": "string", "minLength": 8, "maxLength": 255 } }],

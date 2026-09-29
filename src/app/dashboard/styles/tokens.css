@@ -1,0 +1,164 @@
+/* ═════════════════════════════════════════════════════════════════════════
+   QRouter console tokens.
+
+   Rules:
+     · Neutral chrome. The only hues are status colours (success, warning,
+       danger) and --qr-blue, which is reserved for the composer chip.
+     · No gradients, glows, blur or decorative motion.
+     · Every colour is declared twice: light on .console-shell, dark under
+       :root[data-theme="dark"]. Never hard-code a colour in a component rule.
+     · Type uses the five sizes below. Weights are 400 / 500 / 600 only.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.console-shell {
+  /* surfaces */
+  --qr-bg: #ffffff;
+  --qr-bg-2: #fafafa;
+  --qr-panel: #ffffff;
+  --qr-panel-solid: #ffffff;
+  --qr-panel-raised: #f7f7f7;
+  --qr-hover: #f4f4f4;
+  --qr-selected: #ededed;
+  --qr-code-bg: #fafafa;
+
+  /* lines */
+  --qr-line: #e8e8e8;
+  --qr-line-strong: #d4d4d4;
+
+  /* text */
+  --qr-text: #0a0a0a;
+  --qr-muted: #5f5f5f;
+  --qr-dim: #8c8c8c;
+
+  /* accent = inverted ink */
+  --qr-accent: #0a0a0a;
+  --qr-accent-fg: #ffffff;
+  --qr-accent-hover: #333333;
+  --qr-accent-dim: rgba(10, 10, 10, 0.06);
+  --qr-accent-soft: rgba(10, 10, 10, 0.035);
+
+  /* status */
+  --qr-success: #147a3d;
+  --qr-success-dim: rgba(20, 122, 61, 0.10);
+  --qr-success-line: rgba(20, 122, 61, 0.32);
+  --qr-warning: #96590a;
+  --qr-warning-dim: rgba(150, 89, 10, 0.10);
+  --qr-warning-line: rgba(150, 89, 10, 0.30);
+  --qr-danger: #bc3025;
+  --qr-danger-dim: rgba(188, 48, 37, 0.09);
+  --qr-danger-line: rgba(188, 48, 37, 0.30);
+
+  /* composer chip only */
+  --qr-blue: #1c5fd6;
+  --qr-blue-dim: rgba(28, 95, 214, 0.10);
+  --qr-blue-soft: rgba(28, 95, 214, 0.18);
+  --qr-blue-line: rgba(28, 95, 214, 0.32);
+
+  /* overlays */
+  --qr-scrim: rgba(0, 0, 0, 0.32);
+  --qr-shadow-overlay: 0 8px 28px -6px rgba(10, 10, 10, 0.16), 0 1px 3px rgba(10, 10, 10, 0.06);
+  --qr-ring: 0 0 0 3px rgba(10, 10, 10, 0.10);
+  /* Panels are drawn with a border, not a shadow. */
+  --qr-shadow: none;
+  --qr-shadow-raised: none;
+  --qr-shadow-lg: var(--qr-shadow-overlay);
+
+  /* type */
+  --qr-sans: var(--font-sans), -apple-system, BlinkMacSystemFont, sans-serif;
+  --qr-mono: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+  --qr-fs-label: 0.6875rem; /* 11px — mono labels only */
+  --qr-fs-sm: 0.75rem;      /* 12px — metadata, captions, badges */
+  --qr-fs-base: 0.8125rem;  /* 13px — UI text, tables, inputs */
+  --qr-fs-prose: 0.875rem;  /* 14px — long-form text and chat */
+  --qr-fs-lg: 1rem;         /* 16px — panel and section titles */
+  --qr-fs-xl: 1.375rem;     /* 22px — page titles and stat values */
+  --qr-fw-regular: 400;
+  --qr-fw-medium: 500;
+  --qr-fw-strong: 600;
+
+  /* geometry */
+  --qr-radius-sm: 4px;
+  --qr-radius-xs: var(--qr-radius-sm);
+  --qr-radius: 8px;
+  --qr-space-1: 4px;
+  --qr-space-2: 8px;
+  --qr-space-3: 12px;
+  --qr-space-4: 16px;
+  --qr-space-5: 24px;
+  --qr-space-6: 32px;
+  --qr-space-7: 48px;
+  --qr-control-h: 32px;
+
+  /* motion: colour changes only */
+  --qr-ease: ease-out;
+  --qr-fast: 120ms;
+  --qr-med: 120ms;
+
+  /* layout */
+  --qr-sidebar-w: 232px;
+  --qr-topbar-h: 48px;
+
+  min-height: 100vh;
+  color-scheme: light;
+  background: var(--qr-bg);
+  color: var(--qr-text);
+  font-family: var(--qr-sans);
+  font-size: var(--qr-fs-base);
+  line-height: 1.5;
+}
+
+:root[data-theme="dark"] .console-shell {
+  --qr-bg: #000000;
+  --qr-bg-2: #0a0a0a;
+  --qr-panel: #0a0a0a;
+  --qr-panel-solid: #0a0a0a;
+  --qr-panel-raised: #141414;
+  --qr-hover: #161616;
+  --qr-selected: #1f1f1f;
+  --qr-code-bg: #111111;
+
+  --qr-line: #222222;
+  --qr-line-strong: #363636;
+
+  --qr-text: #ededed;
+  --qr-muted: #a0a0a0;
+  --qr-dim: #737373;
+
+  --qr-accent: #ffffff;
+  --qr-accent-fg: #000000;
+  --qr-accent-hover: #d4d4d4;
+  --qr-accent-dim: rgba(255, 255, 255, 0.08);
+  --qr-accent-soft: rgba(255, 255, 255, 0.045);
+
+  --qr-success: #3ecf7e;
+  --qr-success-dim: rgba(62, 207, 126, 0.13);
+  --qr-success-line: rgba(62, 207, 126, 0.34);
+  --qr-warning: #e0a33a;
+  --qr-warning-dim: rgba(224, 163, 58, 0.13);
+  --qr-warning-line: rgba(224, 163, 58, 0.32);
+  --qr-danger: #f36e63;
+  --qr-danger-dim: rgba(243, 110, 99, 0.12);
+  --qr-danger-line: rgba(243, 110, 99, 0.32);
+
+  --qr-blue: #7aabff;
+  --qr-blue-dim: rgba(122, 171, 255, 0.14);
+  --qr-blue-soft: rgba(122, 171, 255, 0.24);
+  --qr-blue-line: rgba(122, 171, 255, 0.36);
+
+  --qr-scrim: rgba(0, 0, 0, 0.6);
+  --qr-shadow-overlay: 0 12px 36px -8px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --qr-ring: 0 0 0 3px rgba(255, 255, 255, 0.16);
+
+  color-scheme: dark;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .console-shell *,
+  .console-shell *::before,
+  .console-shell *::after {
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
+  }
+  .console-shell .qr-spinner,
+  .console-shell .spin { animation-duration: 1.4s !important; }
+}

@@ -4,7 +4,7 @@
 //   connect GitHub once → search or paste a repository → scan → import.
 //
 // Connected repositories and pasted URLs share the same input. That keeps the
-// mental model small and also mirrors Deploy, where a connected repository can
+// mental model small and also mirrors Run, where a connected repository can
 // be referenced by name instead of requiring its URL every time.
 
 import Link from "next/link";
@@ -26,7 +26,10 @@ import {
   Trash2,
   Unplug,
 } from "lucide-react";
+<<<<<<< Updated upstream
 import MagnetField from "@/components/routing/MagnetField";
+=======
+>>>>>>> Stashed changes
 import { fetchJsonWithRetry } from "@/lib/client/fetch-json";
 import type { QRouterProject, RepositoryInspection } from "@/lib/qrouter/repositories";
 
@@ -259,7 +262,7 @@ export default function GitHubManager() {
       });
       if (!response.ok) throw new Error(apiErrorMessage(data, "Project import failed."));
       const project = data as QRouterProject;
-      setNotice(`${inspection.repository.fullName} is ready. You can now reference it by name in Deploy.`);
+      setNotice(`${inspection.repository.fullName} is ready. You can now reference it by name in Run.`);
       setInspection(null);
       setCircuitPath("");
       setProjects((current) => [
@@ -291,16 +294,7 @@ export default function GitHubManager() {
 
   return (
     <section className="repo-stage">
-      <MagnetField />
       <div className="repo-stage-content">
-        <header className="repo-lede">
-          <span className="repo-kicker"><GitBranch size={13} /> GitHub integration</span>
-          <h2>Connect once. Route from any repository.</h2>
-          <p>
-            Give QRouter access to the repositories you choose. Private source stays private, and in Deploy
-            you can refer to a connected repository by name instead of pasting its URL.
-          </p>
-        </header>
 
         <section className={`repo-connect-card ${connected ? "connected" : ""}`}>
           <div className="repo-connect-icon">{connected ? <Check size={20} /> : <GitBranch size={20} />}</div>
@@ -470,7 +464,7 @@ export default function GitHubManager() {
                   <span className="repo-ready-name"><b>{project.repository}</b><small>{project.circuit_path}</small></span>
                   <span className="repo-ready-branch"><GitBranch size={12} /> {project.production_branch}</span>
                   <span className="repo-ready-actions">
-                    <Link href="/dashboard/github/deploy">Deploy <ArrowRight size={12} /></Link>
+                    <Link href="/dashboard/repositories/deployments">Deploy <ArrowRight size={12} /></Link>
                     <a href={project.repository_url} target="_blank" rel="noreferrer" title="Open repository"><ArrowUpRight size={13} /></a>
                     <button onClick={() => remove(project.id)} title="Remove project"><Trash2 size={13} /></button>
                   </span>

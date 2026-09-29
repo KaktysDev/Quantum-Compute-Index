@@ -1,18 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { Check, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import {
-  Check,
-  CheckCircle2,
-  KeyRound,
-  Loader2,
-  Power,
-  Radio,
-  Trash2,
-  XCircle,
-} from "lucide-react";
-import GlassCard from "@/components/GlassCard";
+import { useState } from "react";
+import { ConfirmDialog, InlineAlert, Panel, Timestamp } from "@/components/console/ui";
 
 export interface ProviderField {
   key: string;
@@ -47,21 +38,19 @@ function ProviderRow({ item }: { item: ProviderKeyStatus }) {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [test, setTest] = useState<TestResult | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const anyFilled = Object.values(values).some((v) => v.trim().length > 0);
-  const fields: ProviderField[] =
-    item.fields.length > 0
-      ? item.fields
-      : [{ key: "apiKey", label: `${item.name} API key`, type: "password" }];
+  const anyFilled = Object.values(values).some((value) => value.trim().length > 0);
+  const fields: ProviderField[] = item.fields.length > 0 ? item.fields : [{ key: "apiKey", label: `${item.name} API key`, type: "password" }];
 
   async function call(body: Record<string, unknown>, method: "POST" | "DELETE" = "POST", path = "/api/admin/provider-keys") {
-    const res = await fetch(path, {
+    const response = await fetch(path, {
       method,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ provider: item.id, ...body }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error ?? "Request failed");
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error ?? "Request failed");
     return data;
   }
 
@@ -75,9 +64,8 @@ function ProviderRow({ item }: { item: ProviderKeyStatus }) {
       setValues({});
       setSaved(true);
       router.refresh();
-      setTimeout(() => setSaved(false), 2500);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "Save failed");
     } finally {
       setBusy(null);
     }
@@ -89,14 +77,9 @@ function ProviderRow({ item }: { item: ProviderKeyStatus }) {
     setError(null);
     setTest(null);
     try {
-      const result = (await call(
-        anyFilled ? { fieldValues: values } : {},
-        "POST",
-        "/api/admin/provider-keys/test",
-      )) as TestResult;
-      setTest(result);
-    } catch (err) {
-      setTest({ ok: false, message: err instanceof Error ? err.message : "Test failed" });
+      setTest((await call(anyFilled ? { fieldValues: values } : {}, "POST", "/api/admin/provider-keys/test")) as TestResult);
+    } catch (value) {
+      setTest({ ok: false, message: value instanceof Error ? value.message : "Test failed" });
     } finally {
       setBusy(null);
     }
@@ -108,153 +91,122 @@ function ProviderRow({ item }: { item: ProviderKeyStatus }) {
     try {
       await call({ enabled: !item.enabled });
       router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Toggle failed");
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "Toggle failed");
     } finally {
       setBusy(null);
     }
   }
 
   async function remove() {
-    if (!window.confirm(`Delete the stored ${item.name} credential? The QCI refresh will stop pulling this provider.`)) return;
     setBusy("delete");
     setError(null);
     try {
       await call({}, "DELETE");
       setTest(null);
+      setConfirmDelete(false);
       router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "Delete failed");
     } finally {
       setBusy(null);
     }
   }
 
+  const spinner = (key: string) => (busy === key ? <Loader2 size={13} className="spin" /> : null);
+  const state = !item.configured ? { label: "Not configured", tone: "neutral" } : item.enabled ? { label: "Enabled", tone: "success" } : { label: "Disabled", tone: "warning" };
+
   return (
-    <GlassCard className="p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="text-sm font-semibold text-white">{item.name}</p>
-            <span
-              className={`rounded border px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest ${
-                !item.configured
-                  ? "border-white/10 text-[var(--muted)]"
-                  : item.enabled
-                    ? "border-emerald-300/30 text-emerald-300"
-                    : "border-amber-300/30 text-amber-300"
-              }`}
-            >
-              {!item.configured ? "not configured" : item.enabled ? "enabled" : "disabled"}
-            </span>
-          </div>
-          <p className="mt-1 text-xs text-[var(--muted)]">{item.description}</p>
-          {item.updatedAt && (
-            <p className="mt-1 font-mono text-[10px] text-[var(--muted)]">
-              key updated {new Date(item.updatedAt).toLocaleString()}
-            </p>
-          )}
-        </div>
-        {item.configured && (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={toggle}
-              disabled={busy !== null}
-              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors disabled:opacity-50 ${
-                item.enabled
-                  ? "border-amber-300/30 text-amber-300 hover:bg-amber-300/10"
-                  : "border-emerald-300/30 text-emerald-300 hover:bg-emerald-300/10"
-              }`}
-            >
-              {busy === "toggle" ? <Loader2 size={12} className="animate-spin" /> : <Power size={12} />}
-              {item.enabled ? "Disable" : "Enable"}
+    <Panel
+      title={<span className="row" style={{ gap: 10 }}>{item.name}<span className={`status ${state.tone}`} style={{ fontWeight: 400 }}>{state.label}</span></span>}
+      description={
+        <>
+          {item.description}
+          {item.updatedAt ? <> · key updated <Timestamp value={item.updatedAt} /></> : null}
+        </>
+      }
+      actions={
+        item.configured ? (
+          <>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={toggle} disabled={busy !== null}>
+              {spinner("toggle")} {item.enabled ? "Disable" : "Enable"}
             </button>
-            <button
-              onClick={remove}
-              disabled={busy !== null}
-              className="flex items-center gap-1.5 rounded-lg border border-red-400/30 px-3 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-400/10 disabled:opacity-50"
-            >
-              {busy === "delete" ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+            <button type="button" className="btn btn-danger btn-sm" onClick={() => setConfirmDelete(true)} disabled={busy !== null}>
               Delete
             </button>
-          </div>
-        )}
-      </div>
-
-      {/* Credential inputs — one per adapter field (AWS gets key id + secret + region) */}
-      <div className={`mt-3 grid gap-2 ${fields.length > 1 ? "sm:grid-cols-2 lg:grid-cols-3" : ""}`}>
-        {fields.map((f) => (
-          <label key={f.key} className="flex flex-col gap-1">
-            <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">{f.label}</span>
-            <input
-              type={f.type === "password" ? "password" : "text"}
-              value={values[f.key] ?? ""}
-              onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
-              placeholder={f.placeholder ?? (item.configured ? "Rotate: paste a new value" : f.label)}
-              className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 font-mono text-xs text-white placeholder:text-[var(--muted)] outline-none focus:border-[var(--qr-emerald,#34d399)]"
-            />
-          </label>
-        ))}
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button
-          onClick={saveKey}
-          disabled={busy !== null || !anyFilled}
-          className="console-primary disabled:opacity-40"
-        >
-          {busy === "save" ? <Loader2 size={13} className="animate-spin" /> : saved ? <Check size={13} /> : <KeyRound size={13} />}
-          {busy === "save" ? "Encrypting…" : saved ? "Saved" : item.configured ? "Rotate key" : "Save key"}
-        </button>
-        {item.testable && (
-          <button
-            onClick={testConnection}
-            disabled={busy !== null || (!item.configured && !anyFilled)}
-            className="flex items-center gap-1.5 rounded-lg border border-sky-300/30 px-3.5 py-2 text-xs text-sky-300 transition-colors hover:bg-sky-300/10 disabled:opacity-40"
-            title={anyFilled ? "Tests the values typed above (before saving)" : "Tests the stored credential"}
-          >
-            {busy === "test" ? <Loader2 size={13} className="animate-spin" /> : <Radio size={13} />}
-            {busy === "test" ? "Probing…" : anyFilled ? "Test pasted key" : "Test connection"}
-          </button>
-        )}
-      </div>
-
-      {/* Connection test outcome — proves the key actually pulls data */}
-      {test && (
-        <div
-          className={`mt-3 rounded-lg border p-3 ${
-            test.ok ? "border-emerald-300/25 bg-emerald-300/5" : "border-red-400/25 bg-red-400/5"
-          }`}
-        >
-          <p className={`flex items-center gap-2 text-xs font-medium ${test.ok ? "text-emerald-300" : "text-red-400"}`}>
-            {test.ok ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
-            {test.message}
-          </p>
-          {test.details && test.details.length > 0 && (
-            <ul className="mt-2 flex flex-col gap-1">
-              {test.details.map((d) => (
-                <li key={d} className="font-mono text-[10px] text-[var(--muted)]">· {d}</li>
-              ))}
-            </ul>
-          )}
+          </>
+        ) : null
+      }
+    >
+      <div className="stack">
+        <div className={`form-grid ${fields.length > 1 ? "three" : ""}`} style={{ padding: 0 }}>
+          {fields.map((field) => (
+            <label key={field.key} className="field">
+              {field.label}
+              <input
+                className="input mono"
+                type={field.type === "password" ? "password" : "text"}
+                value={values[field.key] ?? ""}
+                onChange={(event) => { setValues((current) => ({ ...current, [field.key]: event.target.value })); setSaved(false); }}
+                placeholder={field.placeholder ?? (item.configured ? "Paste a new value to rotate" : field.label)}
+                autoComplete="off"
+              />
+            </label>
+          ))}
         </div>
-      )}
-      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
-    </GlassCard>
+
+        <div className="row" style={{ flexWrap: "wrap" }}>
+          <button type="button" className="btn btn-primary" onClick={saveKey} disabled={busy !== null || !anyFilled}>
+            {busy === "save" ? <Loader2 size={13} className="spin" /> : saved ? <Check size={13} /> : null}
+            {saved ? "Saved" : item.configured ? "Rotate key" : "Save key"}
+          </button>
+          {item.testable ? (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={testConnection}
+              disabled={busy !== null || (!item.configured && !anyFilled)}
+              title={anyFilled ? "Tests the values typed above, before saving" : "Tests the stored credential"}
+            >
+              {spinner("test")} {anyFilled ? "Test pasted key" : "Test connection"}
+            </button>
+          ) : null}
+        </div>
+
+        {test ? (
+          <InlineAlert tone={test.ok ? "success" : "danger"} title={test.message}>
+            {test.details?.length ? (
+              <ul style={{ margin: "4px 0 0", paddingLeft: 16 }}>
+                {test.details.map((detail) => <li key={detail} className="mono">{detail}</li>)}
+              </ul>
+            ) : null}
+          </InlineAlert>
+        ) : null}
+        {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
+      </div>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title={`Delete the ${item.name} credential?`}
+        body="The stored key is removed and the QCI refresh stops pulling this provider."
+        confirmLabel="Delete credential"
+        tone="danger"
+        busy={busy === "delete"}
+        onConfirm={remove}
+        onClose={() => setConfirmDelete(false)}
+      />
+    </Panel>
   );
 }
 
 export default function ProviderKeysManager({ providers }: { providers: ProviderKeyStatus[] }) {
   return (
-    <div className="flex flex-col gap-3">
-      <p className="text-xs text-[var(--muted)]">
-        Credentials are AES-256-GCM encrypted at rest and only ever decrypted server-side.
-        Enabled keys feed the daily QCI refresh; use <b className="text-white">Test connection</b> to
-        verify a key actually reaches the provider and lists its QPUs — before or after saving.
+    <div className="stack">
+      <p className="muted">
+        Credentials are AES-256-GCM encrypted at rest and only decrypted server-side. Enabled keys feed the daily QCI refresh. Use Test
+        connection to confirm a key reaches the provider and lists its QPUs.
       </p>
-      {providers.map((p) => (
-        <ProviderRow key={p.id} item={p} />
-      ))}
+      {providers.map((provider) => <ProviderRow key={provider.id} item={provider} />)}
     </div>
   );
 }

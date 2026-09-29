@@ -19,15 +19,40 @@ export const dynamic = "force-dynamic";
 // responding, so it needs more than the platform default timeout.
 export const maxDuration = 60;
 
+<<<<<<< Updated upstream
+=======
+const LIST_SELECT = "id,project_id,request_id,name,input_format,shots,target,routing_mode,status,selected_backend_id,failover_enabled,max_attempts,execution_deadline_at,analysis,route_decision,result,error,created_at,updated_at,started_at,completed_at,group_id,execution_key,quotes!job_id(total),ledger_entries!job_id(type,amount)";
+const SUMMARY_SELECT = "id,name,status,selected_backend_id,shots,created_at,updated_at,started_at,completed_at,analysis,group_id,execution_key,quotes!job_id(total),ledger_entries!job_id(type,amount)";
+
+>>>>>>> Stashed changes
 export async function GET(request: Request) {
   try {
     const principal = await resolvePrincipal(request);
     requireScope(principal, "jobs:read");
+<<<<<<< Updated upstream
+=======
+    const params = new URL(request.url).searchParams;
+    const summary = params.get("view") === "summary";
+    // `standalone=1` leaves out v2 executions; the console lists those under
+    // their job via GET /api/v2/jobs. `before` pages by creation time.
+    const standalone = params.get("standalone") === "1";
+    const beforeRaw = params.get("before");
+    const before = beforeRaw && !Number.isNaN(Date.parse(beforeRaw)) ? new Date(beforeRaw).toISOString() : null;
+    const limit = Math.min(Math.max(Number(params.get("limit")) || 100, 1), 100);
+    const slim = summary ? slimJobForList : slimJobForClient;
+>>>>>>> Stashed changes
     if (principal.demo) {
       const data = [...demoJobs.values()]
         .filter((job) => job.organization_id === principal.organizationId)
+        .filter((job) => !standalone || !(job as unknown as { group_id?: string | null }).group_id)
+        .filter((job) => !before || job.created_at < before)
         .sort((a, b) => b.created_at.localeCompare(a.created_at))
+<<<<<<< Updated upstream
         .map((job) => slimJobForClient(job as unknown as Record<string, unknown>));
+=======
+        .slice(0, limit)
+        .map((job) => slim(job as unknown as Record<string, unknown>));
+>>>>>>> Stashed changes
       return NextResponse.json({ object: "list", data });
     }
     const admin = createAdminClient();
@@ -35,7 +60,16 @@ export async function GET(request: Request) {
     // real elapsed time and real cost without a second round-trip per row.
     // Circuit source / compiled QASM stay on GET /jobs/:id and /transpiled —
     // the list must not re-ship them on every 5s poll.
+<<<<<<< Updated upstream
     const { data, error } = await admin.from("jobs").select("id,project_id,request_id,name,input_format,shots,target,routing_mode,status,selected_backend_id,failover_enabled,max_attempts,execution_deadline_at,analysis,route_decision,result,error,created_at,updated_at,started_at,completed_at,quotes!job_id(total)").eq("organization_id", principal.organizationId).order("created_at", { ascending: false }).limit(100);
+=======
+    // `view=summary` goes further: encoding traces and route_decision stay off
+    // the poll payload. The console inspector loads those from GET /jobs/:id.
+    let query = admin.from("jobs").select(summary ? SUMMARY_SELECT : LIST_SELECT).eq("organization_id", principal.organizationId);
+    if (standalone) query = query.is("group_id", null);
+    if (before) query = query.lt("created_at", before);
+    const { data, error } = await query.order("created_at", { ascending: false }).limit(limit);
+>>>>>>> Stashed changes
     if (error) throw error;
     return NextResponse.json({
       object: "list",

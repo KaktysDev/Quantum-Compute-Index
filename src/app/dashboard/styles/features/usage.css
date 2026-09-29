@@ -1,0 +1,14 @@
+/* ── Usage ─────────────────────────────────────────────────────────────── */
+
+.spend-chart { display: grid; gap: var(--qr-space-3); margin: 0; }
+.spend-chart-readout { display: flex; align-items: baseline; gap: var(--qr-space-2); min-height: 24px; }
+.spend-chart-readout b { font-size: var(--qr-fs-lg); font-weight: var(--qr-fw-medium); font-variant-numeric: tabular-nums; }
+.spend-chart-readout span { color: var(--qr-muted); font-size: var(--qr-fs-sm); }
+.spend-chart-plot { position: relative; display: flex; align-items: flex-end; gap: 2px; border-bottom: 1px solid var(--qr-line-strong); }
+.spend-chart-grid { position: absolute; inset: 0; border-top: 1px solid var(--qr-line); pointer-events: none; }
+.spend-chart-grid::after { content: ""; position: absolute; top: 50%; right: 0; left: 0; border-top: 1px solid var(--qr-line); }
+.spend-chart-col { position: relative; display: flex; height: 100%; min-width: 0; flex: 1; align-items: flex-end; padding: 0; border: 0; background: transparent; cursor: default; }
+.spend-chart-col i { display: block; width: 100%; max-width: 28px; margin: 0 auto; border-radius: 4px 4px 0 0; background: var(--qr-text); opacity: 0.85; }
+.spend-chart-col:hover i, .spend-chart-col.active i { opacity: 1; }
+.spend-chart-col:hover, .spend-chart-col.active { background: var(--qr-accent-soft); }
+.spend-chart-axis { display: flex; justify-content: space-between; color: var(--qr-dim); font-size: var(--qr-fs-sm); }

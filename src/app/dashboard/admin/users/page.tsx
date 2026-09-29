@@ -1,12 +1,8 @@
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
-import GlassCard from "@/components/GlassCard";
+import { Money, Panel } from "@/components/console/ui";
 import { requireAdmin } from "@/lib/admin";
 
 export const dynamic = "force-dynamic";
-
-const usd = (n: number) =>
-  n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 
 export default async function AdminUsersPage() {
   const { supabase } = await requireAdmin();
@@ -21,97 +17,88 @@ export default async function AdminUsersPage() {
       supabase.from("backends").select("id, provider"),
     ]);
 
-  const backendProvider = new Map((backends ?? []).map((b) => [b.id, b.provider]));
+  const backendProvider = new Map((backends ?? []).map((backend) => [backend.id, backend.provider]));
   const orgByUser = new Map<string, string>();
-  for (const m of members ?? []) if (!orgByUser.has(m.user_id)) orgByUser.set(m.user_id, m.organization_id);
-  const creditByOrg = new Map((credits ?? []).map((c) => [c.organization_id, c]));
+  for (const member of members ?? []) if (!orgByUser.has(member.user_id)) orgByUser.set(member.user_id, member.organization_id);
+  const creditByOrg = new Map((credits ?? []).map((credit) => [credit.organization_id, credit]));
 
   const spendByOrg = new Map<string, number>();
   const purchasedByOrg = new Map<string, number>();
-  for (const l of ledger ?? []) {
-    if (l.type === "charge") spendByOrg.set(l.organization_id, (spendByOrg.get(l.organization_id) ?? 0) + Math.abs(Number(l.amount)));
-    if (l.type === "purchase") purchasedByOrg.set(l.organization_id, (purchasedByOrg.get(l.organization_id) ?? 0) + Number(l.amount));
+  for (const entry of ledger ?? []) {
+    if (entry.type === "charge") spendByOrg.set(entry.organization_id, (spendByOrg.get(entry.organization_id) ?? 0) + Math.abs(Number(entry.amount)));
+    if (entry.type === "purchase") purchasedByOrg.set(entry.organization_id, (purchasedByOrg.get(entry.organization_id) ?? 0) + Number(entry.amount));
   }
 
-  const jobsByUser = new Map<string, { count: number; last: string; providers: Set<string> }>();
-  for (const j of jobs ?? []) {
-    if (!j.user_id) continue;
-    const entry = jobsByUser.get(j.user_id) ?? { count: 0, last: j.created_at, providers: new Set<string>() };
+  const jobsByUser = new Map<string, { count: number; providers: Set<string> }>();
+  for (const job of jobs ?? []) {
+    if (!job.user_id) continue;
+    const entry = jobsByUser.get(job.user_id) ?? { count: 0, providers: new Set<string>() };
     entry.count += 1;
-    if (j.selected_backend_id) entry.providers.add(backendProvider.get(j.selected_backend_id) ?? j.selected_backend_id);
-    jobsByUser.set(j.user_id, entry);
+    if (job.selected_backend_id) entry.providers.add(backendProvider.get(job.selected_backend_id) ?? job.selected_backend_id);
+    jobsByUser.set(job.user_id, entry);
   }
 
-  const rows = (profiles ?? []).map((p) => {
-    const orgId = orgByUser.get(p.id);
+  const rows = (profiles ?? []).map((profile) => {
+    const orgId = orgByUser.get(profile.id);
     const credit = orgId ? creditByOrg.get(orgId) : undefined;
-    const usage = jobsByUser.get(p.id);
+    const usage = jobsByUser.get(profile.id);
     return {
+<<<<<<< Updated upstream
       ...p,
+=======
+      id: String(profile.id),
+      email: profile.email,
+      name: profile.full_name,
+      company: profile.company,
+      created_at: profile.created_at,
+>>>>>>> Stashed changes
       balance: Number(credit?.available ?? 0),
-      reserved: Number(credit?.reserved ?? 0),
-      purchased: orgId ? (purchasedByOrg.get(orgId) ?? 0) : 0,
-      spent: orgId ? (spendByOrg.get(orgId) ?? 0) : 0,
+      purchased: orgId ? purchasedByOrg.get(orgId) ?? 0 : 0,
+      spent: orgId ? spendByOrg.get(orgId) ?? 0 : 0,
       jobCount: usage?.count ?? 0,
       providers: usage ? [...usage.providers] : [],
-      lastActive: usage?.last ?? null,
     };
   });
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-end justify-between">
-        <h2 className="text-sm font-semibold text-white">All users</h2>
-        <span className="mono-label">{rows.length} accounts</span>
-      </div>
-
-      <GlassCard className="overflow-x-auto">
-        <table className="w-full min-w-[900px] text-left text-sm">
+    <Panel title="Users" description={`${rows.length} accounts`} flush>
+      <div className="table-wrap">
+        <table className="qr-table">
           <thead>
-            <tr className="border-b border-white/10 font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">
-              <th className="px-4 py-3">User</th>
-              <th className="px-4 py-3">Joined</th>
-              <th className="px-4 py-3 text-right">Jobs</th>
-              <th className="px-4 py-3">Providers used</th>
-              <th className="px-4 py-3 text-right">Purchased</th>
-              <th className="px-4 py-3 text-right">Spent</th>
-              <th className="px-4 py-3 text-right">Balance</th>
-              <th className="px-4 py-3" />
+            <tr>
+              <th>User</th>
+              <th className="hide-sm">Joined</th>
+              <th className="num">Jobs</th>
+              <th className="hide-sm">Providers</th>
+              <th className="num hide-sm">Purchased</th>
+              <th className="num">Charged</th>
+              <th className="num">Balance</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.03]">
-                <td className="px-4 py-3">
-                  <p className="font-medium text-white">{r.full_name || r.email || r.id.slice(0, 8)}</p>
-                  <p className="text-xs text-[var(--muted)]">{r.email}{r.company ? ` · ${r.company}` : ""}</p>
-                </td>
-                <td className="px-4 py-3 text-xs text-[var(--muted)]">{new Date(r.created_at).toLocaleDateString()}</td>
-                <td className="px-4 py-3 text-right font-mono text-xs text-white">{r.jobCount}</td>
-                <td className="px-4 py-3">
-                  {r.providers.length === 0 ? (
-                    <span className="text-xs text-[var(--muted)]">—</span>
-                  ) : (
-                    <div className="flex flex-wrap gap-1">
-                      {r.providers.map((p) => (
-                        <span key={p} className="rounded border border-white/10 bg-black/30 px-1.5 py-0.5 font-mono text-[10px] text-[var(--muted)]">{p}</span>
-                      ))}
-                    </div>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-right font-mono text-xs text-white">{usd(r.purchased)}</td>
-                <td className="px-4 py-3 text-right font-mono text-xs text-white">{usd(r.spent)}</td>
-                <td className="px-4 py-3 text-right font-mono text-xs text-[var(--qr-emerald,#34d399)]">{usd(r.balance)}</td>
-                <td className="px-4 py-3 text-right">
-                  <Link href={`/dashboard/admin/users/${r.id}`} className="inline-flex items-center gap-1 text-xs text-[var(--qr-emerald,#34d399)] hover:underline">
-                    Detail <ArrowRight size={11} />
-                  </Link>
-                </td>
-              </tr>
-            ))}
+            {rows.length === 0 ? (
+              <tr><td colSpan={7} className="empty-row">No users.</td></tr>
+            ) : (
+              rows.map((row) => (
+                <tr key={row.id}>
+                  <td>
+                    <Link href={`/dashboard/admin/users/${row.id}`} className="cell-main">
+                      <b>{row.name || row.email || row.id.slice(0, 8)}</b>
+                      <small>{row.email}{row.company ? ` · ${row.company}` : ""}</small>
+                    </Link>
+                  </td>
+                  <td className="hide-sm muted">{new Date(row.created_at).toLocaleDateString()}</td>
+                  <td className="num">{row.jobCount.toLocaleString()}</td>
+                  <td className="hide-sm muted">{row.providers.length ? row.providers.join(", ") : "—"}</td>
+                  <td className="num hide-sm"><Money value={row.purchased} /></td>
+                  <td className="num"><Money value={row.spent} /></td>
+                  <td className="num"><Money value={row.balance} /></td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
-      </GlassCard>
-    </div>
+      </div>
+    </Panel>
   );
 }

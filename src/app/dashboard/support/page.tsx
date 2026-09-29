@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation";
 import SupportPanel, { type UserReport } from "@/components/SupportPanel";
+import { PageHeader } from "@/components/console/ui";
 import { consoleDevBypassEnabled } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "QRouter Console — Support" };
 
 export default async function SupportPage() {
   let reports: UserReport[] = [];
@@ -25,11 +27,7 @@ export default async function SupportPage() {
 
   return (
     <div className="console-page">
-      <div className="console-page-heading compact">
-        <div>
-          <h1>Support</h1>
-        </div>
-      </div>
+      <PageHeader title="Support" description="Report a problem with a job, billing or your account. The team replies on the report." />
       <SupportPanel reports={reports} />
     </div>
   );

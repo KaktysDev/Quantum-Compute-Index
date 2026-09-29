@@ -7,7 +7,7 @@
    One design language across landing, public subpages, and console — the
    dark quantum system from landing.css: #030705 depths, emerald #42e59e,
    violet #8b7bff, Geist Sans UI with mono data. Page-specific skins live in
-   landing.css (ql-), dashboard/console.css (qr-), docs/docs.css.
+   landing.css (ql-), dashboard/styles/ (qr-), docs/docs.css.
    ═════════════════════════════════════════════════════════════════════════ */
 
 :root {
@@ -37,7 +37,7 @@ html {
   scroll-behavior: smooth;
 }
 
-/* The console owns its own two-theme token set (dashboard/console.css). All it
+/* The console owns its own two-theme token set (dashboard/styles/tokens.css). All it
    needs from here is that the document itself stops asserting "dark" — native
    scrollbars, form chrome and the overscroll gutter read from these. */
 html:has(.console-shell) {

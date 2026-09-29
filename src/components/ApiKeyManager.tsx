@@ -1,5 +1,217 @@
-"use client";import{useCallback,useEffect,useState}from"react";import{Check,Copy,KeyRound,Loader2,Plus,Trash2,X}from"lucide-react";
-type Key={id:string;name:string;key_prefix:string;environment:string;last_used_at?:string;created_at:string;revoked_at?:string};
-export default function ApiKeyManager(){const[keys,setKeys]=useState<Key[]>([]),[open,setOpen]=useState(false),[name,setName]=useState("Production"),[environment,setEnvironment]=useState<"live"|"test">("live"),[created,setCreated]=useState<string|null>(null),[busy,setBusy]=useState(false),[copied,setCopied]=useState(false);const load=useCallback(async()=>{const r=await fetch("/api/v1/api-keys"),d=await r.json();if(r.ok)setKeys(d.data)},[]);useEffect(()=>{load()},[load]);async function create(){setBusy(true);const r=await fetch("/api/v1/api-keys",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name,environment})}),d=await r.json();setBusy(false);if(r.ok){setCreated(d.key);load()}}async function revoke(id:string){if(!confirm("Revoke this key? Applications using it will immediately fail authentication."))return;await fetch(`/api/v1/api-keys/${id}`,{method:"DELETE"});load()}
-return<><div className="console-panel keys-panel"><div className="keys-toolbar"><div><KeyRound size={17}/><span><b>Secret API keys</b><small>Authenticate QRouter requests from your code.</small></span></div><button className="console-primary" onClick={()=>{setOpen(true);setCreated(null)}}><Plus size={14}/>Create key</button></div><div className="key-head"><span>Name</span><span>Key</span><span>Environment</span><span>Last used</span><span/></div>{keys.map(k=><div className="key-row" key={k.id}><span><b>{k.name}</b><small>Created {new Date(k.created_at).toLocaleDateString()}</small></span><code>{k.key_prefix}••••••••••••</code><span className={`env ${k.environment}`}>{k.environment}</span><span>{k.last_used_at?new Date(k.last_used_at).toLocaleDateString():"Never"}</span><button className="qr-icon-button" onClick={()=>revoke(k.id)} aria-label="Revoke key"><Trash2 size={14}/></button></div>)}</div><div className="console-note"><b>Keep keys server-side.</b> Never expose a live key in browser code, mobile apps, or public repositories.</div>{open&&<div className="qr-modal-backdrop" onMouseDown={()=>setOpen(false)}><section className="qr-modal key-modal" onMouseDown={e=>e.stopPropagation()}><button className="qr-icon-button close" onClick={()=>setOpen(false)}><X size={16}/></button>{created?<><div className="qr-modal-mark"><Check size={20}/></div><p className="qr-eyebrow">Key created</p><h2>Copy it now.</h2><p>This is the only time the complete secret will be displayed.</p><div className="created-key"><code>{created}</code><button onClick={async()=>{await navigator.clipboard.writeText(created);setCopied(true)}}>{copied?<Check size={16}/>:<Copy size={16}/>}</button></div><button className="console-primary full" onClick={()=>setOpen(false)}>Done</button></>:<><div className="qr-modal-mark"><KeyRound size={20}/></div><p className="qr-eyebrow">New credential</p><h2>Create API key</h2><label className="modal-field"><span>Name</span><input value={name} onChange={e=>setName(e.target.value)}/></label><label className="modal-field"><span>Environment</span><select value={environment} onChange={e=>setEnvironment(e.target.value as typeof environment)}><option value="live">Live</option><option value="test">Test</option></select></label><button className="console-primary full" onClick={create} disabled={busy||!name.trim()}>{busy?<Loader2 className="spin" size={16}/>:<Plus size={15}/>}Create key</button></>}</section></div>}</>}
+"use client";
 
+import { Loader2, Plus } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { ConfirmDialog, CopyButton, InlineAlert, Panel, Timestamp } from "@/components/console/ui";
+import { apiErrorMessage } from "@/lib/client/activity";
+
+type Key = {
+  id: string;
+  name: string;
+  key_prefix: string;
+  environment: string;
+  scopes?: string[] | null;
+  last_used_at?: string | null;
+  created_at: string;
+  revoked_at?: string | null;
+};
+
+const ACCESS = {
+  full: { label: "Read and write", scopes: ["jobs:read", "jobs:write"] },
+  read: { label: "Read only", scopes: ["jobs:read"] },
+} as const;
+
+function accessLabel(scopes: string[] | null | undefined) {
+  if (!scopes?.length || scopes.includes("jobs:write")) return "Read and write";
+  return "Read only";
+}
+
+export default function ApiKeyManager() {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [keys, setKeys] = useState<Key[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("Production");
+  const [environment, setEnvironment] = useState<"live" | "test">("live");
+  const [access, setAccess] = useState<keyof typeof ACCESS>("full");
+  const [created, setCreated] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [revoking, setRevoking] = useState<Key | null>(null);
+  const [revokeBusy, setRevokeBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    const response = await fetch("/api/v1/api-keys", { cache: "no-store" });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      setLoadError(apiErrorMessage(body, "Could not load API keys."));
+      return;
+    }
+    setKeys((body.data as Key[]).filter((key) => !key.revoked_at));
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (open && !dialog.open) dialog.showModal();
+    if (!open && dialog.open) dialog.close();
+  }, [open]);
+
+  async function create(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/v1/api-keys", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name, environment, scopes: ACCESS[access].scopes }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(apiErrorMessage(body, "Could not create the key."));
+      setCreated(body.key);
+      void load();
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "Could not create the key.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function revoke() {
+    if (!revoking) return;
+    setRevokeBusy(true);
+    await fetch(`/api/v1/api-keys/${revoking.id}`, { method: "DELETE" }).catch(() => null);
+    setRevokeBusy(false);
+    setRevoking(null);
+    void load();
+  }
+
+  return (
+    <>
+      <Panel
+        title="Secret keys"
+        description="Keys belong to this workspace. Keep them server-side."
+        flush
+        actions={
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => { setCreated(null); setError(null); setOpen(true); }}>
+            <Plus size={14} /> Create key
+          </button>
+        }
+      >
+        {loadError ? <div className="panel-body"><InlineAlert tone="danger">{loadError}</InlineAlert></div> : null}
+        <div className="table-wrap">
+          <table className="qr-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Key</th>
+                <th className="hide-sm">Environment</th>
+                <th className="hide-sm">Access</th>
+                <th className="hide-sm">Last used</th>
+                <th aria-label="Actions" />
+              </tr>
+            </thead>
+            <tbody>
+              {!keys ? (
+                <tr><td colSpan={6} className="empty-row"><Loader2 size={16} className="spin" /></td></tr>
+              ) : keys.length === 0 ? (
+                <tr><td colSpan={6} className="empty-row">No active keys. Create one to call the API or use the CLI.</td></tr>
+              ) : (
+                keys.map((key) => (
+                  <tr key={key.id}>
+                    <td>
+                      <span className="cell-main">
+                        <b>{key.name}</b>
+                        <small>Created <Timestamp value={key.created_at} /></small>
+                      </span>
+                    </td>
+                    <td><code>{key.key_prefix}…</code></td>
+                    <td className="hide-sm"><span className={`badge${key.environment === "live" ? " env live" : ""}`}>{key.environment}</span></td>
+                    <td className="hide-sm muted">{accessLabel(key.scopes)}</td>
+                    <td className="hide-sm">{key.last_used_at ? <Timestamp value={key.last_used_at} /> : <span className="dim">Never</span>}</td>
+                    <td className="num">
+                      {key.id !== "demo" ? (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setRevoking(key)}>Revoke</button>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+
+      <dialog ref={dialogRef} className="qr-dialog" onClose={() => setOpen(false)}>
+        {created ? (
+          <div>
+            <header>
+              <h2>Copy your key</h2>
+              <p>This is the only time the full secret is shown. Store it somewhere safe.</p>
+            </header>
+            <div className="dialog-body">
+              <div className="created-key">
+                <code>{created}</code>
+                <CopyButton value={created} label="Copy key" />
+              </div>
+            </div>
+            <footer>
+              <button type="button" className="btn btn-primary" onClick={() => setOpen(false)}>Done</button>
+            </footer>
+          </div>
+        ) : (
+          <form onSubmit={create}>
+            <header>
+              <h2>Create API key</h2>
+            </header>
+            <div className="dialog-body">
+              <label className="field">
+                Name
+                <input className="input" value={name} onChange={(event) => setName(event.target.value)} maxLength={120} required />
+              </label>
+              <div className="form-grid two" style={{ padding: 0 }}>
+                <label className="field">
+                  Environment
+                  <select className="input" value={environment} onChange={(event) => setEnvironment(event.target.value as typeof environment)}>
+                    <option value="live">Live</option>
+                    <option value="test">Test (simulators only)</option>
+                  </select>
+                </label>
+                <label className="field">
+                  Access
+                  <select className="input" value={access} onChange={(event) => setAccess(event.target.value as keyof typeof ACCESS)}>
+                    {Object.entries(ACCESS).map(([value, option]) => <option key={value} value={value}>{option.label}</option>)}
+                  </select>
+                </label>
+              </div>
+              {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
+            </div>
+            <footer>
+              <button type="button" className="btn btn-secondary" onClick={() => setOpen(false)} disabled={busy}>Cancel</button>
+              <button type="submit" className="btn btn-primary" disabled={busy || !name.trim()}>
+                {busy ? <Loader2 size={14} className="spin" /> : null}
+                Create key
+              </button>
+            </footer>
+          </form>
+        )}
+      </dialog>
+
+      <ConfirmDialog
+        open={revoking !== null}
+        title={`Revoke ${revoking?.name ?? "key"}?`}
+        body="Requests using this key will fail authentication immediately. This cannot be undone."
+        confirmLabel="Revoke key"
+        tone="danger"
+        busy={revokeBusy}
+        onConfirm={revoke}
+        onClose={() => setRevoking(null)}
+      />
+    </>
+  );
+}

@@ -37,8 +37,8 @@ function supabaseOrigins() {
 //     from NEXT_PUBLIC_SUPABASE_URL.
 // Everything else is same-origin: `geist` fonts ship through next/font,
 // src/components/landing/AffiliationRail.tsx only points next/image at local
-// files under /affiliations, and three.js (src/components/RoutingTopology.tsx)
-// plus framer-motion are bundled and use no workers or blob URLs.
+// files under /affiliations, and framer-motion is bundled and uses no workers
+// or blob URLs.
 const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -107,6 +107,25 @@ const nextConfig = {
   eslint: {
     // Don't fail production builds on lint warnings — keeps Vercel deploys green.
     ignoreDuringBuilds: true,
+  },
+  async redirects() {
+    // Console routes that were renamed or retired. Temporary (307) so a later
+    // rename is not pinned in browser caches. `/dashboard/github` must keep
+    // working: the GitHub OAuth app and older docs point at it.
+    const moved = [
+      ["/dashboard/deploy", "/dashboard/run"],
+      ["/dashboard/submit", "/dashboard/run"],
+      ["/dashboard/playground", "/dashboard/run"],
+      ["/dashboard/playground/:path*", "/dashboard/run"],
+      ["/dashboard/tasks", "/dashboard/activity"],
+      ["/dashboard/github", "/dashboard/repositories"],
+      ["/dashboard/github/deploy", "/dashboard/repositories/deployments"],
+      ["/dashboard/instances", "/dashboard/providers"],
+      ["/dashboard/rankings", "/dashboard/providers"],
+      ["/dashboard/requests", "/dashboard/admin/reports"],
+      ["/dashboard/qci/preview", "/dashboard/qci"],
+    ];
+    return moved.map(([source, destination]) => ({ source, destination, permanent: false }));
   },
   async headers() {
     // A CSP on an API response constrains nothing (JSON is never rendered as a

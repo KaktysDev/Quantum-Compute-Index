@@ -1,0 +1,589 @@
+/* ── QCI index: attribution map, series chart, admin diagnostics ────────
+   Mapped onto the console tokens: flat panels, one ink, no hue. Targets and
+   cost drivers are told apart by form (hollow rings vs filled discs). */
+
+.console-shell {
+  --qci-r: var(--qr-radius);
+  --qci-r-sm: var(--qr-radius-sm);
+  --qci-surface: var(--qr-panel);
+  --qci-surface-sunk: var(--qr-bg-2);
+  --qci-hairline: var(--qr-line);
+  --qci-topline: transparent;
+  --qci-shadow: none;
+  --qci-shadow-lift: var(--qr-shadow-overlay);
+  --qci-track: var(--qr-bg-2);
+  --qci-thumb: var(--qr-panel);
+  --qci-thumb-shadow: 0 0 0 1px var(--qr-line);
+
+  /* Graph: two steps of one ink. */
+  --qci-line: rgba(10, 10, 10, 0.16);
+  --qci-ink-soft: rgba(10, 10, 10, 0.3);
+  --qci-ink-mid: rgba(10, 10, 10, 0.42);
+  --qci-node-line: rgba(10, 10, 10, 0.28);
+  --qcx-hollow: var(--qr-panel);
+  --qcx-halo: rgba(10, 10, 10, 0.09);
+  --qci-ease: var(--qr-ease);
+}
+
+:root[data-theme="dark"] .console-shell {
+  --qci-line: rgba(255, 255, 255, 0.2);
+  --qci-ink-soft: rgba(255, 255, 255, 0.34);
+  --qci-ink-mid: rgba(255, 255, 255, 0.48);
+  --qci-node-line: rgba(237, 237, 237, 0.34);
+  --qcx-halo: rgba(255, 255, 255, 0.13);
+}
+
+.qci-page { gap: var(--qr-space-5); }
+.qci-up { color: var(--qr-success); }
+.qci-down { color: var(--qr-danger); }
+
+.qci-card {
+  position: relative;
+  border-radius: var(--qr-radius);
+  background: var(--qr-panel);
+  box-shadow: inset 0 0 0 1px var(--qr-line);
+}
+
+/* ── Section heads ────────────────────────────────────────────────────────── */
+.qci-sec-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1.5rem; }
+.qci-sec-head h2 {
+  margin: 0;
+  color: var(--qr-text);
+  font-size: var(--qr-fs-lg);
+  font-weight: 600;
+}
+.qci-sec-head p {
+  max-width: 64ch;
+  margin: 0.4rem 0 0;
+  color: var(--qr-muted);
+  font-size: var(--qr-fs-base);
+  line-height: 1.6;
+}
+
+/* ── Map ──────────────────────────────────────────────────────────────────── */
+.qci-map-panel { display: grid; gap: 1.3rem; }
+.qci-map-body { display: grid; grid-template-columns: minmax(0, 1fr) 348px; gap: 1.3rem; align-items: start; }
+
+.qci-map-stage { overflow: hidden; }
+.qci-map-canvas { position: relative; min-width: 0; padding: 0.5rem 0.5rem 0; }
+.qci-map-canvas svg { display: block; width: 100%; height: auto; overflow: visible; }
+
+.qci-map-status {
+  flex: none;
+  padding: 0.32rem 0.75rem;
+  border-radius: var(--qr-radius-sm);
+  background: var(--qci-track);
+  color: var(--qr-muted);
+  font-size: var(--qr-fs-sm);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.qci-map-status[data-status="provisional"] { background: var(--qr-warning-dim); color: var(--qr-warning); }
+.qci-map-status[data-status="final"] { background: var(--qr-success-dim); color: var(--qr-success); }
+
+/* ── The graph ────────────────────────────────────────────────────────────
+   FLAT. There was a pass at rendering every node as a glass bubble — radial
+   gradient, specular cap, drop shadow, a slow bob, blurred caustics drifting
+   behind the field — and it read as a tray of scattered ball bearings. Fake
+   lighting is not depth; it is noise with a highlight on it.
+
+   What is left is hairlines and flat marks, and one ink ramp doing all the
+   work: 18% for structure, 45% for a node at rest, 100% for the one answer.
+   Targets are hollow rings, cost drivers are flat discs — an encoding that
+   still reads at 5px, which no gradient does. */
+
+.qci-axis {
+  fill: var(--qr-dim);
+  font: 400 11px var(--font-sans);
+  pointer-events: none;
+}
+
+/* Structure: the spokes and the intake. Quiet enough to stay behind the marks,
+   present enough to say what connects to what. */
+.qci-edge {
+  stroke: var(--qci-line);
+  stroke-width: 1;
+  transition: stroke 220ms var(--qci-ease), opacity 220ms var(--qci-ease);
+}
+.qci-edge.cost { stroke-dasharray: 1.5 3; }
+.qci-edge[data-dim="true"] { opacity: 0.25; }
+.qci-edge[data-active="true"] { stroke: var(--qci-ink-mid); }
+/* The routed path, and the only full-ink line on the stage. */
+.qci-edge[data-route="true"] { stroke: var(--qr-text); stroke-dasharray: none; }
+
+.qci-conduit { stroke: var(--qci-line); stroke-width: 1; stroke-dasharray: 1.5 3; }
+
+/* ── Nodes ────────────────────────────────────────────────────────────────── */
+.qci-node {
+  cursor: pointer;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: opacity 220ms var(--qci-ease);
+}
+.qci-node:focus { outline: none; }
+
+.qci-node-face {
+  fill: none;
+  stroke: var(--qci-ink-mid);
+  stroke-width: 1.1;
+  transition:
+    fill 200ms var(--qci-ease),
+    stroke 200ms var(--qci-ease),
+    stroke-width 200ms var(--qci-ease);
+}
+/* Deliberately a step lighter than a target's rim. A filled disc already reads
+   heavier than a ring of the same ink, and at Capital's size, matching them put
+   the largest cost driver in competition with the routed machine for "darkest
+   thing on the stage" — which is the one comparison the picture must not lose. */
+.qci-node.cost .qci-node-face { fill: var(--qci-ink-soft); stroke: none; }
+
+/* A transparent disc, not a visible one — it exists so a 5px mark is still a
+   click target. */
+.qci-node-hit { fill: transparent; stroke: none; }
+
+.qci-node:hover .qci-node-face,
+.qci-node:focus-visible .qci-node-face,
+.qci-node[data-active="true"] .qci-node-face { stroke: var(--qr-text); stroke-width: 1.4; }
+.qci-node.cost:hover .qci-node-face,
+.qci-node.cost:focus-visible .qci-node-face,
+.qci-node.cost[data-active="true"] .qci-node-face { fill: var(--qr-text); stroke: none; }
+
+.qci-node[data-dim="true"] { opacity: 0.28; }
+/* Stale data is drawn as a broken rim — the mark itself says "incomplete". */
+.qci-node[data-stale="true"] .qci-node-face { stroke-dasharray: 2.5 2.5; }
+
+/* The winner: a full-ink rim and a solid centre. One emphasised thing in the
+   whole picture, which is what makes it findable at a glance. */
+.qci-node[data-route="true"] .qci-node-face { stroke: var(--qr-text); stroke-width: 1.4; }
+.qci-route-dot { fill: var(--qr-text); pointer-events: none; }
+
+/* ── Labels ───────────────────────────────────────────────────────────────
+   The NAME is drawn at rest — that is what lets a first-time reader understand
+   the picture without pawing at it — and firms up under the cursor. The FIGURE
+   under it is the hover, because a ring of numbers is what made an earlier
+   version unreadable. */
+.qci-node-label,
+.qci-node-sub {
+  pointer-events: none;
+  transition: opacity 260ms var(--qci-ease), fill 260ms var(--qci-ease);
+}
+.qci-node-label { fill: var(--qr-dim); font: 500 10px var(--font-sans); letter-spacing: -0.004em; }
+.qci-node-sub {
+  fill: var(--qr-dim);
+  font: 400 9px var(--qr-mono);
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+}
+
+.qci-node:hover .qci-node-label,
+.qci-node:focus-visible .qci-node-label,
+.qci-node[data-active="true"] .qci-node-label,
+.qci-node[data-route="true"] .qci-node-label { fill: var(--qr-text); font-weight: 500; }
+.qci-node:hover .qci-node-sub,
+.qci-node:focus-visible .qci-node-sub,
+.qci-node[data-active="true"] .qci-node-sub { opacity: 1; }
+.qci-node[data-dim="true"] .qci-node-sub { opacity: 0 !important; }
+
+/* ── The core ─────────────────────────────────────────────────────────────
+   A bare hairline ring. It can be bare because every edge stops short of it —
+   there is nothing to hide, so there is nothing to fill. */
+.qci-hub-ring {
+  fill: none;
+  stroke: var(--qci-line);
+  stroke-width: 1;
+  transition: stroke 200ms var(--qci-ease);
+}
+.qci-node.hub:hover .qci-hub-ring,
+.qci-node.hub[data-active="true"] .qci-hub-ring { stroke: var(--qci-ink-mid); }
+.qci-hub-brand {
+  fill: var(--qr-dim);
+  font: 400 9px var(--font-sans);
+  pointer-events: none;
+}
+.qci-hub-value {
+  fill: var(--qr-text);
+  font: 500 21px var(--qr-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.035em;
+  pointer-events: none;
+}
+.qci-hub-change {
+  fill: var(--qr-dim);
+  font: 400 9px var(--qr-mono);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.qci-hub-change.up { fill: var(--qr-success); }
+.qci-hub-change.down { fill: var(--qr-danger); }
+
+/* ── Verdict — the stage's footer row ─────────────────────────────────────── */
+.qci-verdict {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  gap: 0.7rem;
+  padding: 0.95rem 1.3rem 1rem;
+  border: 0;
+  background: transparent;
+  box-shadow: inset 0 1px 0 var(--qci-hairline);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 200ms var(--qci-ease);
+}
+.qci-verdict:hover { background: var(--qr-hover); }
+.qci-verdict-eyebrow {
+  color: var(--qr-dim);
+  font-size: var(--qr-fs-sm);
+  font-weight: 500;
+}
+.qci-verdict-name { color: var(--qr-text); font-size: var(--qr-fs-prose); font-weight: 500; letter-spacing: -0.012em; }
+.qci-verdict-figure {
+  margin-left: auto;
+  color: var(--qr-text);
+  font: 500 var(--qr-fs-prose) var(--qr-mono);
+  font-variant-numeric: tabular-nums;
+}
+.qci-verdict-sub { color: var(--qr-dim); font-size: var(--qr-fs-sm); }
+
+/* ── Policy switcher + the shared segmented control ───────────────────────
+   iOS's control: a recessed track with a raised thumb. Reads as "pick one of
+   these" before a word of it is read, which the old solid-black active pill —
+   indistinguishable from a submit button — did not. */
+.qci-policy-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.7rem; }
+.qci-policy-label { color: var(--qr-dim); font-size: var(--qr-fs-sm); font-weight: 500; }
+.qci-policy-note { margin-left: auto; color: var(--qr-dim); font-size: var(--qr-fs-sm); }
+
+.qci-seg {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: var(--qr-radius-sm);
+  gap: 2px;
+  background: var(--qci-track);
+  box-shadow: inset 0 0 0 1px var(--qr-line);
+}
+.qci-seg button {
+  position: relative;
+  padding: 0.38rem 0.85rem;
+  border: 0;
+  border-radius: var(--qr-radius-sm);
+  background: transparent;
+  color: var(--qr-muted);
+  font: 500 var(--qr-fs-base) var(--font-sans);
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  transition:
+    background-color 260ms var(--qci-ease),
+    color 260ms var(--qci-ease),
+    box-shadow 260ms var(--qci-ease);
+}
+.qci-seg button:hover { color: var(--qr-text); }
+.qci-seg button[data-active="true"] {
+  background: var(--qci-thumb);
+  box-shadow: var(--qci-thumb-shadow);
+  color: var(--qr-text);
+  font-weight: 500;
+}
+/* A metric that actually moved over the visible window. Without this, the only
+   way to find out was to click all four. */
+.qci-seg button[data-moved="true"]::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  right: 7px;
+  width: 3.5px;
+  height: 3.5px;
+  border-radius: 50%;
+  background: var(--qr-text);
+  opacity: 0.45;
+}
+.qci-seg button[data-active="true"][data-moved="true"]::after { opacity: 0.7; }
+
+/* ── Detail panel ─────────────────────────────────────────────────────────── */
+.qci-map-detail {
+  display: flex;
+  max-height: 660px;
+  flex-direction: column;
+  padding: 1.25rem 1.3rem 1.3rem;
+  overflow-y: auto;
+  border-radius: var(--qci-r);
+  background: var(--qci-surface);
+  box-shadow:
+    var(--qci-shadow),
+    inset 0 0 0 1px var(--qci-hairline),
+    inset 0 1px 0 var(--qci-topline);
+}
+.qci-map-detail header { padding-bottom: 0.9rem; box-shadow: inset 0 -1px 0 var(--qci-hairline); }
+.qci-detail-eyebrow {
+  margin: 0;
+  color: var(--qr-dim);
+  font-size: var(--qr-fs-sm);
+  font-weight: 500;
+}
+.qci-map-detail h3 {
+  margin: 0.4rem 0 0;
+  color: var(--qr-text);
+  font-size: var(--qr-fs-lg);
+  font-weight: 600;
+  letter-spacing: -0.018em;
+}
+.qci-map-detail dl { display: grid; margin: 0.85rem 0 0; gap: 0; }
+.qci-detail-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.8rem;
+  align-items: baseline;
+  padding: 0.55rem 0;
+  box-shadow: inset 0 -1px 0 var(--qci-hairline);
+}
+.qci-detail-row:last-child { box-shadow: none; }
+.qci-detail-row dt { color: var(--qr-muted); font-size: var(--qr-fs-base); }
+/* The clarifying line under a label is a hover, like everything else on this
+   page: it is a footnote, and footnotes do not belong in the middle of a table. */
+.qci-detail-row dt small {
+  display: block;
+  height: 0;
+  color: var(--qr-dim);
+  font-size: var(--qr-fs-sm);
+  line-height: 1.45;
+  opacity: 0;
+  overflow: hidden;
+  transition: opacity 260ms var(--qci-ease), height 260ms var(--qci-ease), margin 260ms var(--qci-ease);
+}
+.qci-detail-row:hover dt small { height: 1.45em; margin-top: 0.22rem; opacity: 1; }
+.qci-detail-row dd { margin: 0; color: var(--qr-text); font-size: var(--qr-fs-base); font-weight: 500; text-align: right; }
+.qci-detail-row dd.mono { font-family: var(--qr-mono); font-size: var(--qr-fs-base); font-variant-numeric: tabular-nums; }
+.qci-detail-row dd code { font-size: var(--qr-fs-sm); color: var(--qr-muted); }
+.qci-detail-row dd .ok { color: var(--qr-success); }
+.qci-detail-row dd .warn { color: var(--qr-warning); }
+
+.qci-pill { display: inline-block; padding: 0.16rem 0.5rem; border-radius: var(--qr-radius-sm); font-size: var(--qr-fs-sm); font-weight: 500; }
+.qci-pill.ok { background: var(--qr-success-dim); color: var(--qr-success); }
+.qci-pill.warn { background: var(--qr-warning-dim); color: var(--qr-warning); }
+
+.qci-detail-note { margin: 0.9rem 0 0; color: var(--qr-muted); font-size: var(--qr-fs-base); line-height: 1.62; }
+.qci-detail-note.strong { padding: 0.8rem 0.9rem; border-radius: var(--qci-r-sm); background: var(--qci-surface-sunk); box-shadow: inset 0 0 0 1px var(--qci-hairline); }
+.qci-detail-note.warn { color: var(--qr-warning); }
+.qci-detail-note b { color: var(--qr-text); font-weight: 500; }
+
+.qci-detail-list { display: grid; margin: 0.6rem 0 0; padding: 0; gap: 0.15rem; list-style: none; }
+.qci-detail-list button {
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.8rem;
+  align-items: center;
+  padding: 0.55rem 0.65rem;
+  border: 0;
+  border-radius: var(--qci-r-sm);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 200ms var(--qci-ease);
+}
+.qci-detail-list button:hover { background: var(--qr-hover); }
+.qci-detail-list b, .qci-detail-list small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qci-detail-list b { color: var(--qr-text); font-size: var(--qr-fs-base); font-weight: 500; letter-spacing: -0.008em; }
+.qci-detail-list small { margin-top: 0.2rem; color: var(--qr-dim); font-size: var(--qr-fs-sm); }
+.qci-detail-value { text-align: right; }
+.qci-detail-value b { font-family: var(--qr-mono); font-variant-numeric: tabular-nums; }
+.qci-detail-value small { font-family: var(--qr-mono); }
+.qci-detail-value small.ok { color: var(--qr-success); }
+.qci-detail-value small.warn { color: var(--qr-warning); }
+
+.qci-detail-excluded { display: grid; margin: 0.6rem 0 0; padding: 0; gap: 0.2rem; list-style: none; }
+.qci-detail-excluded li { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.4rem 0.6rem; border-radius: var(--qci-r-sm); background: var(--qci-surface-sunk); }
+.qci-detail-excluded code { color: var(--qr-muted); font-size: var(--qr-fs-sm); }
+.qci-detail-excluded span { color: var(--qr-dim); font-size: var(--qr-fs-label); }
+
+.qci-provenance { margin-top: 0.9rem; padding: 0.8rem 0.9rem; border-left: 2px solid var(--qci-node-line); border-radius: 0 var(--qci-r-sm) var(--qci-r-sm) 0; background: var(--qci-surface-sunk); }
+.qci-provenance[data-tier="primary"] { border-left-color: var(--qr-success); }
+.qci-provenance[data-tier="assumed"] { border-left-color: var(--qr-warning); }
+.qci-tier { display: block; color: var(--qr-text); font-size: var(--qr-fs-base); font-weight: 500; }
+.qci-provenance code { display: block; margin-top: 0.28rem; color: var(--qr-dim); font-size: var(--qr-fs-sm); }
+.qci-provenance p { margin: 0.5rem 0 0; color: var(--qr-muted); font-size: var(--qr-fs-base); line-height: 1.55; }
+.qci-provenance small { display: block; margin-top: 0.42rem; color: var(--qr-dim); font-size: var(--qr-fs-sm); }
+
+.qci-detail-back {
+  margin-top: auto;
+  padding-top: 1.1rem;
+  border: 0;
+  background: transparent;
+  color: var(--qr-dim);
+  font-size: var(--qr-fs-base);
+  text-align: left;
+  cursor: pointer;
+  transition: color 180ms var(--qci-ease);
+}
+.qci-detail-back:hover { color: var(--qr-text); }
+
+.qci-detail-subhead {
+  margin: 1.4rem 0 0;
+  color: var(--qr-dim);
+  font-size: var(--qr-fs-sm);
+  font-weight: 500;
+}
+
+/* ── Ranking card + axis bars ─────────────────────────────────────────────
+   The bars answer "why did this win" — normalised score per axis, with the
+   policy's own weight next to it. An axis nobody reported is struck through
+   rather than empty, so "no data" cannot be misread as "zero". */
+.qci-rank-card {
+  margin-top: 0.9rem;
+  padding: 0.9rem 0.95rem;
+  border-radius: var(--qci-r-sm);
+  background: var(--qci-surface-sunk);
+  box-shadow: inset 0 0 0 1px var(--qci-hairline);
+}
+.qci-rank-card[data-winner="true"] { box-shadow: inset 0 0 0 1px var(--qci-hairline), inset 2px 0 0 var(--qr-accent); }
+.qci-rank-card > p { margin: 0; color: var(--qr-muted); font-size: var(--qr-fs-base); line-height: 1.62; }
+.qci-rank-card > p b { color: var(--qr-text); font-weight: 500; }
+
+.qci-axis-bars { display: grid; margin: 0.8rem 0 0; padding: 0; gap: 0.5rem; list-style: none; }
+.qci-axis-bars li { display: grid; grid-template-columns: 84px minmax(0, 1fr) 32px; align-items: center; gap: 0.55rem; }
+.qci-axis-name { color: var(--qr-muted); font-size: var(--qr-fs-sm); }
+.qci-axis-name small { margin-left: 0.32rem; color: var(--qr-dim); font-size: var(--qr-fs-label); font-family: var(--qr-mono); }
+.qci-axis-track { height: 4px; border-radius: var(--qr-radius-sm); background: var(--qci-track); overflow: hidden; }
+.qci-axis-fill { display: block; height: 100%; border-radius: var(--qr-radius-sm); background: var(--qr-accent); transition: width 620ms var(--qci-ease); }
+.qci-axis-value { color: var(--qr-dim); font: var(--qr-fs-sm) var(--qr-mono); font-variant-numeric: tabular-nums; text-align: right; }
+.qci-axis-bars li[data-imputed="true"] .qci-axis-fill { background: var(--qci-node-line); }
+.qci-axis-bars li[data-imputed="true"] .qci-axis-name { text-decoration: line-through; opacity: 0.55; }
+
+/* ── Empty state ──────────────────────────────────────────────────────────── */
+.qci-empty {
+  display: grid;
+  min-height: 220px;
+  place-items: center;
+  align-content: center;
+  gap: 0.55rem;
+  padding: 2.5rem;
+  border-radius: var(--qci-r);
+  background: var(--qci-surface-sunk);
+  box-shadow: inset 0 0 0 1px var(--qci-hairline);
+  text-align: center;
+}
+.qci-empty h3 { margin: 0; color: var(--qr-text); font-size: var(--qr-fs-lg); font-weight: 600; letter-spacing: -0.015em; }
+.qci-empty p { max-width: 50ch; margin: 0; color: var(--qr-muted); font-size: var(--qr-fs-base); line-height: 1.62; }
+.qci-empty code { padding: 0.12rem 0.35rem; border-radius: var(--qr-radius-sm); background: var(--qr-code-bg); font-size: var(--qr-fs-sm); }
+
+/* ── History panel ────────────────────────────────────────────────────────── */
+.qci-series { display: grid; gap: 1.3rem; }
+.qci-series-body {
+  display: grid;
+  gap: 1.15rem;
+  padding: 1.5rem 1.6rem 0.85rem;
+}
+.qci-series-quote { display: flex; align-items: flex-start; justify-content: space-between; gap: 2rem; }
+.qci-quote-main { display: grid; gap: 0.45rem; }
+.qci-quote-label { color: var(--qr-muted); font-size: var(--qr-fs-base); }
+.qci-quote-main strong {
+  color: var(--qr-text);
+  font: 500 clamp(2rem, 4.2vw, 2.9rem)/1 var(--qr-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.035em;
+}
+.qci-quote-move { color: var(--qr-muted); font: 500 var(--qr-fs-base) var(--qr-mono); font-variant-numeric: tabular-nums; }
+.qci-quote-move[data-dir="up"] { color: var(--qr-success); }
+.qci-quote-move[data-dir="down"] { color: var(--qr-danger); }
+.qci-quote-move small { color: var(--qr-dim); font-size: 0.94em; }
+
+/* Ghosted until the panel is under the cursor. These three are checks, not
+   headline facts — a reader wants them when they are already interrogating the
+   series, and never before that. */
+.qci-quote-meta { display: flex; margin: 0; gap: 0 1.7rem; opacity: 0.3; transition: opacity 300ms var(--qci-ease); }
+.qci-series-body:hover .qci-quote-meta,
+.qci-series-body:focus-within .qci-quote-meta { opacity: 1; }
+.qci-quote-meta dt { color: var(--qr-dim); font-size: var(--qr-fs-sm); font-weight: 500; }
+.qci-quote-meta dd { margin: 0.28rem 0 0; color: var(--qr-muted); font: var(--qr-fs-sm) var(--qr-mono); font-variant-numeric: tabular-nums; }
+.qci-quote-meta dd[data-warn="true"] { color: var(--qr-warning); }
+
+.qci-series-chart { color: var(--qr-text); }
+
+/* Why a flat line is a finding and not a fault. */
+.qci-flat-note {
+  margin: 0;
+  padding: 0.8rem 0.95rem;
+  border-radius: var(--qci-r-sm);
+  background: var(--qci-surface-sunk);
+  box-shadow: inset 0 0 0 1px var(--qci-hairline);
+  color: var(--qr-muted);
+  font-size: var(--qr-fs-base);
+  line-height: 1.6;
+}
+.qci-flat-note b { color: var(--qr-text); font-weight: 500; }
+.qci-flat-note button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--qr-text);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--qci-node-line);
+  transition: text-decoration-color 180ms var(--qci-ease);
+}
+.qci-flat-note button:hover { text-decoration-color: currentColor; }
+
+.qci-series-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding-top: 0.9rem;
+  box-shadow: inset 0 1px 0 var(--qci-hairline);
+}
+
+/* ── Admin: index health ──────────────────────────────────────────────────── */
+.admin-health-actions { display: grid; justify-items: end; gap: 0.6rem; }
+.admin-health-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; }
+
+.admin-health-result { max-width: 62ch; margin: 0; color: var(--qr-muted); font: var(--qr-fs-sm) var(--qr-mono); text-align: right; line-height: 1.5; }
+.admin-health-result[data-failed="true"] { color: var(--qr-warning); }
+.admin-health-warnings { display: grid; max-width: 62ch; margin: 0; padding: 0; gap: 0.25rem; list-style: none; text-align: right; }
+.admin-health-warnings li { color: var(--qr-dim); font-size: var(--qr-fs-label); line-height: 1.5; }
+
+/* ── Responsive ───────────────────────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .qci-map-body { grid-template-columns: 1fr; }
+  .qci-map-detail { max-height: none; }
+  .qci-series-quote { flex-direction: column; gap: 1.1rem; }
+  .qci-policy-note { flex-basis: 100%; margin-left: 0; }
+
+  .admin-health-actions { justify-items: start; }
+  .admin-health-result, .admin-health-warnings { text-align: left; }
+}
+
+@media (max-width: 640px) {
+  .qci-verdict { flex-wrap: wrap; row-gap: 0.25rem; padding: 0.9rem 1rem; }
+  .qci-verdict-figure { margin-left: 0; }
+  .qci-series-body { padding: 1.15rem 1.1rem 0.7rem; }
+  .qci-quote-meta { flex-wrap: wrap; gap: 0.6rem 1.3rem; }
+
+  /* Stretching the four segments to fill 375px wraps "Highest fidelity" onto a
+     second line and makes the control taller than its siblings. Scroll instead —
+     which is also what iOS does with a segmented control that will not fit. */
+  .qci-seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .qci-seg::-webkit-scrollbar { display: none; }
+  .qci-seg button { flex: none; white-space: nowrap; padding-inline: 0.7rem; }
+}
+
+/* The console-wide reduced-motion rule zeroes durations, which would leave every
+   animated-in element stuck at its `from` keyframe (opacity 0). These restore the
+   resting state outright rather than animating to it. */
+@media (prefers-reduced-motion: reduce) {
+
+  .qci-axis,
+  .qci-node,
+  .qci-map-detail { opacity: 1; transform: none; }
+  .qci-edge { stroke-dasharray: none; stroke-dashoffset: 0; }
+  /* The cost fan's dashes are an encoding, not motion — restore them. */
+  .qci-edge.cost { stroke-dasharray: 1.5 3; }
+
+  /* Labels are a hover reveal, not an animation — but the transition is zeroed,
+     so they snap instead of fading. That is the correct behaviour here. */
+}
+

@@ -15,7 +15,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { Principal } from "./auth";
 import { V2ApiError } from "./v2-http";
 import { demoV2Circuits, demoV2Groups, type DemoCircuit, type DemoGroup } from "./v2-demo-store";
-import { hashRequest, newV2Id, type CircuitResource, type CreateCircuitInput, type CreateExecutionGroupInput, type ExecutionGroup, type V2GroupStatus } from "./v2";
+import { chargedFromLedger } from "./cost";
+import { decodeCursor, encodeCursor, hashRequest, newV2Id, type CircuitListItem, type CircuitResource, type CreateCircuitInput, type CreateExecutionGroupInput, type ExecutionGroup, type ExecutionListItem, type JobListItem, type ListCircuitsQuery, type ListJobsQuery, type ListPage, type V2GroupStatus } from "./v2";
 
 type DbRow = Record<string, unknown>;
 type PreparedExecution = Awaited<ReturnType<typeof prepareExecution>> & CreateExecutionGroupInput["executions"][number];
@@ -37,8 +38,14 @@ function groupStatusFrom(statuses: string[]): V2GroupStatus {
 function groupResource(group: DemoGroup): ExecutionGroup {
   return {
     id: group.id, circuit_id: group.circuit_id, organization_id: group.organization_id, status: group.status,
+<<<<<<< Updated upstream
     metadata: group.metadata, executions: group.executions, created_at: group.created_at,
     updated_at: group.updated_at, completed_at: group.completed_at, error: group.error,
+=======
+    metadata: group.metadata, executions: group.executions.map((execution) => ({ ...slimPublicExecution(execution), charged: demoCharged(String(execution.id)) })),
+    created_at: group.created_at, updated_at: group.updated_at, completed_at: group.completed_at,
+    error: slimError(group.error),
+>>>>>>> Stashed changes
   };
 }
 
@@ -333,9 +340,10 @@ export async function getExecutionGroup(principal: Principal, groupId: string): 
   const { data: quotes, error: quotesError } = ids.length ? await admin.from("quotes").select("*").in("job_id", ids) : { data: [], error: null };
   if (quotesError) throw quotesError;
   const quotesByJob = new Map((quotes ?? []).map((quote) => [quote.job_id, quote as DbRow]));
+  const charges = await chargesByJob(admin, principal, ids);
   return {
     id: group.id, circuit_id: group.circuit_id, organization_id: group.organization_id, status: group.status,
-    metadata: group.metadata ?? {}, executions: (jobs ?? []).map((job) => executionSummary(job as DbRow, quotesByJob.get(job.id))),
+    metadata: group.metadata ?? {}, executions: (jobs ?? []).map((job) => ({ ...executionSummary(job as DbRow, quotesByJob.get(job.id)), charged: charges.get(String(job.id)) ?? null })),
     created_at: group.created_at, updated_at: group.updated_at, completed_at: group.completed_at, error: group.error,
   } as ExecutionGroup;
 }
@@ -356,6 +364,7 @@ async function createDemoGroup(principal: Principal, circuit: DemoCircuit, input
       shots: item.shots, target: item.target, routing_mode: item.routing_mode, status: "submitted",
       selected_backend_id: item.decision.selected.id, analysis, route_decision: item.decision,
       quote: item.quote, result: null, error: null, created_at: now, updated_at: now, completed_at: null,
+      group_id: groupId, execution_key: item.key, circuit_id: circuit.id,
     };
     demoJobs.set(id, job);
     try {
@@ -488,4 +497,197 @@ export async function cancelExecution(principal: Principal, executionId: string)
   if (finalizeError) throw finalizeError;
   if (!changed) throw new V2ApiError(409, "execution_changed", "Execution changed while cancellation was requested.");
   return { id: job.id, status: "cancelled" };
+}
+
+// ── Lists ─────────────────────────────────────────────────────────────────
+
+type AdminClient = ReturnType<typeof createAdminClient>;
+
+function num(value: unknown): number | null {
+  const parsed = Number(value);
+  return value === null || value === undefined || !Number.isFinite(parsed) ? null : parsed;
+}
+
+function sum(values: Array<number | null>): number | null {
+  const present = values.filter((value): value is number => value !== null);
+  return present.length ? Number(present.reduce((total, value) => total + value, 0).toFixed(6)) : null;
+}
+
+/** Demo jobs have no ledger: a completed one counts as charged at its quote. */
+function demoCharged(jobId: string): number | null {
+  const job = demoJobs.get(jobId);
+  return job?.status === "completed" ? num(job.quote?.total) : null;
+}
+
+async function chargesByJob(admin: AdminClient, principal: Principal, jobIds: string[]) {
+  const charges = new Map<string, number | null>();
+  if (!jobIds.length) return charges;
+  const { data, error } = await admin.from("ledger_entries").select("job_id,type,amount").in("job_id", jobIds).eq("organization_id", principal.organizationId).in("type", ["charge", "refund"]);
+  if (error) throw error;
+  const rows = new Map<string, DbRow[]>();
+  for (const row of (data ?? []) as DbRow[]) {
+    const id = String(row.job_id);
+    rows.set(id, [...(rows.get(id) ?? []), row]);
+  }
+  for (const [id, entries] of rows) charges.set(id, chargedFromLedger(entries));
+  return charges;
+}
+
+/** Circuit metrics without the keys that are the circuit itself. */
+export function analysisMetrics(analysis: unknown): Record<string, unknown> {
+  const source = (analysis ?? {}) as Record<string, unknown>;
+  return Object.fromEntries(Object.entries(source).filter(([key]) => key !== "normalizedQasm2" && key !== "transpilation" && key !== "encoding"));
+}
+
+function requireCursor(cursor: string | undefined) {
+  if (!cursor) return null;
+  const decoded = decodeCursor(cursor);
+  if (!decoded) throw new V2ApiError(400, "invalid_cursor", "Cursor is invalid.");
+  return decoded;
+}
+
+function page<T extends { id: string; created_at: string }>(rows: T[], limit: number): ListPage<T> {
+  const data = rows.slice(0, limit);
+  const last = data[data.length - 1];
+  const hasMore = rows.length > limit;
+  return { data, has_more: hasMore, next_cursor: hasMore && last ? encodeCursor(last.created_at, last.id) : null };
+}
+
+function beforeCursor(row: { id: string; created_at: string }, cursor: { createdAt: string; id: string } | null) {
+  if (!cursor) return true;
+  const at = Date.parse(row.created_at);
+  const edge = Date.parse(cursor.createdAt);
+  return at < edge || (at === edge && row.id < cursor.id);
+}
+
+function newestFirst(a: { id: string; created_at: string }, b: { id: string; created_at: string }) {
+  return Date.parse(b.created_at) - Date.parse(a.created_at) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);
+}
+
+function listExecution(row: DbRow, quote: number | null, charged: number | null): ExecutionListItem {
+  return {
+    id: String(row.id), key: row.execution_key == null ? null : String(row.execution_key), status: String(row.status),
+    target: String(row.target ?? "auto"), selected_backend_id: row.selected_backend_id == null ? null : String(row.selected_backend_id),
+    shots: Number(row.shots ?? 0), routing_mode: String(row.routing_mode ?? "balanced"),
+    created_at: String(row.created_at), updated_at: String(row.updated_at ?? row.created_at),
+    started_at: row.started_at == null ? null : String(row.started_at), completed_at: row.completed_at == null ? null : String(row.completed_at),
+    quote: quote === null ? null : { total: quote }, charged, result_available: row.status === "completed",
+  };
+}
+
+function listJob(group: DbRow, circuitName: string | null, executions: ExecutionListItem[]): JobListItem {
+  return {
+    id: String(group.id), circuit_id: String(group.circuit_id), circuit_name: circuitName, status: group.status as V2GroupStatus,
+    metadata: (group.metadata ?? {}) as Record<string, string>, created_at: String(group.created_at),
+    updated_at: String(group.updated_at ?? group.created_at), completed_at: group.completed_at == null ? null : String(group.completed_at),
+    error: slimError(group.error) as Record<string, unknown> | null,
+    totals: { quoted: sum(executions.map((execution) => execution.quote?.total ?? null)), charged: sum(executions.map((execution) => execution.charged)) },
+    executions,
+  };
+}
+
+export async function listExecutionGroups(principal: Principal, query: ListJobsQuery): Promise<ListPage<JobListItem>> {
+  const cursor = requireCursor(query.cursor);
+  if (principal.demo) {
+    const rows = [...demoV2Groups.values()]
+      .filter((group) => group.organization_id === principal.organizationId)
+      .filter((group) => !query.circuit_id || group.circuit_id === query.circuit_id)
+      .map((group) => {
+        // Group executions are copies taken at creation; the job map is live.
+        const executions = group.executions.map((execution) => {
+          const job = demoJobs.get(String(execution.id));
+          const row = { ...execution, ...(job ? { status: job.status, updated_at: job.updated_at, completed_at: job.completed_at } : {}), execution_key: execution.key } as DbRow;
+          return listExecution(row, num((job?.quote as { total?: unknown } | undefined)?.total), demoCharged(String(execution.id)));
+        });
+        const status = groupStatusFrom(executions.map((execution) => execution.status));
+        return listJob({ ...group, status } as unknown as DbRow, demoV2Circuits.get(group.circuit_id)?.name ?? null, executions);
+      })
+      .filter((group) => !query.status?.length || query.status.includes(group.status))
+      .filter((group) => beforeCursor(group, cursor))
+      .sort(newestFirst);
+    return page(rows.slice(0, query.limit + 1), query.limit);
+  }
+
+  const admin = createAdminClient();
+  const org = principal.organizationId;
+  let groupsQuery = admin.from("execution_groups").select("id,circuit_id,status,metadata,error,created_at,updated_at,completed_at,circuits(name)").eq("organization_id", org);
+  if (query.status?.length) groupsQuery = groupsQuery.in("status", query.status);
+  if (query.circuit_id) groupsQuery = groupsQuery.eq("circuit_id", query.circuit_id);
+  if (cursor) groupsQuery = groupsQuery.or(`created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`);
+  const { data: groups, error } = await groupsQuery.order("created_at", { ascending: false }).order("id", { ascending: false }).limit(query.limit + 1);
+  if (error) throw error;
+  const groupRows = (groups ?? []) as DbRow[];
+  const ids = groupRows.map((group) => String(group.id));
+  if (!ids.length) return { data: [], has_more: false, next_cursor: null };
+
+  const { data: jobs, error: jobsError } = await admin.from("jobs")
+    .select("id,group_id,execution_key,execution_position,status,target,selected_backend_id,shots,routing_mode,created_at,updated_at,started_at,completed_at")
+    .in("group_id", ids).eq("organization_id", org).order("execution_position");
+  if (jobsError) throw jobsError;
+  const jobRows = (jobs ?? []) as DbRow[];
+  const jobIds = jobRows.map((job) => String(job.id));
+  const [{ data: quotes, error: quotesError }, charges] = await Promise.all([
+    jobIds.length ? admin.from("quotes").select("job_id,total").in("job_id", jobIds).eq("organization_id", org) : Promise.resolve({ data: [] as DbRow[], error: null }),
+    chargesByJob(admin, principal, jobIds),
+  ]);
+  if (quotesError) throw quotesError;
+  const quoteByJob = new Map(((quotes ?? []) as DbRow[]).map((quote) => [String(quote.job_id), num(quote.total)]));
+  const executionsByGroup = new Map<string, ExecutionListItem[]>();
+  for (const job of jobRows) {
+    const groupId = String(job.group_id);
+    executionsByGroup.set(groupId, [...(executionsByGroup.get(groupId) ?? []), listExecution(job, quoteByJob.get(String(job.id)) ?? null, charges.get(String(job.id)) ?? null)]);
+  }
+  const rows = groupRows.map((group) => {
+    const circuit = Array.isArray(group.circuits) ? group.circuits[0] : group.circuits;
+    const name = (circuit as { name?: unknown } | null)?.name;
+    return listJob(group, typeof name === "string" ? name : null, executionsByGroup.get(String(group.id)) ?? []);
+  });
+  return page(rows, query.limit);
+}
+
+export async function listCircuits(principal: Principal, query: ListCircuitsQuery): Promise<ListPage<CircuitListItem>> {
+  const cursor = requireCursor(query.cursor);
+  if (principal.demo) {
+    const groups = [...demoV2Groups.values()].filter((group) => group.organization_id === principal.organizationId);
+    const rows = [...demoV2Circuits.values()]
+      .filter((circuit) => circuit.organization_id === principal.organizationId)
+      .filter((circuit) => query.include_released || !circuit.released_at)
+      .map((circuit) => {
+        const runs = groups.filter((group) => group.circuit_id === circuit.id);
+        const resource = circuitResource(circuit as unknown as DbRow);
+        return {
+          ...resource, analysis: analysisMetrics(resource.analysis), job_count: runs.length,
+          last_job_at: runs.map((group) => group.created_at).sort().at(-1) ?? null,
+        };
+      })
+      .filter((circuit) => beforeCursor(circuit, cursor))
+      .sort(newestFirst);
+    return page(rows.slice(0, query.limit + 1), query.limit);
+  }
+
+  const admin = createAdminClient();
+  const org = principal.organizationId;
+  let circuitsQuery = admin.from("circuits").select("id,organization_id,name,input_format,source_hash,analysis,created_at,expires_at,released_at").eq("organization_id", org);
+  if (!query.include_released) circuitsQuery = circuitsQuery.is("released_at", null);
+  if (cursor) circuitsQuery = circuitsQuery.or(`created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`);
+  const { data: circuits, error } = await circuitsQuery.order("created_at", { ascending: false }).order("id", { ascending: false }).limit(query.limit + 1);
+  if (error) throw error;
+  const circuitRows = (circuits ?? []) as DbRow[];
+  const ids = circuitRows.map((circuit) => String(circuit.id));
+  if (!ids.length) return { data: [], has_more: false, next_cursor: null };
+  const { data: groups, error: groupsError } = await admin.from("execution_groups").select("circuit_id,created_at").in("circuit_id", ids).eq("organization_id", org);
+  if (groupsError) throw groupsError;
+  const runs = new Map<string, { count: number; last: string | null }>();
+  for (const group of (groups ?? []) as DbRow[]) {
+    const id = String(group.circuit_id);
+    const current = runs.get(id) ?? { count: 0, last: null };
+    const at = String(group.created_at);
+    runs.set(id, { count: current.count + 1, last: !current.last || at > current.last ? at : current.last });
+  }
+  const rows = circuitRows.map((row) => {
+    const resource = circuitResource(row);
+    const stats = runs.get(resource.id);
+    return { ...resource, analysis: analysisMetrics(resource.analysis), job_count: stats?.count ?? 0, last_job_at: stats?.last ?? null };
+  });
+  return page(rows, query.limit);
 }

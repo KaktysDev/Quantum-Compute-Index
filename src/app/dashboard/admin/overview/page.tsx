@@ -1,43 +1,15 @@
 import Link from "next/link";
-import {
-  Activity,
-  ArrowRight,
-  CircleDollarSign,
-  Cpu,
-  Database,
-  Inbox,
-  Users,
-} from "lucide-react";
-import GlassCard from "@/components/GlassCard";
+import { InlineAlert, Money, Panel, Stat, StatGrid } from "@/components/console/ui";
 import { requireAdmin } from "@/lib/admin";
 import { getLatestPoint } from "@/lib/qci/v2/store";
+import { isSettled } from "@/lib/qrouter/status";
 
 export const dynamic = "force-dynamic";
 
-const usd = (n: number) =>
-  n.toLocaleString("en-US", { style: "currency", currency: "USD" });
-
-function StatCard({
-  label,
-  value,
-  sub,
-  icon,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  icon: React.ReactNode;
-}) {
-  return (
-    <GlassCard className="p-5">
-      <div className="flex items-center justify-between">
-        <p className="font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">{label}</p>
-        <span className="text-[var(--qr-emerald,#34d399)]">{icon}</span>
-      </div>
-      <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
-      {sub && <p className="mt-1 text-xs text-[var(--muted)]">{sub}</p>}
-    </GlassCard>
-  );
+function backendStatus(status: string) {
+  if (status === "online") return <span className="status success">Online</span>;
+  if (status === "degraded") return <span className="status warning">Degraded</span>;
+  return <span className="status danger">Offline</span>;
 }
 
 export default async function AdminOverviewPage() {
@@ -64,145 +36,118 @@ export default async function AdminOverviewPage() {
   ]);
 
   const jobs = jobRows ?? [];
-  const statusCounts = jobs.reduce<Record<string, number>>((acc, j) => {
-    acc[j.status] = (acc[j.status] ?? 0) + 1;
-    return acc;
-  }, {});
+  const completed = jobs.filter((job) => job.status === "completed").length;
+  const failed = jobs.filter((job) => job.status === "failed").length;
+  const inFlight = jobs.filter((job) => !isSettled(job.status)).length;
+  const needsCredits = jobs.filter((job) => job.status === "awaiting_payment").length;
 
-  // Provider usage distribution (jobs → backend → provider).
-  const backendById = new Map((backendRows ?? []).map((b) => [b.id, b]));
-  const providerUse = jobs.reduce<Record<string, number>>((acc, j) => {
-    if (!j.selected_backend_id) return acc;
-    const provider = backendById.get(j.selected_backend_id)?.provider ?? j.selected_backend_id;
+  const backendById = new Map((backendRows ?? []).map((backend) => [backend.id, backend]));
+  const providerUse = jobs.reduce<Record<string, number>>((acc, job) => {
+    if (!job.selected_backend_id) return acc;
+    const provider = backendById.get(job.selected_backend_id)?.provider ?? job.selected_backend_id;
     acc[provider] = (acc[provider] ?? 0) + 1;
     return acc;
   }, {});
   const providerRanking = Object.entries(providerUse).sort((a, b) => b[1] - a[1]);
-  const maxUse = providerRanking[0]?.[1] ?? 1;
 
-  const purchased = (ledgerRows ?? []).filter((l) => l.type === "purchase").reduce((s, l) => s + Number(l.amount), 0);
-  const charged = (ledgerRows ?? []).filter((l) => l.type === "charge").reduce((s, l) => s + Math.abs(Number(l.amount)), 0);
-  const floatBalance = (creditRows ?? []).reduce((s, c) => s + Number(c.available) + Number(c.reserved), 0);
+  const purchased = (ledgerRows ?? []).filter((row) => row.type === "purchase").reduce((sum, row) => sum + Number(row.amount), 0);
+  const charged = (ledgerRows ?? []).filter((row) => row.type === "charge").reduce((sum, row) => sum + Math.abs(Number(row.amount)), 0);
+  const outstanding = (creditRows ?? []).reduce((sum, row) => sum + Number(row.available) + Number(row.reserved), 0);
 
-  const online = (backendRows ?? []).filter((b) => b.status === "online").length;
-  const degraded = (backendRows ?? []).filter((b) => b.status === "degraded").length;
-  const offline = (backendRows ?? []).filter((b) => b.status === "offline").length;
-
-  // v2. This card used to read v1's snapshot table, so the admin overview showed
-  // $2,509.81 / level 1010.81 while the QCI tab three clicks away showed $5,317
-  // / level 997.62 for the same day.
-  const staleDevices = (latest?.devices ?? []).filter((d) => !d.fresh).map((d) => d.device);
-  const snapshotAge = latest
-    ? Math.round((Date.now() - new Date(latest.ts).getTime()) / 3_600_000)
-    : null;
+  const staleDevices = (latest?.devices ?? []).filter((device) => !device.fresh).map((device) => device.device);
+  const snapshotAge = latest ? Math.round((Date.now() - new Date(latest.ts).getTime()) / 3_600_000) : null;
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Headline stats */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Users" value={String(userCount ?? 0)} sub="Registered accounts" icon={<Users size={15} />} />
-        <StatCard
-          label="Jobs (recent 2000)"
-          value={String(jobs.length)}
-          sub={`${statusCounts.completed ?? 0} completed · ${statusCounts.failed ?? 0} failed · ${(statusCounts.queued ?? 0) + (statusCounts.dispatching ?? 0) + (statusCounts.processing ?? 0) + (statusCounts.submitted ?? 0)} in flight`}
-          icon={<Activity size={15} />}
-        />
-        <StatCard
-          label="Revenue"
-          value={usd(purchased)}
-          sub={`${usd(charged)} consumed · ${usd(floatBalance)} float outstanding`}
-          icon={<CircleDollarSign size={15} />}
-        />
-        <StatCard
-          label="Open tickets"
-          value={String((openReports ?? 0) + (unreadContacts ?? 0))}
-          sub={`${openReports ?? 0} support · ${unreadContacts ?? 0} unread contact`}
-          icon={<Inbox size={15} />}
-        />
-      </div>
+    <div className="stack">
+      <StatGrid>
+        <Stat label="Users" value={(userCount ?? 0).toLocaleString()} meta="Registered accounts" />
+        <Stat label="Jobs, latest 2,000" value={jobs.length.toLocaleString()} meta={`${completed} completed · ${failed} failed · ${inFlight} in progress${needsCredits ? ` · ${needsCredits} need credits` : ""}`} />
+        <Stat label="Credits purchased" value={<Money value={purchased} />} meta={<>Charged <Money value={charged} /> · <Money value={outstanding} /> outstanding</>} />
+        <Stat label="Open tickets" value={((openReports ?? 0) + (unreadContacts ?? 0)).toLocaleString()} meta={`${openReports ?? 0} support · ${unreadContacts ?? 0} unread contact`} href="/dashboard/admin/reports" linkLabel="Reports" />
+      </StatGrid>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {/* QCI state */}
-        <GlassCard className="p-6">
-          <div className="flex items-center justify-between">
-            <h2 className="flex items-center gap-2 text-sm font-semibold text-white"><Database size={14} /> QCI index</h2>
-            <Link href="/dashboard/admin/health" className="flex items-center gap-1 text-xs text-[var(--qr-emerald,#34d399)] hover:underline">
-              Health <ArrowRight size={11} />
-            </Link>
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
-            <div>
-              <p className="font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">$/QPU-hour</p>
-              <p className="mt-1 text-xl font-semibold text-white">{latest ? usd(latest.usdPerQpuHour) : "—"}</p>
-            </div>
-            <div>
-              <p className="font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">Index level</p>
-              <p className="mt-1 text-xl font-semibold text-white">{latest ? latest.level.toFixed(2) : "—"}</p>
-            </div>
-            <div>
-              <p className="font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">Status</p>
-              <p className={`mt-1 text-xl font-semibold ${latest?.status === "final" ? "text-[var(--qr-emerald,#34d399)]" : "text-amber-300"}`}>
-                {latest ? (latest.inception ? "INCEPTION" : latest.status.toUpperCase()) : "NO DATA"}
-              </p>
-            </div>
-          </div>
-          <p className="mt-4 text-xs text-[var(--muted)]">
-            {latest && snapshotAge != null ? (
-              <>
-                Last update: <b className={snapshotAge > 30 ? "text-amber-300" : "text-white"}>{new Date(latest.ts).toLocaleString()}</b>
-                {" "}({snapshotAge}h ago{snapshotAge > 30 ? " — daily cron may be failing" : ""})
-                {staleDevices.length > 0 && (
-                  <> · carried forward: <b className="text-amber-300">{staleDevices.join(", ")}</b></>
+      <div className="grid-2">
+        <Panel title="QCI index" actions={<Link href="/dashboard/admin/health" className="btn btn-ghost btn-sm">Health</Link>}>
+          <dl className="kv">
+            <dt>Price per QPU-hour</dt>
+            <dd><Money value={latest?.usdPerQpuHour ?? null} /></dd>
+            <dt>Index level</dt>
+            <dd className="num">{latest ? latest.level.toFixed(2) : "—"}</dd>
+            <dt>Status</dt>
+            <dd>
+              {!latest ? (
+                <span className="status neutral">No data</span>
+              ) : latest.inception ? (
+                <span className="status success">Inception</span>
+              ) : latest.status === "final" ? (
+                <span className="status success">Final</span>
+              ) : (
+                <span className="status warning">{latest.status}</span>
+              )}
+            </dd>
+            <dt>Last update</dt>
+            <dd>{latest ? `${new Date(latest.ts).toLocaleString()} (${snapshotAge}h ago)` : "—"}</dd>
+          </dl>
+          {snapshotAge != null && snapshotAge > 30 ? (
+            <div style={{ marginTop: 16 }}><InlineAlert tone="warning">The last point is over 30 hours old. The daily refresh may be failing.</InlineAlert></div>
+          ) : null}
+          {staleDevices.length ? (
+            <p className="muted" style={{ marginTop: 12 }}>Carried forward: {staleDevices.join(", ")}</p>
+          ) : null}
+          {!latest ? <p className="muted" style={{ marginTop: 12 }}>No index point yet. Run a refresh from Health.</p> : null}
+        </Panel>
+
+        <Panel title="Backends" flush>
+          <div className="table-wrap">
+            <table className="qr-table">
+              <thead>
+                <tr><th>Backend</th><th>Status</th><th className="num hide-sm">Queue</th></tr>
+              </thead>
+              <tbody>
+                {(backendRows ?? []).length === 0 ? (
+                  <tr><td colSpan={3} className="empty-row">No backends recorded.</td></tr>
+                ) : (
+                  (backendRows ?? []).map((backend) => (
+                    <tr key={backend.id}>
+                      <td>
+                        <span className="cell-main">
+                          <b>{backend.display_name}</b>
+                          <small>{backend.provider} · {backend.kind}</small>
+                        </span>
+                      </td>
+                      <td>{backendStatus(backend.status)}</td>
+                      <td className="num hide-sm">{backend.queue_seconds != null ? `${backend.queue_seconds}s` : "—"}</td>
+                    </tr>
+                  ))
                 )}
-              </>
-            ) : (
-              <>No index point has been recorded yet. Run a refresh from Health.</>
-            )}
-          </p>
-        </GlassCard>
-
-        {/* Backend status */}
-        <GlassCard className="p-6">
-          <div className="flex items-center justify-between">
-            <h2 className="flex items-center gap-2 text-sm font-semibold text-white"><Cpu size={14} /> Backends</h2>
-            <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">
-              <b className="text-[var(--qr-emerald,#34d399)]">{online} up</b> · <b className="text-amber-300">{degraded} degraded</b> · <b className="text-red-400">{offline} down</b>
-            </span>
+              </tbody>
+            </table>
           </div>
-          <div className="mt-4 flex flex-col gap-2">
-            {(backendRows ?? []).map((b) => (
-              <div key={b.id} className="flex items-center justify-between rounded-lg border border-white/5 bg-black/20 px-3 py-2">
-                <span className="text-xs text-white">{b.display_name} <span className="text-[var(--muted)]">· {b.provider} · {b.kind}</span></span>
-                <span className={`font-mono text-[10px] uppercase tracking-widest ${
-                  b.status === "online" ? "text-[var(--qr-emerald,#34d399)]" : b.status === "degraded" ? "text-amber-300" : "text-red-400"
-                }`}>
-                  {b.status}
-                </span>
-              </div>
-            ))}
-          </div>
-        </GlassCard>
+        </Panel>
       </div>
 
-      {/* Provider usage */}
-      <GlassCard className="p-6">
-        <h2 className="text-sm font-semibold text-white">Provider usage (all users, recent jobs)</h2>
-        {providerRanking.length === 0 ? (
-          <p className="mt-3 text-sm text-[var(--muted)]">No routed jobs yet.</p>
-        ) : (
-          <div className="mt-4 flex flex-col gap-2.5">
-            {providerRanking.map(([provider, count]) => (
-              <div key={provider} className="grid grid-cols-[140px_1fr_60px] items-center gap-3">
-                <span className="truncate text-xs text-white">{provider}</span>
-                <div className="h-1.5 overflow-hidden rounded-full bg-white/5">
-                  <div className="h-full rounded-full bg-[var(--qr-emerald,#34d399)]/70" style={{ width: `${(count / maxUse) * 100}%` }} />
-                </div>
-                <span className="text-right font-mono text-xs text-[var(--muted)]">{count}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </GlassCard>
+      <Panel title="Provider usage" description="All workspaces, latest 2,000 jobs." flush>
+        <div className="table-wrap">
+          <table className="qr-table">
+            <thead>
+              <tr><th>Provider</th><th className="num">Jobs</th><th className="num">Share</th></tr>
+            </thead>
+            <tbody>
+              {providerRanking.length === 0 ? (
+                <tr><td colSpan={3} className="empty-row">No routed jobs yet.</td></tr>
+              ) : (
+                providerRanking.map(([provider, count]) => (
+                  <tr key={provider}>
+                    <td>{provider}</td>
+                    <td className="num">{count.toLocaleString()}</td>
+                    <td className="num">{Math.round((count / jobs.length) * 100)}%</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
     </div>
   );
 }

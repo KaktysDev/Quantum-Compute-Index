@@ -13,13 +13,13 @@ const RANGES = [
 
 export default function UsageRangeTabs({ current }: { current: string }) {
   return (
-    <div className="console-range-tabs" role="group" aria-label="Time range">
+    <div className="segmented" role="group" aria-label="Time range">
       {RANGES.map((range) => (
         <Link
           key={range.key}
           href={`/dashboard/usage?range=${range.key}`}
-          className={current === range.key ? "active" : ""}
-          aria-current={current === range.key ? "true" : undefined}
+          className={current === range.key ? "active" : undefined}
+          aria-current={current === range.key ? "page" : undefined}
         >
           {range.label}
         </Link>

@@ -1,4 +1,5 @@
 import BillingManager, { type LedgerEntry } from "@/components/BillingManager";
+import { PageHeader } from "@/components/console/ui";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
@@ -50,11 +51,7 @@ export default async function BillingPage() {
 
   return (
     <div className="console-page">
-      <div className="console-page-heading compact">
-        <div>
-          <h1>Billing</h1>
-        </div>
-      </div>
+      <PageHeader title="Billing" description="Prepaid credits. A run reserves its quote when you confirm it and is charged the billed amount when it completes." />
       <BillingManager balance={balance} billingComplete={billingComplete} ledger={ledger} />
     </div>
   );

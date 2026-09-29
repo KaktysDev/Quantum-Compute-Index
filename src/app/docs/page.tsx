@@ -51,10 +51,12 @@ const endpoints = [
 ];
 
 const v2Endpoints = [
+  ["GET", "/api/v2/circuits", "List circuits newest first with run counts. Cursor-paginated; never includes source."],
   ["POST", "/api/v2/circuits", "Store an OpenQASM circuit as a reusable resource. Idempotency-Key required."],
   ["GET", "/api/v2/circuits/{id}", "Read circuit metadata, static analysis, and release state."],
   ["POST", "/api/v2/circuits/{id}/release", "Purge circuit source, results, attempt/event/webhook payloads, and encrypted artifacts."],
   ["DELETE", "/api/v2/circuits/{id}", "Same purge as release, then remove the circuit resource. Responds 204 with no body."],
+  ["GET", "/api/v2/jobs", "List jobs newest first with each execution's status, quote and charge. Filter by status or circuit_id."],
   ["POST", "/api/v2/jobs", "Create an execution group of 1–25 executions. Idempotency-Key required."],
   ["GET", "/api/v2/jobs/{id}", "Read group status with every execution, quote, and route decision."],
   ["GET", "/api/v2/executions/{id}/result", "Retrieve one normalized result as application/json."],
@@ -333,7 +335,7 @@ Quote  $2.14 · 1024 shots · ~4 min queue`}</i>{`
 
         <section className="docs-section" id="github">
           <div className="docs-section-title"><Route size={17} /><div><h2>Connecting GitHub</h2><p>Public repositories need no setup at all. A connection is only required to list your own repositories and to read private ones.</p></div></div>
-          <p className="docs-copy-text"><b>Public repositories work immediately.</b> In <Link href="/dashboard/github">Console → Repositories</Link>, paste any GitHub URL (<code>https://github.com/owner/name</code> or just <code>owner/name</code>), click <b>Scan repository</b>, pick the <code>.qasm</code> entrypoint, and add it to QRouter. QRouter reads the repository through the anonymous GitHub API, which is rate-limited to <b>60 requests per hour per IP</b> — if scanning starts failing with a rate-limit error, that is the cause, and either option below removes the cap.</p>
+          <p className="docs-copy-text"><b>Public repositories work immediately.</b> In <Link href="/dashboard/repositories">Console → Repositories</Link>, paste any GitHub URL (<code>https://github.com/owner/name</code> or just <code>owner/name</code>), click <b>Scan repository</b>, pick the <code>.qasm</code> entrypoint, and add it to QRouter. QRouter reads the repository through the anonymous GitHub API, which is rate-limited to <b>60 requests per hour per IP</b> — if scanning starts failing with a rate-limit error, that is the cause, and either option below removes the cap.</p>
           <h3 className="docs-subhead">Option A — GitHub App (production, per-organization)</h3>
           <p className="docs-copy-text">This is the path that supports private repositories and scopes access to each workspace separately. Register an App at <a href="https://github.com/settings/apps/new" target="_blank" rel="noreferrer">github.com/settings/apps/new <ExternalLink size={11} /></a> with:</p>
           <div className="docs-schema">
@@ -599,7 +601,7 @@ GITHUB_OAUTH_STATE_SECRET=$(openssl rand -base64 32)`}</code></pre>
           <ol className="docs-checklist"><li>Apply the Supabase schema and QRouter migrations.</li><li>Configure Supabase, Stripe, artifact encryption, and provider credentials.</li><li>Create the GitHub App, set its callback URL, and configure the matching app credentials from <code>.env.local.example</code>.</li><li>Deploy the authenticated Qiskit compiler/worker and point the app at its URL.</li><li>Configure authenticated external schedulers for job polling, provider health checks, the daily index refresh, and the Stripe webhook.</li><li>Run credentialed smoke jobs against every enabled paid provider.</li><li>Run lint, typecheck, Node tests, Python worker tests, SDK builds, and the production web build.</li></ol>
         </section>
 
-        <section className="docs-end"><p>Ready to deploy a repository circuit?</p><Link href="/dashboard/github/deploy">Open deployments <ArrowRight size={14} /></Link></section>
+        <section className="docs-end"><p>Ready to deploy a repository circuit?</p><Link href="/dashboard/repositories/deployments">Open deployments <ArrowRight size={14} /></Link></section>
       </main>
     </div>
   );

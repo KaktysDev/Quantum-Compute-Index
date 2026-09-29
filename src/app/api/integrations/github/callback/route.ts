@@ -8,7 +8,7 @@ const isProduction = () => process.env.NODE_ENV === "production" || process.env.
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const destination = new URL("/dashboard/github", url.origin);
+  const destination = new URL("/dashboard/repositories", url.origin);
   try {
     const principal = await resolvePrincipal(request);
     const state = url.searchParams.get("state") ?? "";

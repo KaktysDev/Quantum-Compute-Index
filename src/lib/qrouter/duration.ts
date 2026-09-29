@@ -4,6 +4,8 @@
 // Usage summary, the assistant's run card — needs the same rounding and the
 // same wording, otherwise the same job appears to have taken two lengths.
 
+import { isSettled } from "./status";
+
 /** `1.4s` under a minute, then `2m 30s`, then `1h 12m`. `—` when unknown. */
 export function formatDuration(ms: number | null | undefined): string {
   if (ms === null || ms === undefined || !Number.isFinite(ms) || ms < 0) return "—";
@@ -17,13 +19,6 @@ export function formatDuration(ms: number | null | undefined): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
-/** Statuses that mean the job has stopped moving. */
-export const TERMINAL_STATUSES = ["completed", "failed", "cancelled"] as const;
-
-export function isTerminal(status: string): boolean {
-  return (TERMINAL_STATUSES as readonly string[]).includes(status);
-}
-
 /**
  * Elapsed run time in milliseconds.
  *
@@ -33,18 +28,13 @@ export function isTerminal(status: string): boolean {
  * provider's own execution window.
  */
 export function elapsedMs(
-  job: { created_at: string; started_at?: string | null; completed_at?: string | null },
+  job: { status?: string; created_at: string; started_at?: string | null; completed_at?: string | null; updated_at?: string | null },
   now = Date.now(),
 ): number {
   const from = new Date(job.started_at ?? job.created_at).getTime();
-  const to = job.completed_at ? new Date(job.completed_at).getTime() : now;
+  // A job parked on credits stopped moving when it was last updated.
+  const stoppedAt = job.completed_at ?? (job.status && isSettled(job.status) ? job.updated_at : null);
+  const to = stoppedAt ? new Date(stoppedAt).getTime() : now;
   const value = to - from;
   return Number.isFinite(value) && value >= 0 ? value : 0;
-}
-
-/** Green when it finished clean, red when it did not, amber while in flight. */
-export function statusTone(status: string): "ok" | "warn" | "bad" {
-  if (status === "completed") return "ok";
-  if (status === "failed" || status === "cancelled") return "bad";
-  return "warn";
 }

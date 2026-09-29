@@ -28,6 +28,10 @@ export interface StoredJob {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+  /** Set on v2 executions so v1 lists can tell them apart. */
+  group_id?: string | null;
+  execution_key?: string | null;
+  circuit_id?: string | null;
 }
 
 const state = globalThis as typeof globalThis & { __qrouterJobs?: Map<string, StoredJob> };

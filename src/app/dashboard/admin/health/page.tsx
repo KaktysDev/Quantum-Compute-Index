@@ -1,6 +1,11 @@
+<<<<<<< Updated upstream
 import { Activity, Database, KeyRound, Radio, Waypoints, Wifi, WifiOff } from "lucide-react";
 import GlassCard from "@/components/GlassCard";
 import QciMap from "@/components/QciMap";
+=======
+import nextDynamic from "next/dynamic";
+import { InlineAlert, Panel, Stat, StatGrid } from "@/components/console/ui";
+>>>>>>> Stashed changes
 import HealthActions from "@/components/admin/HealthActions";
 import { requireAdmin } from "@/lib/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -121,279 +126,158 @@ export default async function AdminHealthPage() {
     : null;
   const archiveShort = point != null && index.archivedToday < point.devices.length;
 
+  const runState = (run: (typeof index.runs)[number]) =>
+    !run.ok || run.error ? <span className="status danger">Failed</span> : run.wrote ? <span className="status success">Wrote</span> : <span className="status neutral">Skipped</span>;
+  const probeState = (state: "up" | "down" | "none" | "stored") =>
+    state === "up" ? <span className="status success">Up</span> : state === "down" ? <span className="status danger">Down</span> : state === "stored" ? <span className="status neutral">Stored</span> : <span className="status neutral">No key</span>;
+
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <h2 className="text-sm font-semibold text-white">Platform health</h2>
+    <div className="stack">
+      <div className="row-between">
+        <h2 className="section-title">Platform health</h2>
         <HealthActions />
       </div>
 
-      {/* ── The published index ─────────────────────────────────────────────
-          Reads qci_index_points — the table the product actually publishes
-          from — rather than the legacy qci_snapshots this card used to show. */}
-      <GlassCard className="p-6">
-        <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
-          <Database size={14} /> Published index
-        </h3>
-        {index.error ? (
-          <p className="mt-3 text-xs text-red-400">Could not read the index tables: {index.error}</p>
-        ) : null}
-        <dl className="admin-index-grid mt-5">
-          <div>
-            <dt>Latest point</dt>
-            <dd className={pointAgeH != null && pointAgeH > 30 ? "warn" : undefined}>
-              {index.latestDate ?? "none"}
-            </dd>
-            <small>
-              {index.latest ? ago(index.latest.ts) : "no point has ever been written"}
-              {pointAgeH != null && pointAgeH > 30 ? " — the daily cron may be failing" : ""}
-            </small>
-          </div>
-          <div>
-            <dt>Price · level</dt>
-            <dd>{point ? `${usd(point.usdPerQpuHour)} · ${point.level.toFixed(2)}` : "—"}</dd>
-            <small>
-              {point
-                ? `${point.changePct >= 0 ? "+" : ""}${point.changePct.toFixed(4)}% vs previous point`
-                : "per QPU-hour"}
-            </small>
-          </div>
-          <div>
-            <dt>Coverage · matched</dt>
-            <dd className={point && !point.inception && point.coverage < 0.6 ? "warn" : "good"}>
-              {point ? `${Math.round(point.coverage * 100)}% · ${point.matched}/${point.priced ?? point.devices.length}` : "—"}
-            </dd>
-            <small>
-              {point?.inception
-                ? "inception point — nothing to match against yet"
-                : point
-                  ? `${point.status}, ${measured} of ${point.devices.length} re-measured today`
-                  : "share of basket weight compared with the previous day"}
-            </small>
-          </div>
-          <div>
-            <dt>Observation archive</dt>
-            <dd className={archiveShort ? "warn" : "good"}>
-              {point ? `${index.archivedToday}/${point.devices.length}` : "—"}
-            </dd>
-            <small>
-              {archiveShort
-                ? "rows missing — the audit trail is incomplete"
-                : "raw rows stored for the latest date"}
-            </small>
-          </div>
-          <div>
-            <dt>Series length</dt>
-            <dd>{index.pointCount}</dd>
-            <small>published daily points</small>
-          </div>
-          <div>
-            <dt>Cron auth</dt>
-            <dd className={cronSecretSet ? "good" : "bad"}>
-              {cronSecretSet ? "configured" : "missing"}
-            </dd>
-            <small>{cronSecretSet ? "CRON_SECRET is set" : "CRON_SECRET unset — the cron gets 401"}</small>
-          </div>
-        </dl>
+      {index.error ? <InlineAlert tone="danger">Could not read the index tables: {index.error}</InlineAlert> : null}
+      {pointAgeH != null && pointAgeH > 30 ? <InlineAlert tone="warning">The latest index point is {pointAgeH}h old. The daily cron may be failing.</InlineAlert> : null}
+      {!cronSecretSet ? <InlineAlert tone="danger">CRON_SECRET is not set, so scheduled refreshes receive 401.</InlineAlert> : null}
 
-        <h4 className="mt-6 font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">
-          Recent refresh runs
-        </h4>
-        <ul className="admin-run-log mt-2">
-          {index.runs.length === 0 ? (
-            <li>
-              <span className="detail">No refresh has been recorded yet.</span>
-            </li>
-          ) : null}
-          {index.runs.map((r) => (
-            <li key={r.started_at}>
-              <time>{new Date(r.started_at).toLocaleString()}</time>
-              <span
-                className="state"
-                data-ok={!r.ok || r.error ? "failed" : r.wrote ? "wrote" : "skipped"}
-              >
-                {!r.ok || r.error ? "failed" : r.wrote ? "wrote" : "skipped"}
-              </span>
-              <span className="detail">
-                {r.error ??
-                  r.reason ??
-                  `${r.observed ?? 0} observed · ${r.matched ?? 0} matched · ${Math.round((r.coverage ?? 0) * 100)}% coverage${
-                    r.price_card_version ? ` · AWS card v${r.price_card_version}` : ""
-                  }`}
-              </span>
-            </li>
-          ))}
-        </ul>
-        {index.runs.some((r) => (r.warnings ?? []).length > 0) ? (
-          <ul className="admin-note-list">
-            {[...new Set(index.runs.flatMap((r) => r.warnings ?? []))].slice(0, 6).map((w) => (
-              <li key={w}>{w}</li>
-            ))}
+      <StatGrid>
+        <Stat label="Latest point" value={index.latestDate ?? "None"} meta={index.latest ? ago(index.latest.ts) : "No point written yet"} tone={pointAgeH != null && pointAgeH > 30 ? "warning" : undefined} />
+        <Stat label="Price · level" value={point ? usd(point.usdPerQpuHour) : "—"} meta={point ? `Level ${point.level.toFixed(2)} · ${point.changePct >= 0 ? "+" : ""}${point.changePct.toFixed(4)}%` : "Per QPU-hour"} />
+        <Stat
+          label="Coverage"
+          value={point ? `${Math.round(point.coverage * 100)}%` : "—"}
+          tone={point && !point.inception && point.coverage < 0.6 ? "warning" : undefined}
+          meta={point?.inception ? "Inception point" : point ? `${point.matched}/${point.priced ?? point.devices.length} matched · ${measured} re-measured` : undefined}
+        />
+        <Stat label="Archive" value={point ? `${index.archivedToday}/${point.devices.length}` : "—"} tone={archiveShort ? "warning" : undefined} meta={archiveShort ? "Rows missing from the audit trail" : "Raw rows for the latest date"} />
+        <Stat label="Series length" value={index.pointCount.toLocaleString()} meta="Published daily points" />
+      </StatGrid>
+
+      <Panel title="Recent refresh runs" flush>
+        <div className="table-wrap">
+          <table className="qr-table">
+            <thead><tr><th>Started</th><th>Result</th><th>Detail</th></tr></thead>
+            <tbody>
+              {index.runs.length === 0 ? (
+                <tr><td colSpan={3} className="empty-row">No refresh has been recorded yet.</td></tr>
+              ) : (
+                index.runs.map((run) => (
+                  <tr key={run.started_at}>
+                    <td className="nowrap muted">{new Date(run.started_at).toLocaleString()}</td>
+                    <td>{runState(run)}</td>
+                    <td className="muted">
+                      {run.error ?? run.reason ?? `${run.observed ?? 0} observed · ${run.matched ?? 0} matched · ${Math.round((run.coverage ?? 0) * 100)}% coverage${run.price_card_version ? ` · AWS card v${run.price_card_version}` : ""}`}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        {index.runs.some((run) => (run.warnings ?? []).length > 0) ? (
+          <ul className="panel-foot" style={{ display: "block", margin: 0, paddingLeft: 32 }}>
+            {[...new Set(index.runs.flatMap((run) => run.warnings ?? []))].slice(0, 6).map((warning) => <li key={warning}>{warning}</li>)}
           </ul>
         ) : null}
-      </GlassCard>
+      </Panel>
 
-      {/* ── Cost-model inputs, with every pinned fallback named ────────────── */}
-      <GlassCard className="p-6">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
-            <Waypoints size={14} /> Cost-model inputs
-          </h3>
-          <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">
-            {feeds.length - defaulted.length}/{feeds.length} live
-            {staleFeeds.length > 0 ? ` · ${staleFeeds.length} past their limit` : ""}
-          </span>
+      <Panel
+        title="Cost-model inputs"
+        description={`${feeds.length - defaulted.length}/${feeds.length} live${staleFeeds.length ? ` · ${staleFeeds.length} past their limit` : ""}. A default row means a pinned constant is standing in for a missing live reading.`}
+        flush
+      >
+        <div className="table-wrap">
+          <table className="qr-table">
+            <thead><tr><th>Input</th><th className="num">Value</th><th className="hide-sm">Source</th><th>Tier</th></tr></thead>
+            <tbody>
+              {feeds.map((feed) => (
+                <tr key={feed.id}>
+                  <td>{feed.label}</td>
+                  <td className="num">{feed.value.toPrecision(4)} <span className="dim">{feed.unit}</span></td>
+                  <td className="hide-sm muted">
+                    {feed.usingDefault
+                      ? "No live reading"
+                      : `${feed.source}${feed.ageDays != null ? ` · effective ${feed.ageDays < 1 ? "today" : `${Math.round(feed.ageDays)}d ago`}` : ""}`}
+                    {feed.stale ? <span className="status warning" style={{ marginLeft: 8 }}>Past {feed.maxAgeDays}d limit</span> : null}
+                  </td>
+                  <td>{feed.usingDefault ? <span className="status warning">Default</span> : <span className="badge">{feed.tier}</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <p className="mt-1 text-xs text-[var(--muted)]">
-          Every input the cost model looks up for the current basket. A row marked{" "}
-          <em>default</em> means the live source did not report and a pinned constant is standing
-          in — the value is still used, and this is the only place that fact is visible.
-        </p>
-        <ul className="admin-feed-table mt-4">
-          {feeds.map((f) => (
-            <li key={f.id} className="admin-feed-row">
-              <b>{f.label}</b>
-              <span className="value">
-                {f.value.toPrecision(4)} {f.unit}
-              </span>
-              <span className="meta">
-                {f.usingDefault
-                  ? "no live reading — pinned constant in force"
-                  : `${f.source}${
-                      f.ageDays != null
-                        ? ` · effective ${f.ageDays < 1 ? "today" : `${Math.round(f.ageDays)}d ago`}`
-                        : ""
-                    }${f.stale ? ` · PAST its ${f.maxAgeDays}d limit` : ""}`}
-              </span>
-              <span className="tier" data-tier={f.tier}>
-                {f.usingDefault ? "default" : f.tier}
-              </span>
-            </li>
-          ))}
-        </ul>
         {assumedQuality > 0 && point ? (
-          <ul className="admin-note-list">
-            <li>
-              {assumedQuality} of {point.devices.length} machines are priced on a provider-typical
-              quality default because their operator exposes no calibration for them. Open the
-              attribution map below and select the machine to see which field.
-            </li>
-          </ul>
+          <div className="panel-foot">
+            {assumedQuality} of {point.devices.length} machines use a provider-typical quality default because their operator exposes no calibration.
+          </div>
         ) : null}
-      </GlassCard>
+      </Panel>
 
-      {/* ── The full attribution map ───────────────────────────────────────── */}
-      {point ? (
-        <GlassCard className="p-6">
-          <QciMap point={point} mode="diagnostic" />
-        </GlassCard>
-      ) : null}
+      {point ? <QciMap point={point} mode="diagnostic" /> : null}
 
-      {/* QCI feed credentials — the keys managed in Admin → Provider keys */}
-      <GlassCard className="p-6">
-        <div className="flex items-center justify-between">
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-white"><KeyRound size={14} /> QCI feed keys (stored credentials, live probe)</h3>
-          <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">
-            {feedUp}/{feedStored} stored keys reachable
-          </span>
-        </div>
-        <div className="mt-4 grid gap-2 lg:grid-cols-2">
-          {feedChecks.map((c) => (
-            <div key={c.id} className="rounded-lg border border-white/5 bg-black/20 px-3 py-2.5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="flex items-center gap-2 text-xs font-medium text-white">
-                    {c.state === "up" ? (
-                      <Wifi size={12} className="text-[var(--qr-emerald,#34d399)]" />
-                    ) : (
-                      <WifiOff size={12} className={c.state === "down" ? "text-red-400" : "text-[var(--muted)]"} />
-                    )}
-                    {c.name}
-                    {!c.enabled && c.state !== "no_key" && (
-                      <span className="rounded border border-amber-300/30 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-widest text-amber-300">disabled</span>
-                    )}
-                  </p>
-                  <p className="mt-0.5 text-[11px] text-[var(--muted)]" title={c.message}>{c.message}</p>
-                  {c.details && c.details.length > 0 && (
-                    <ul className="mt-1">
-                      {c.details.map((d) => (
-                        <li key={d} className="truncate font-mono text-[10px] text-[var(--muted)]">· {d}</li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-                <span className={`shrink-0 font-mono text-[10px] uppercase tracking-widest ${
-                  c.state === "up" ? "text-[var(--qr-emerald,#34d399)]" : c.state === "down" ? "text-red-400" : "text-[var(--muted)]"
-                }`}>
-                  {c.state === "up" ? "up" : c.state === "down" ? "down" : c.state === "stored" ? "stored" : "no key"}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </GlassCard>
+      <div className="grid-2">
+        <Panel title="QCI feed keys" description={`${feedUp}/${feedStored} stored keys reachable. Managed under Provider keys.`} flush>
+          <div className="table-wrap">
+            <table className="qr-table">
+              <thead><tr><th>Provider</th><th>State</th></tr></thead>
+              <tbody>
+                {feedChecks.map((check) => (
+                  <tr key={check.id}>
+                    <td>
+                      <span className="cell-main">
+                        <b>{check.name}{!check.enabled && check.state !== "no_key" ? <span className="dim"> · disabled</span> : null}</b>
+                        <small title={check.message}>{check.message}</small>
+                        {check.details?.length ? <small className="mono">{check.details.join(" · ")}</small> : null}
+                      </span>
+                    </td>
+                    <td>{probeState(check.state === "no_key" ? "none" : check.state)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
 
-      {/* Execution-plane env credentials (separate system from the stored keys) */}
-      <GlassCard className="p-6">
-        <div className="flex items-center justify-between">
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-white"><Radio size={14} /> Execution plane (server env credentials)</h3>
-          <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">
-            {reachable}/{configured} configured reachable
-          </span>
-        </div>
-        <p className="mt-1 text-xs text-[var(--muted)]">
-          These are the job-execution credentials set as Vercel environment variables
-          (IBM_QUANTUM_TOKEN, AWS_ACCESS_KEY_ID, IONQ_API_KEY, bridge URLs…) — separate
-          from the stored QCI feed keys above.
-        </p>
-        <div className="mt-4 grid gap-2 lg:grid-cols-2">
-          {probes.map((p) => (
-            <div key={p.provider} className="flex items-start justify-between gap-3 rounded-lg border border-white/5 bg-black/20 px-3 py-2.5">
-              <div className="min-w-0">
-                <p className="flex items-center gap-2 text-xs font-medium text-white">
-                  {p.reachable ? <Wifi size={12} className="text-[var(--qr-emerald,#34d399)]" /> : <WifiOff size={12} className={p.configured ? "text-red-400" : "text-[var(--muted)]"} />}
-                  {p.provider}
-                </p>
-                <p className="mt-0.5 truncate text-[11px] text-[var(--muted)]" title={p.detail}>{p.detail}</p>
-              </div>
-              <span className={`shrink-0 font-mono text-[10px] uppercase tracking-widest ${
-                !p.configured ? "text-[var(--muted)]" : p.reachable ? "text-[var(--qr-emerald,#34d399)]" : "text-red-400"
-              }`}>
-                {!p.configured ? "no creds" : p.reachable ? "up" : "down"}
-              </span>
-            </div>
-          ))}
-          {probes.length === 0 && (
-            <p className="text-sm text-[var(--muted)]">Probe run failed — check server logs.</p>
-          )}
-        </div>
-      </GlassCard>
+        <Panel title="Execution plane" description={`${reachable}/${configured} configured providers reachable. Uses server environment credentials, not the stored feed keys.`} flush>
+          <div className="table-wrap">
+            <table className="qr-table">
+              <thead><tr><th>Provider</th><th>State</th></tr></thead>
+              <tbody>
+                {probes.length === 0 ? (
+                  <tr><td colSpan={2} className="empty-row">Probe run failed. Check server logs.</td></tr>
+                ) : (
+                  probes.map((probe) => (
+                    <tr key={probe.provider}>
+                      <td><span className="cell-main"><b>{probe.provider}</b><small title={probe.detail}>{probe.detail}</small></span></td>
+                      <td>{!probe.configured ? <span className="status neutral">No credentials</span> : probeState(probe.reachable ? "up" : "down")}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      </div>
 
-      {/* Routing catalog state */}
-      <GlassCard className="p-6">
-        <h3 className="flex items-center gap-2 text-sm font-semibold text-white"><Activity size={14} /> Routing catalog (backends table)</h3>
-        <p className="mt-1 text-xs text-[var(--muted)]">
-          Cached rows the router reads. The age is shown per row because a stored status is only
-          as good as the last time the health cron wrote it.
-        </p>
-        <div className="mt-4 grid gap-2 lg:grid-cols-2">
-          {(backends ?? []).map((b) => (
-            <div key={b.id} className="flex items-center justify-between rounded-lg border border-white/5 bg-black/20 px-3 py-2">
-              <span className="min-w-0 text-xs text-white">
-                {b.display_name}{" "}
-                <span className="text-[var(--muted)]">
-                  · {b.provider} · {b.kind} · queue {b.queue_seconds}s · updated {ago(b.updated_at)}
-                </span>
-              </span>
-              <span className={`shrink-0 font-mono text-[10px] uppercase tracking-widest ${
-                b.status === "online" ? "text-[var(--qr-emerald,#34d399)]" : b.status === "degraded" ? "text-amber-300" : "text-red-400"
-              }`}>
-                {b.status}
-              </span>
-            </div>
-          ))}
+      <Panel title="Routing catalog" description="Cached backend rows the router reads, with the age of each." flush>
+        <div className="table-wrap">
+          <table className="qr-table">
+            <thead><tr><th>Backend</th><th>Status</th><th className="num hide-sm">Queue</th><th className="hide-sm">Updated</th></tr></thead>
+            <tbody>
+              {(backends ?? []).map((backend) => (
+                <tr key={backend.id}>
+                  <td><span className="cell-main"><b>{backend.display_name}</b><small>{backend.provider} · {backend.kind}</small></span></td>
+                  <td>{backend.status === "online" ? <span className="status success">Online</span> : backend.status === "degraded" ? <span className="status warning">Degraded</span> : <span className="status danger">Offline</span>}</td>
+                  <td className="num hide-sm">{backend.queue_seconds}s</td>
+                  <td className="hide-sm muted">{ago(backend.updated_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      </GlassCard>
+      </Panel>
     </div>
   );
 }

@@ -4,6 +4,11 @@
  * responses must not ship QASM or native programs in React state.
  */
 
+<<<<<<< Updated upstream
+=======
+import { redactSecrets } from "@/lib/security/log";
+import { chargedFromLedger } from "../cost";
+>>>>>>> Stashed changes
 import type { EncodingStage, EncodingTrace, VerificationStatus, WorkloadKind } from "./types";
 
 const WORKLOAD_LABEL: Record<WorkloadKind, string> = {
@@ -174,3 +179,59 @@ export function slimJobForClient<T extends Record<string, unknown>>(job: T): T {
   if (next.route_decision) next.route_decision = slimRouteDecision(next.route_decision);
   return next as T;
 }
+<<<<<<< Updated upstream
+=======
+
+export function slimJobForClient<T extends Record<string, unknown>>(job: T): T {
+  const next: Record<string, unknown> = slimJobForOwner(job);
+  delete next.source;
+  if ("ledger_entries" in next) {
+    next.charged = chargedFor(job);
+    delete next.ledger_entries;
+  }
+  return next as T;
+}
+
+/**
+ * Billed amount for a job. Live rows carry their ledger entries; demo jobs have
+ * no ledger, so a completed demo job reads as charged at its quote.
+ */
+function chargedFor(job: Record<string, unknown>): number | null {
+  if ("charged" in job && (typeof job.charged === "number" || job.charged === null)) return job.charged as number | null;
+  if ("ledger_entries" in job) return chargedFromLedger(job.ledger_entries);
+  if (job.status !== "completed") return null;
+  const quote = job.quote as { total?: unknown } | null | undefined;
+  const total = Number(quote?.total);
+  return Number.isFinite(total) ? total : null;
+}
+
+/**
+ * Activity-table row. Encoding traces, route candidates, counts, and errors
+ * stay on GET /jobs/:id — the list is polled every few seconds and must not
+ * re-hydrate that tree into React state for every closed row.
+ */
+export function slimJobForList<T extends Record<string, unknown>>(job: T): T {
+  const analysis = job.analysis && typeof job.analysis === "object" && !Array.isArray(job.analysis)
+    ? job.analysis as Record<string, unknown>
+    : null;
+  return {
+    id: job.id,
+    name: job.name,
+    status: job.status,
+    selected_backend_id: job.selected_backend_id,
+    shots: job.shots,
+    created_at: job.created_at,
+    started_at: job.started_at,
+    completed_at: job.completed_at,
+    updated_at: job.updated_at,
+    group_id: job.group_id ?? null,
+    execution_key: job.execution_key ?? null,
+    quotes: job.quotes,
+    quote: job.quote,
+    charged: chargedFor(job),
+    analysis: analysis
+      ? { qubits: analysis.qubits, depth: analysis.depth, complexity: analysis.complexity }
+      : job.analysis,
+  } as unknown as T;
+}
+>>>>>>> Stashed changes

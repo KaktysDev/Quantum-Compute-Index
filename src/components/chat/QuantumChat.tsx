@@ -33,7 +33,6 @@ import {
   PanelLeft,
   Pencil,
   Plus,
-  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -42,7 +41,11 @@ import GetStartedPanel from "@/components/chat/GetStartedPanel";
 import { EncodingDeepDive, EncodingOverview, EncodingStageStrip, overlayExecute, type CompileMetrics, type EncodingCandidate } from "@/components/encoding/EncodingProcess";
 import { getBackend } from "@/lib/qrouter/catalog";
 import { proposalIdempotencyKey, splitChatProposals, type ChatProposal } from "@/lib/qrouter/chatProposals";
+import { costView, formatUsd } from "@/lib/qrouter/cost";
 import { formatDuration } from "@/lib/qrouter/duration";
+import { isSettled, statusView } from "@/lib/qrouter/status";
+import { useAdvance } from "@/lib/client/use-advance";
+import { onVisibleInterval } from "@/lib/client/visible-interval";
 
 /** Backend ids are stable storage keys; show the human name where one exists. */
 const backendLabel = (id: string) => getBackend(id)?.displayName ?? id;
@@ -93,12 +96,8 @@ const chipText = (provider: string) => `Route task using "${provider}"`;
     chip has already said which machine, so this asks for the rest. */
 const CHIP_PLACEHOLDER = "…add what to run, from where, and any limits";
 
-/**
- * Rotating ghost suggestion: types one prompt out, holds ~2s, fades, then
- * moves to the next. Clicking sends the full suggestion. Reduced motion gets
- * a simple no-typing rotation.
- */
-function GhostSuggestion({
+/** Example prompts under the welcome line. Clicking one sends it. */
+function ExamplePrompts({
   items,
   onPick,
   disabled,
@@ -107,62 +106,16 @@ function GhostSuggestion({
   onPick: (text: string) => void;
   disabled: boolean;
 }) {
-  const [index, setIndex] = useState(0);
-  const [chars, setChars] = useState(0);
-  const [phase, setPhase] = useState<"typing" | "hold" | "fade">("typing");
-  const reduced = useRef(false);
-
-  useEffect(() => {
-    reduced.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  }, []);
-
-  useEffect(() => {
-    const text = items[index];
-    if (reduced.current) {
-      setChars(text.length);
-      setPhase("hold");
-      const next = window.setTimeout(() => {
-        setChars(0);
-        setIndex((i) => (i + 1) % items.length);
-      }, 3600);
-      return () => window.clearTimeout(next);
-    }
-    if (phase === "typing") {
-      if (chars >= text.length) {
-        setPhase("hold");
-        return;
-      }
-      const t = window.setTimeout(() => setChars((c) => c + 1), 26);
-      return () => window.clearTimeout(t);
-    }
-    if (phase === "hold") {
-      const t = window.setTimeout(() => setPhase("fade"), 2_000);
-      return () => window.clearTimeout(t);
-    }
-    // fade → advance after the CSS transition
-    const t = window.setTimeout(() => {
-      setChars(0);
-      setPhase("typing");
-      setIndex((i) => (i + 1) % items.length);
-    }, 450);
-    return () => window.clearTimeout(t);
-  }, [phase, chars, index, items]);
-
-  const text = items[index];
   return (
-    <button
-      type="button"
-      className={`qc-ghost ${phase === "fade" ? "fade" : ""}`}
-      onClick={() => onPick(text)}
-      disabled={disabled}
-      aria-label={`Try: ${text}`}
-    >
-      <span className="qc-ghost-try">try</span>
-      <span className="qc-ghost-text">
-        {text.slice(0, chars)}
-        <i className="qc-ghost-caret" aria-hidden="true" />
-      </span>
-    </button>
+    <ul className="qc-examples" aria-label="Example requests">
+      {items.map((text) => (
+        <li key={text}>
+          <button type="button" onClick={() => onPick(text)} disabled={disabled}>
+            {text}
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -318,7 +271,7 @@ function JobProposalCard({
 }) {
   const [quote, setQuote] = useState<QuoteState>({ status: "loading" });
   const [phase, setPhase] = useState<"review" | "running" | "done" | "failed" | "dismissed">("review");
-  const [result, setResult] = useState<{ id: string; status: string; backend: string; counts?: Record<string, number>; total?: number } | null>(null);
+  const [result, setResult] = useState<RunResult | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const [historyChecked, setHistoryChecked] = useState(!messageId);
   // Wall-clock for this run: `runStartedAt` is stamped on confirm, `runMs` is
@@ -426,13 +379,7 @@ function JobProposalCard({
         if (cancelled) return;
         if (res.ok) {
           const data = await res.json();
-          setResult({
-            id: data.id,
-            status: data.status,
-            backend: data.selected_backend_id,
-            counts: data.result?.counts,
-            total: data.quote?.total,
-          });
+          setResult(runResultFrom(data));
           setPhase("done");
         }
       } catch {
@@ -472,14 +419,22 @@ function JobProposalCard({
         }),
       });
       const data = await res.json();
+      // 402 parks the job rather than rejecting it: it starts on its own once
+      // credits are added, so the card keeps following it.
+      if (res.status === 402 && data.error?.job_id) {
+        setResult({
+          id: data.error.job_id,
+          status: "awaiting_payment",
+          backend: quote.backendId ?? target,
+          total: typeof data.error.quote?.total === "number" ? data.error.quote.total : quote.total,
+          charged: null,
+        });
+        setRunMs(Date.now() - startedAt);
+        setPhase("done");
+        return;
+      }
       if (!res.ok) throw new Error(data.error?.message ?? "Job submission failed.");
-      setResult({
-        id: data.id,
-        status: data.status,
-        backend: data.selected_backend_id,
-        counts: data.result?.counts,
-        total: data.quote?.total,
-      });
+      setResult(runResultFrom(data));
       setRunMs(Date.now() - startedAt);
       setPhase("done");
     } catch (error) {
@@ -488,6 +443,30 @@ function JobProposalCard({
       setPhase("failed");
     }
   }
+
+  // Follow the submitted job until it settles, driving it forward if no
+  // scheduler is running.
+  const followId = result && !isSettled(result.status) ? result.id : null;
+  useEffect(() => {
+    if (!followId) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/v1/jobs/${followId}`, { cache: "no-store" });
+        if (!res.ok || cancelled) return;
+        const next = runResultFrom(await res.json());
+        if (!cancelled) setResult((current) => (current?.id === next.id ? { ...current, ...next } : current));
+      } catch {
+        /* next tick retries */
+      }
+    };
+    const stop = onVisibleInterval(poll, 3000);
+    return () => {
+      cancelled = true;
+      stop();
+    };
+  }, [followId]);
+  useAdvance(result ? [result] : []);
 
   if (phase === "dismissed") {
     return <div className="qc-proposal dismissed"><X size={13} /> Proposal dismissed — nothing was run.</div>;
@@ -499,7 +478,6 @@ function JobProposalCard({
   return (
     <div className="qc-proposal">
       <header>
-        <Sparkles size={14} />
         <b>Job proposal</b>
         <span>
           {!historyChecked
@@ -627,6 +605,7 @@ function JobProposalCard({
 
       {phase === "done" && result ? (
         <div className="qc-run-result">
+<<<<<<< Updated upstream
           <p>
             <Check size={14} /> Task <b>{result.status}</b> on <b>{backendLabel(result.backend)}</b>
             {typeof result.total === "number" && <> · settled <b>${result.total.toFixed(4)}</b></>}
@@ -647,6 +626,42 @@ function JobProposalCard({
             </div>
           )}
           <Link href={`/dashboard/tasks?job=${result.id}`}>View task details →</Link>
+=======
+          <RunSummary result={result} runMs={runMs} />
+          {storedCounts.length ? (
+            <div className="qc-counts" role="img" aria-label={`Top ${storedCounts.length} stored bitstrings`}>
+              {storedCounts.map(([state, count]) => (
+                <div key={state}>
+                  <code>|{state}⟩</code>
+                  <i style={{ width: `${Math.max(4, peakCount > 0 ? (count / peakCount) * 100 : 4)}%` }} />
+                  <b>{count.toLocaleString()}</b>
+                </div>
+              ))}
+            </div>
+          ) : result.status === "completed" ? (
+            <p className="qc-run-empty">No measurement counts were stored.</p>
+          ) : null}
+          <div className="qc-run-actions">
+            {result.status === "completed" && (
+            <div className="qc-run-downloads" role="group" aria-label="Download this job report and stored results">
+              <a href={`/api/v1/jobs/${result.id}/report/pdf`} download={`job-${result.id}-report.pdf`}>
+                <FileText size={13} />
+                Report PDF
+              </a>
+              <a href={`/api/v1/jobs/${result.id}/result`} download={`job-${result.id}.json`}>
+                <Download size={13} />
+                JSON
+              </a>
+              <a href={`/api/v1/jobs/${result.id}/result.csv`} download={`job-${result.id}.csv`}>
+                <FileSpreadsheet size={13} />
+                CSV
+              </a>
+            </div>
+            )}
+            {result.status === "awaiting_payment" && <Link href="/dashboard/billing">Add credits</Link>}
+            <Link href={`/dashboard/activity?job=${result.id}`}>Open in Activity</Link>
+          </div>
+>>>>>>> Stashed changes
         </div>
       ) : (
         <footer>
@@ -669,6 +684,49 @@ function JobProposalCard({
         </footer>
       )}
     </div>
+  );
+}
+
+type RunResult = {
+  id: string;
+  status: string;
+  backend: string;
+  counts?: Record<string, number>;
+  total?: number;
+  charged?: number | null;
+};
+
+function runResultFrom(data: Record<string, unknown> & { result?: { counts?: Record<string, number> } | null; quote?: { total?: unknown } | null }): RunResult {
+  const total = Number(data.quote?.total);
+  return {
+    id: String(data.id),
+    status: String(data.status),
+    backend: String(data.selected_backend_id ?? ""),
+    counts: data.result?.counts,
+    total: Number.isFinite(total) ? total : undefined,
+    charged: typeof data.charged === "number" ? data.charged : null,
+  };
+}
+
+function RunSummary({ result, runMs }: { result: RunResult; runMs: number | null }) {
+  const view = statusView(result.status);
+  const cost = costView({ status: result.status, quoted: result.total, charged: result.charged });
+  const pending = !isSettled(result.status);
+  return (
+    <p className="qc-run-summary">
+      {pending ? <Loader2 size={13} className="spin" /> : result.status === "completed" ? <Check size={13} /> : <AlertCircle size={13} />}
+      <span className={`qc-run-status ${view.tone}`}>{view.label}</span>
+      {result.backend && <> on <b>{backendLabel(result.backend)}</b></>}
+      <span className="qc-run-meta">
+        {cost.label}
+        {cost.amount !== null && <> <b>{formatUsd(cost.amount)}</b></>}
+        {cost.secondary && <> ({cost.secondary})</>}
+        {runMs !== null && !pending && <> · submitted in {formatDuration(runMs)}</>}
+      </span>
+      {result.status === "awaiting_payment" && (
+        <span className="qc-run-meta">Starts automatically once credits are added.</span>
+      )}
+    </p>
   );
 }
 
@@ -758,7 +816,7 @@ export default function QuantumChat({
     window.history.replaceState(null, "", window.location.pathname);
   }, [routeProvider]);
 
-  // Below 900px the rail is an overlay (see chat.css), so leaving it open would
+  // Below 900px the rail is an overlay (see styles/features/run.css), so leaving it open would
   // bury the conversation under it on every mobile load. It stays open by
   // default on desktop, where it is a real column.
   useEffect(() => {
@@ -1066,7 +1124,8 @@ export default function QuantumChat({
             >
               <PanelLeft size={15} />
             </button>
-            <span className="qc-eyebrow"><Sparkles size={12} /> QRouter Assistant</span>
+            <span className="qc-eyebrow">Assistant</span>
+            <Link href="/dashboard/circuits" className="qc-mainbar-link">Run a stored circuit on several targets</Link>
           </div>
 
           <div className="qc-scroll" ref={scrollRef}>
@@ -1074,10 +1133,19 @@ export default function QuantumChat({
             {empty ? (
               <div className="qc-welcome">
                 <h1>{greeting}</h1>
+<<<<<<< Updated upstream
                 {/* The composer placeholder below already says what to type,
                     and the footnote already says nothing runs unconfirmed. */}
                 <p>Describe a job, name a connected repository, or ask about hardware and pricing.</p>
                 <GhostSuggestion items={SUGGESTIONS} onPick={send} disabled={busy} />
+=======
+                <p>Describe a job, name a connected repository, or ask about hardware and pricing. Nothing runs until you approve a quote.</p>
+                <ExamplePrompts items={SUGGESTIONS.slice(0, 3)} onPick={send} disabled={busy} />
+                <details className="qc-sandbox">
+                  <summary>Preview how a circuit is encoded and routed</summary>
+                  <EncodingSandbox />
+                </details>
+>>>>>>> Stashed changes
               </div>
             ) : (
               <div className="qc-thread">

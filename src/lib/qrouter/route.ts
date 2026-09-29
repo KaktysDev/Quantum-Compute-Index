@@ -38,11 +38,23 @@ function compatibility(backend: Backend, analysis: CircuitAnalysis, constraints:
 type CompatibilityData = ReturnType<typeof compatibility> & { backend: Backend };
 
 /** Scores a pool, normalising cost and queue against the runnable entries in it. */
+<<<<<<< Updated upstream
 function scoreCandidates(data: CompatibilityData[], analysis: CircuitAnalysis, shots: number, mode: RoutingMode): RouteCandidate[] {
   const runnable = data.filter((item) => item.reasons.length === 0);
   const maxCost = Math.max(...runnable.map((item) => item.cost), 0.000001);
   const maxQueue = Math.max(...runnable.map((item) => item.backend.queueSeconds), 1);
   const w = weights(mode);
+=======
+function scoreCandidates(data: CompatibilityData[], nqh: number, mode: RoutingMode): RouteCandidate[] {
+  let maxCost = 0.000001;
+  let maxQueue = 1;
+  for (const item of data) {
+    if (item.reasons.length) continue;
+    if (item.cost > maxCost) maxCost = item.cost;
+    if (item.backend.queueSeconds > maxQueue) maxQueue = item.backend.queueSeconds;
+  }
+  const w = routingWeights(mode);
+>>>>>>> Stashed changes
   return data.map((item) => {
     const nqh = estimatedNqh(analysis, shots);
     const score = item.reasons.length ? 0 :
@@ -60,7 +72,8 @@ function scoreCandidates(data: CompatibilityData[], analysis: CircuitAnalysis, s
   }).sort((a, b) => b.score - a.score);
 }
 
-function weights(mode: RoutingMode) {
+/** Scoring weights per routing mode. Exported so the console can show the real policy. */
+export function routingWeights(mode: RoutingMode) {
   if (mode === "cost") return { cost: 0.7, speed: 0.15, quality: 0.1, reliability: 0.05 };
   if (mode === "speed") return { cost: 0.15, speed: 0.65, quality: 0.1, reliability: 0.1 };
   if (mode === "quality") return { cost: 0.1, speed: 0.1, quality: 0.65, reliability: 0.15 };

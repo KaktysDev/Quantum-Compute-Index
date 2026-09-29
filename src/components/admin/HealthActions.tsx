@@ -99,12 +99,12 @@ export default function HealthActions() {
   return (
     <div className="admin-health-actions">
       <div className="admin-health-buttons">
-        <button onClick={recheck} disabled={rechecking} className="console-primary disabled:opacity-50">
-          {rechecking ? <Loader2 size={13} className="animate-spin" /> : <RefreshCcw size={13} />}
+        <button onClick={recheck} disabled={rechecking} className="btn btn-secondary">
+          {rechecking ? <Loader2 size={13} className="spin" /> : <RefreshCcw size={13} />}
           Re-probe providers
         </button>
-        <button onClick={refreshIndex} disabled={refreshing} className="admin-refresh-button">
-          {refreshing ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+        <button onClick={refreshIndex} disabled={refreshing} className="btn btn-primary">
+          {refreshing ? <Loader2 size={13} className="spin" /> : <Zap size={13} />}
           Run QCI refresh now
         </button>
       </div>

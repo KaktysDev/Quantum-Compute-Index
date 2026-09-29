@@ -96,7 +96,7 @@ Use a **live** key if you intentionally want a QPU. Prefer a **test** key plus
 
 ### 1. Connect GitHub
 
-1. Open **`/dashboard/github`**.
+1. Open **`/dashboard/repositories`**.
 2. Install / connect the GitHub App if the page offers it (needs
    `GITHUB_APP_*` env on the deployment).
 3. Import the repository, pick the production branch and a `.qasm` entrypoint.
@@ -188,8 +188,9 @@ curl "$BASE_URL/api/v1/jobs" \
 
 Then poll / result as in Path 1.
 
-Console alternative without curl: **`/dashboard/submit`** (session cookie auth)
-or the playground pages under `/dashboard/playground`.
+Console alternative without curl: **`/dashboard/run`** (the assistant, session
+cookie auth), or upload a circuit under **`/dashboard/circuits`** and start a
+single or compare run from its page.
 
 ### v2 path — circuit → job → poll → result
 
@@ -240,10 +241,10 @@ applies the SQL.
 
 ## Path 3 — Your GitHub repo without the GitHub App
 
-If `GITHUB_APP_*` is not configured (or `/dashboard/github` cannot connect):
+If `GITHUB_APP_*` is not configured (or `/dashboard/repositories` cannot connect):
 
 1. Open the `.qasm` file in your repo.
-2. Paste the source into **Path 2** (curl) or `/dashboard/submit`.
+2. Paste the source into **Path 2** (curl) or `/dashboard/run`.
 3. Or use the SDKs:
 
 **TypeScript** (`sdk/typescript`):

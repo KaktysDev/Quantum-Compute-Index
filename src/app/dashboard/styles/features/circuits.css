@@ -1,0 +1,22 @@
+/* ── Circuits ──────────────────────────────────────────────────────────── */
+
+.circuit-summary { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: var(--qr-space-4); align-items: start; }
+
+.target-picker { display: grid; gap: var(--qr-space-2); min-width: 0; margin: 0; padding: 0; border: 0; }
+.target-picker legend { padding: 0; margin-bottom: var(--qr-space-2); }
+.target-list { display: grid; max-height: 280px; overflow-y: auto; border: 1px solid var(--qr-line); border-radius: var(--qr-radius-sm); }
+.target-option { display: flex; align-items: center; gap: var(--qr-space-3); min-height: 48px; padding: var(--qr-space-2) var(--qr-space-3); border-bottom: 1px solid var(--qr-line); cursor: pointer; }
+.target-option:last-child { border-bottom: 0; }
+.target-option:hover { background: var(--qr-hover); }
+.target-option.checked { background: var(--qr-accent-soft); }
+.target-option.disabled { cursor: not-allowed; opacity: 0.5; }
+.target-option .cell-main { flex: 1; display: grid; min-width: 0; line-height: 1.35; }
+.target-option .cell-main b { font-weight: var(--qr-fw-medium); }
+.target-option .cell-main small { color: var(--qr-dim); font-size: var(--qr-fs-sm); }
+
+.advanced > summary { width: max-content; color: var(--qr-muted); font-size: var(--qr-fs-sm); cursor: pointer; }
+.advanced > summary:hover { color: var(--qr-text); }
+
+@media (max-width: 900px) {
+  .circuit-summary { grid-template-columns: 1fr; }
+}
