@@ -4,11 +4,8 @@
  * responses must not ship QASM or native programs in React state.
  */
 
-<<<<<<< Updated upstream
-=======
 import { redactSecrets } from "@/lib/security/log";
 import { chargedFromLedger } from "../cost";
->>>>>>> Stashed changes
 import type { EncodingStage, EncodingTrace, VerificationStatus, WorkloadKind } from "./types";
 
 const WORKLOAD_LABEL: Record<WorkloadKind, string> = {
@@ -172,15 +169,28 @@ export function slimRouteDecision<T>(value: T): T {
   return row as T;
 }
 
-export function slimJobForClient<T extends Record<string, unknown>>(job: T): T {
+/**
+ * Owner GET /jobs/:id. Native payloads leave; the circuit `source` stays so
+ * authorized clients can inspect what they submitted. List/summary use
+ * slimJobForClient / slimJobForList instead.
+ */
+export function slimJobForOwner<T extends Record<string, unknown>>(job: T): T {
   const next: Record<string, unknown> = { ...job };
-  delete next.source;
   if (next.analysis) next.analysis = slimAnalysis(next.analysis);
   if (next.route_decision) next.route_decision = slimRouteDecision(next.route_decision);
+  if (next.error) next.error = slimError(next.error);
   return next as T;
 }
-<<<<<<< Updated upstream
-=======
+
+export function slimError<T>(value: T): T {
+  if (typeof value === "string") return redactSecrets(value) as T;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const row = { ...(value as Record<string, unknown>) };
+  if (typeof row.message === "string") row.message = redactSecrets(row.message);
+  if (typeof row.stack === "string") row.stack = redactSecrets(row.stack);
+  delete row.stack;
+  return row as T;
+}
 
 export function slimJobForClient<T extends Record<string, unknown>>(job: T): T {
   const next: Record<string, unknown> = slimJobForOwner(job);
@@ -234,4 +244,3 @@ export function slimJobForList<T extends Record<string, unknown>>(job: T): T {
       : job.analysis,
   } as unknown as T;
 }
->>>>>>> Stashed changes

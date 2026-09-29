@@ -4,7 +4,16 @@
 // Usage summary, the assistant's run card — needs the same rounding and the
 // same wording, otherwise the same job appears to have taken two lengths.
 
-import { isSettled } from "./status";
+import { isSettled, isTerminal } from "./status";
+
+export { isTerminal };
+
+/** Green when it finished clean, red when it did not, amber while in flight. */
+export function statusTone(status: string): "ok" | "warn" | "bad" {
+  if (status === "completed") return "ok";
+  if (status === "failed" || status === "cancelled") return "bad";
+  return "warn";
+}
 
 /** `1.4s` under a minute, then `2m 30s`, then `1h 12m`. `—` when unknown. */
 export function formatDuration(ms: number | null | undefined): string {

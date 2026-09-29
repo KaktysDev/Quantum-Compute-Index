@@ -425,7 +425,7 @@ function JobProposalCard({
         setResult({
           id: data.error.job_id,
           status: "awaiting_payment",
-          backend: quote.backendId ?? target,
+          backend: quote.backendId ?? proposal.target ?? "auto",
           total: typeof data.error.quote?.total === "number" ? data.error.quote.total : quote.total,
           charged: null,
         });
@@ -471,6 +471,12 @@ function JobProposalCard({
   if (phase === "dismissed") {
     return <div className="qc-proposal dismissed"><X size={13} /> Proposal dismissed — nothing was run.</div>;
   }
+
+  const storedCounts = Object.entries(result?.counts ?? {})
+    .filter(([, count]) => typeof count === "number" && Number.isFinite(count))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8);
+  const peakCount = Math.max(...storedCounts.map(([, count]) => count), 0);
 
   const insufficient =
     quote.status === "ready" && balance !== null && typeof quote.total === "number" && quote.total > balance;
@@ -605,28 +611,6 @@ function JobProposalCard({
 
       {phase === "done" && result ? (
         <div className="qc-run-result">
-<<<<<<< Updated upstream
-          <p>
-            <Check size={14} /> Task <b>{result.status}</b> on <b>{backendLabel(result.backend)}</b>
-            {typeof result.total === "number" && <> · settled <b>${result.total.toFixed(4)}</b></>}
-            {runMs !== null && <> · <span className="qc-elapsed done">{formatDuration(runMs)}</span></>}
-          </p>
-          {result.counts && (
-            <div className="qc-counts">
-              {Object.entries(result.counts)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 8)
-                .map(([state, count]) => (
-                  <div key={state}>
-                    <code>|{state}⟩</code>
-                    <i style={{ width: `${Math.max(4, (count / shots) * 100)}%` }} />
-                    <b>{count}</b>
-                  </div>
-                ))}
-            </div>
-          )}
-          <Link href={`/dashboard/tasks?job=${result.id}`}>View task details →</Link>
-=======
           <RunSummary result={result} runMs={runMs} />
           {storedCounts.length ? (
             <div className="qc-counts" role="img" aria-label={`Top ${storedCounts.length} stored bitstrings`}>
@@ -643,25 +627,13 @@ function JobProposalCard({
           ) : null}
           <div className="qc-run-actions">
             {result.status === "completed" && (
-            <div className="qc-run-downloads" role="group" aria-label="Download this job report and stored results">
-              <a href={`/api/v1/jobs/${result.id}/report/pdf`} download={`job-${result.id}-report.pdf`}>
-                <FileText size={13} />
-                Report PDF
-              </a>
               <a href={`/api/v1/jobs/${result.id}/result`} download={`job-${result.id}.json`}>
-                <Download size={13} />
-                JSON
+                Download JSON
               </a>
-              <a href={`/api/v1/jobs/${result.id}/result.csv`} download={`job-${result.id}.csv`}>
-                <FileSpreadsheet size={13} />
-                CSV
-              </a>
-            </div>
             )}
             {result.status === "awaiting_payment" && <Link href="/dashboard/billing">Add credits</Link>}
             <Link href={`/dashboard/activity?job=${result.id}`}>Open in Activity</Link>
           </div>
->>>>>>> Stashed changes
         </div>
       ) : (
         <footer>
@@ -1133,19 +1105,8 @@ export default function QuantumChat({
             {empty ? (
               <div className="qc-welcome">
                 <h1>{greeting}</h1>
-<<<<<<< Updated upstream
-                {/* The composer placeholder below already says what to type,
-                    and the footnote already says nothing runs unconfirmed. */}
-                <p>Describe a job, name a connected repository, or ask about hardware and pricing.</p>
-                <GhostSuggestion items={SUGGESTIONS} onPick={send} disabled={busy} />
-=======
                 <p>Describe a job, name a connected repository, or ask about hardware and pricing. Nothing runs until you approve a quote.</p>
                 <ExamplePrompts items={SUGGESTIONS.slice(0, 3)} onPick={send} disabled={busy} />
-                <details className="qc-sandbox">
-                  <summary>Preview how a circuit is encoded and routed</summary>
-                  <EncodingSandbox />
-                </details>
->>>>>>> Stashed changes
               </div>
             ) : (
               <div className="qc-thread">

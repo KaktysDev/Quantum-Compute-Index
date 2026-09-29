@@ -16,6 +16,7 @@ import type { Principal } from "./auth";
 import { V2ApiError } from "./v2-http";
 import { demoV2Circuits, demoV2Groups, type DemoCircuit, type DemoGroup } from "./v2-demo-store";
 import { chargedFromLedger } from "./cost";
+import { slimError } from "./encoding/public";
 import { decodeCursor, encodeCursor, hashRequest, newV2Id, type CircuitListItem, type CircuitResource, type CreateCircuitInput, type CreateExecutionGroupInput, type ExecutionGroup, type ExecutionListItem, type JobListItem, type ListCircuitsQuery, type ListJobsQuery, type ListPage, type V2GroupStatus } from "./v2";
 
 type DbRow = Record<string, unknown>;
@@ -38,14 +39,12 @@ function groupStatusFrom(statuses: string[]): V2GroupStatus {
 function groupResource(group: DemoGroup): ExecutionGroup {
   return {
     id: group.id, circuit_id: group.circuit_id, organization_id: group.organization_id, status: group.status,
-<<<<<<< Updated upstream
-    metadata: group.metadata, executions: group.executions, created_at: group.created_at,
-    updated_at: group.updated_at, completed_at: group.completed_at, error: group.error,
-=======
-    metadata: group.metadata, executions: group.executions.map((execution) => ({ ...slimPublicExecution(execution), charged: demoCharged(String(execution.id)) })),
+    metadata: group.metadata,
+    // Keep the circuit on the owner view until release. Charged is derived:
+    // demo jobs have no ledger, so a completed one reads as its quote.
+    executions: group.executions.map((execution) => ({ ...execution, charged: demoCharged(String(execution.id)) })),
     created_at: group.created_at, updated_at: group.updated_at, completed_at: group.completed_at,
     error: slimError(group.error),
->>>>>>> Stashed changes
   };
 }
 

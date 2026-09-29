@@ -227,21 +227,14 @@ export function ExecutionDrawer({
                   candidates={detail.route_decision?.candidates}
                   explanation={detail.route_decision?.explanation}
                   selectedId={detail.selected_backend_id}
-                  targetId={detail.selected_backend_id}
                   transpilation={detail.analysis?.transpilation}
                   quoteTotal={detail.charged ?? quoted}
                   events={detail.events}
                   attempts={detail.attempts}
-                  result={detail.result ?? null}
+                  counts={detail.result?.counts}
                   error={detail.error?.message}
                   jobId={detail.id}
                   jobStatus={detail.status}
-                  shots={detail.shots}
-                  qubits={detail.analysis?.qubits}
-                  durationMs={elapsedMs(detail)}
-                  createdAt={detail.created_at}
-                  completedAt={detail.completed_at}
-                  phase={detail.status === "failed" || detail.status === "cancelled" ? "failed" : detail.status === "completed" ? "done" : settled ? "ready" : "running"}
                 />
               </div>
             </>

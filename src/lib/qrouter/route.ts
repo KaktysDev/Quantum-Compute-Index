@@ -38,23 +38,11 @@ function compatibility(backend: Backend, analysis: CircuitAnalysis, constraints:
 type CompatibilityData = ReturnType<typeof compatibility> & { backend: Backend };
 
 /** Scores a pool, normalising cost and queue against the runnable entries in it. */
-<<<<<<< Updated upstream
 function scoreCandidates(data: CompatibilityData[], analysis: CircuitAnalysis, shots: number, mode: RoutingMode): RouteCandidate[] {
   const runnable = data.filter((item) => item.reasons.length === 0);
   const maxCost = Math.max(...runnable.map((item) => item.cost), 0.000001);
   const maxQueue = Math.max(...runnable.map((item) => item.backend.queueSeconds), 1);
-  const w = weights(mode);
-=======
-function scoreCandidates(data: CompatibilityData[], nqh: number, mode: RoutingMode): RouteCandidate[] {
-  let maxCost = 0.000001;
-  let maxQueue = 1;
-  for (const item of data) {
-    if (item.reasons.length) continue;
-    if (item.cost > maxCost) maxCost = item.cost;
-    if (item.backend.queueSeconds > maxQueue) maxQueue = item.backend.queueSeconds;
-  }
   const w = routingWeights(mode);
->>>>>>> Stashed changes
   return data.map((item) => {
     const nqh = estimatedNqh(analysis, shots);
     const score = item.reasons.length ? 0 :

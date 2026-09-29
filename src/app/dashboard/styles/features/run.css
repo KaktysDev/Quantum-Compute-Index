@@ -254,23 +254,14 @@
   padding-bottom: 2rem;
   text-align: center;
 }
-<<<<<<< Updated upstream:src/app/dashboard/chat.css
-/* With the first-run panel above it, a full-height welcome would push itself
-   below the fold; let it sit directly under the panel instead. */
-.qc-scroll:has(.qc-getstarted) .qc-welcome { min-height: 0; padding: 1.5rem 0 2rem; }
-.qc-welcome h1 { margin: 0; font-size: clamp(1.2rem, 2.2vw, 1.65rem); font-weight: 560; letter-spacing: -0.025em; }
-.qc-welcome > p { max-width: 480px; margin: 0.65rem 0 0; color: var(--qr-muted); font-size: 0.775rem; line-height: 1.65; }
-=======
-/* Top-align once the first-run strip or the open sandbox is on screen. */
-.qc-scroll:has(.qc-getstarted) .qc-welcome,
-.qc-scroll:has(.qc-sandbox[open]) .qc-welcome {
+/* Top-align once the first-run strip is on screen. */
+.qc-scroll:has(.qc-getstarted) .qc-welcome {
   min-height: 0;
   justify-content: flex-start;
   padding: 1.5rem 0 2rem;
 }
 .qc-welcome h1 { margin: 0; font-size: var(--qr-fs-xl); font-weight: 600; letter-spacing: -0.02em; }
 .qc-welcome > p { max-width: 480px; margin: 0.5rem 0 0; color: var(--qr-muted); font-size: var(--qr-fs-base); line-height: 1.6; }
->>>>>>> Stashed changes:src/app/dashboard/styles/features/run.css
 
 /* Example requests: a short list, sent on click. */
 .qc-examples { display: grid; width: min(560px, 100%); gap: 6px; margin: var(--qr-space-5) 0 0; padding: 0; list-style: none; }
@@ -447,15 +438,9 @@
 .qc-proposal > header span { margin-left: auto; color: var(--qr-dim); font: var(--qr-fs-label) var(--qr-sans); }
 .qc-proposal-note { margin: 0.7rem 0.9rem 0; color: var(--qr-muted); font-size: var(--qr-fs-sm); line-height: 1.55; }
 .qc-proposal dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem 1rem; margin: 0; padding: 0.85rem 0.9rem; }
-<<<<<<< Updated upstream:src/app/dashboard/chat.css
-.qc-proposal dt { color: var(--qr-dim); font: 620 0.52rem var(--qr-mono); letter-spacing: 0.11em; text-transform: uppercase; }
-.qc-proposal dd { margin: 0.25rem 0 0; color: var(--qr-text); font-size: 0.72rem; overflow-wrap: anywhere; }
-.qc-proposal dd.capitalize { text-transform: capitalize; }
-.qc-quote-loading { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--qr-dim); font-size: 0.68rem; }
-.qc-quote-total { color: var(--qr-text); font: 650 0.8rem var(--qr-mono); }
-=======
 .qc-proposal dt { color: var(--qr-dim); font: 600 var(--qr-fs-label) var(--qr-sans); }
 .qc-proposal dd { margin: 0.25rem 0 0; color: var(--qr-text); font-size: var(--qr-fs-sm); overflow-wrap: anywhere; }
+.qc-proposal dd.capitalize { text-transform: capitalize; }
 .qc-proposal .qc-field { display: block; }
 .qc-proposal .qc-field input,
 .qc-proposal .qc-field select {
@@ -473,7 +458,6 @@
 
 .qc-quote-loading { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--qr-dim); font-size: var(--qr-fs-sm); }
 .qc-quote-total { color: var(--qr-text); font: 600 var(--qr-fs-base) var(--qr-mono); }
->>>>>>> Stashed changes:src/app/dashboard/styles/features/run.css
 .qc-danger { color: var(--qr-danger) !important; }
 .qc-proposal-error { display: flex; align-items: center; gap: 0.4rem; margin: 0 0.9rem 0.6rem; color: var(--qr-danger); font-size: var(--qr-fs-sm); }
 .qc-proposal-error a { color: var(--qr-text); text-decoration: underline; }
@@ -515,27 +499,20 @@
 
 .qc-proposal .enc-strip { margin: 0.15rem 0.9rem 0.55rem; }
 .qc-encoding { margin: 0 0 0.35rem; }
-<<<<<<< Updated upstream:src/app/dashboard/chat.css
-.qc-encoding .enc-overview { margin: 0 0.9rem 0.55rem; }
-.qc-encoding-pending { margin: 0.45rem 0.9rem 0.15rem; color: var(--qr-dim); font-size: 0.64rem; }
+.qc-encoding .enc-overview,
+.qc-encoding .enc-preview { margin: 0 0.9rem 0.55rem; }
+.qc-encoding-pending { margin: 0.45rem 0.9rem 0.15rem; color: var(--qr-dim); font-size: var(--qr-fs-sm); }
 .qc-encoding-detail { margin: 0 0.9rem 0.7rem; border: 1px solid var(--qr-line); border-radius: var(--qr-radius-sm); background: var(--qr-panel); }
 .qc-encoding-detail summary {
   cursor: pointer;
   padding: 0.45rem 0.7rem;
   color: var(--qr-muted);
-  font: 650 0.58rem var(--qr-mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font: 600 var(--qr-fs-sm) var(--qr-sans);
 }
 .qc-encoding-detail summary:focus-visible { outline: 1px solid var(--qr-text); outline-offset: 2px; }
 .qc-encoding-detail[open] summary { border-bottom: 1px solid var(--qr-line); color: var(--qr-text); }
 .qc-encoding-detail .enc-deep { padding: 0.75rem 0.8rem 0.9rem; }
 .qc-encoding-detail .enc-strip { margin: 0 0 0.75rem; }
-=======
-.qc-encoding .enc-overview,
-.qc-encoding .enc-preview { margin: 0 0.9rem 0.55rem; }
-
->>>>>>> Stashed changes:src/app/dashboard/styles/features/run.css
 .qc-progress { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.7rem 0.9rem; border-top: 1px solid var(--qr-line); }
 .qc-progress .enc-strip { margin: 0; flex: 1 1 100%; }
 
@@ -556,14 +533,14 @@
 .qc-run-result { padding: 0.75rem 0.9rem; border-top: 1px solid var(--qr-line); }
 .qc-run-result > p { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin: 0; color: var(--qr-text); font-size: var(--qr-fs-sm); }
 .qc-run-result > p > svg { color: var(--qr-success); }
-<<<<<<< Updated upstream:src/app/dashboard/chat.css
-.qc-run-result > a { display: inline-block; margin-top: 0.6rem; color: var(--qr-text); font-size: 0.68rem; text-decoration: underline; text-underline-offset: 2px; }
-.qc-counts { display: grid; gap: 0.3rem; margin-top: 0.7rem; }
-.qc-counts > div { display: grid; grid-template-columns: 52px 1fr 48px; align-items: center; gap: 0.5rem; }
-.qc-counts code { padding: 0; border: 0; background: transparent; color: var(--qr-muted); font-size: 0.64rem; }
-.qc-counts i { display: block; height: 7px; border-radius: 3px; background: var(--qr-accent); transform-origin: left; animation: qc-grow 480ms ease; }
-.qc-counts b { color: var(--qr-text); font: 600 0.64rem var(--qr-mono); font-variant-numeric: tabular-nums; text-align: right; }
-=======
+.qc-run-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin: 0; color: var(--qr-text); font-size: var(--qr-fs-sm); }
+.qc-run-summary > svg { color: var(--qr-success); }
+.qc-run-status.success { color: var(--qr-success); }
+.qc-run-status.warning,
+.qc-run-status.progress { color: var(--qr-warning); }
+.qc-run-status.danger { color: var(--qr-danger); }
+.qc-run-status.neutral { color: var(--qr-muted); }
+.qc-run-meta { color: var(--qr-muted); }
 .qc-run-empty { margin: 0.65rem 0 0; color: var(--qr-dim); font-size: var(--qr-fs-sm); }
 .qc-run-actions {
   display: flex;
@@ -572,22 +549,6 @@
   gap: 0.55rem 0.85rem;
   margin-top: 0.7rem;
 }
-.qc-run-downloads { display: flex; flex-wrap: wrap; gap: 0.4rem; }
-.qc-run-downloads a {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  min-height: 28px;
-  padding: 0 0.55rem;
-  border: 1px solid var(--qr-line-strong);
-  border-radius: var(--qr-radius-sm);
-  background: var(--qr-panel);
-  color: var(--qr-text);
-  font-size: var(--qr-fs-label);
-  font-weight: 500;
-  text-decoration: none;
-}
-.qc-run-downloads a:hover { background: var(--qr-hover); }
 .qc-run-actions > a {
   color: var(--qr-text);
   font-size: var(--qr-fs-sm);
@@ -599,7 +560,6 @@
 .qc-counts code { overflow: hidden; padding: 0; border: 0; background: transparent; color: var(--qr-muted); font-size: var(--qr-fs-label); text-overflow: ellipsis; white-space: nowrap; }
 .qc-counts i { display: block; height: 7px; border-radius: var(--qr-radius-sm); background: var(--qr-accent); transform-origin: left; }
 .qc-counts b { color: var(--qr-text); font: 600 var(--qr-fs-label) var(--qr-mono); font-variant-numeric: tabular-nums; text-align: right; }
->>>>>>> Stashed changes:src/app/dashboard/styles/features/run.css
 @keyframes qc-grow { from { transform: scaleX(0); } }
 
 /* ── Composer ─────────────────────────────────────────────────────────── */

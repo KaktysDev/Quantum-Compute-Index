@@ -1,11 +1,5 @@
-<<<<<<< Updated upstream
-import { Activity, Database, KeyRound, Radio, Waypoints, Wifi, WifiOff } from "lucide-react";
-import GlassCard from "@/components/GlassCard";
 import QciMap from "@/components/QciMap";
-=======
-import nextDynamic from "next/dynamic";
 import { InlineAlert, Panel, Stat, StatGrid } from "@/components/console/ui";
->>>>>>> Stashed changes
 import HealthActions from "@/components/admin/HealthActions";
 import { requireAdmin } from "@/lib/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
