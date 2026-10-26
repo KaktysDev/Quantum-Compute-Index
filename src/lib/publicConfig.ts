@@ -1,8 +1,8 @@
 export const PUBLIC_CONFIG = {
   productName: "QRouter",
-  engineName: "QCI Engine",
+  engineName: "Execution planner",
   indexName: "Quantum Compute Index",
-  apiBaseUrl: "https://api.qrouter.dev",
+  apiBaseUrl: "https://qrouter.app",
   jobsPath: "/api/v1/jobs",
   docsUrl: "/docs",
   consoleUrl: "/dashboard",

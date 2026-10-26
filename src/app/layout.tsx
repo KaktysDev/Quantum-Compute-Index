@@ -5,7 +5,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   // Needed so per-page canonical URLs and Open Graph assets resolve absolutely.
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://qrouter.dev"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://qrouter.app"),
   title: "QRouter — Quantum Experiments You Can Review",
   description: "Plan private quantum experiments, approve a budget, and keep inputs, execution records, and result evidence together.",
   openGraph: {
