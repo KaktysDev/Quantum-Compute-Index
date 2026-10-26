@@ -4,13 +4,30 @@ This change is an initial campaign product built on the existing circuit/job sys
 
 ## Database and release order
 
-1. Keep the existing Supabase migrations applied in their documented order.
-2. Apply `supabase/experiments.sql` after `qrouter.sql`. This adds organization-scoped immutable experiment definitions, approved runs and circuit-release reference scrubbing. Missing storage returns an actionable 503; it never silently switches production to demo mode.
-3. Apply `supabase/experiment-billing.sql` to add the provider usage reconciliation summary. Attempt/event billing evidence remains available independently of this optional summary table. This migration does not retroactively debit customers or change previously accepted quotes.
+1. Keep the existing legacy Supabase schema installed in its documented order. The versioned files in `supabase/migrations/` are incremental changes against that schema; they do not bootstrap an empty database.
+2. Apply pending versioned migrations in filename order and retain their versions in Supabase migration history. The first restores the existing service-only RPC contract, and the next adds organization-scoped immutable experiment definitions, approved runs and circuit-release reference scrubbing. Missing storage returns an actionable 503; it never silently switches production to demo mode.
+3. The billing migration adds the provider usage reconciliation summary, and the final migration covers the new foreign keys with indexes. Attempt/event billing evidence remains available independently of the optional summary table. No migration retroactively debits customers or changes previously accepted quotes. `supabase/experiments.sql` and `supabase/experiment-billing.sql` remain rerunnable schema snapshots, not a second migration history.
 4. Deploy the matching app and compiler worker together. Worker results now identify their coordinate space explicitly; the new app should not rely on an old worker's ambiguous result semantics. Drain active work before rollout. Queued legacy index-priced jobs are rejected by the new dispatcher and need a fresh native-rate quote and approval.
 5. Verify a small simulator campaign before enabling any externally billed backend. Do not merge solely because demo mode works: live persistence, authenticated advancement and credit reservation must be checked on the target deployment.
 
-Both new SQL files are additive and rerunnable. Their isolated PostgreSQL checks cover organization RLS, denied client mutations, release scrubbing, idempotency, foreign keys, cascades, and nullable unknown provider costs. No production migrations were applied during implementation.
+The campaign SQL is additive and rerunnable. Isolated PostgreSQL checks cover organization RLS, denied client mutations, release scrubbing, idempotency, foreign keys, cascades, nullable unknown provider costs, and Supabase's explicit default function grants.
+
+## Production database rollout: 2026-10-26
+
+Applied through the Supabase connector to the active **QCI** project (`xmimdalmovzxqiyyeipg`). The public qrouter.app client configuration was checked against this project before applying changes; the separate inactive project named QRouter was not the target.
+
+| Version | Migration |
+| --- | --- |
+| `20261026113632` | `restore_service_only_rpc_permissions` |
+| `20261026113737` | `experiments` |
+| `20261026113754` | `experiment_billing` |
+| `20261026113934` | `index_experiment_relationships` |
+
+Production catalog checks confirmed all three tables, enabled RLS, organization-member SELECT policies, denied anonymous access and authenticated mutations, service-role access, the release trigger with a fixed search path, nullable unknown costs, and all three added relationship indexes. The 20 RPCs already designated service-only in the source now deny execution to both anonymous and authenticated roles while retaining service-role access. Revoking from PUBLIC alone had left Supabase's explicit role grants in place.
+
+The isolated PostgreSQL suite passed 45 checks, including repeated application under explicit default grants. A read-only request through the authenticated QRouter CLI to the live experiments endpoint succeeded with an empty list. No provider jobs were submitted and no balances, quotes, ledger records or authentication settings were changed during this rollout. These checks do not establish a completed paid campaign on the updated deployment or deployment of the matching compiler worker.
+
+The new objects have no security warnings or missing-foreign-key-index findings. Existing project advisories remain outside this migration; in particular, review the remaining [public security-definer function grants](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable) and [Auth password protection setting](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection) separately. New empty-table indexes are naturally reported as unused until traffic exercises them.
 
 ## Execution and approval
 

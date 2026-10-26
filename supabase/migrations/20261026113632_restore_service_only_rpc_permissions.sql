@@ -1,0 +1,47 @@
+-- Supabase explicitly grants EXECUTE to anon/authenticated by default.
+-- Restore the service-only contract already declared by qrouter.sql/chat.sql.
+-- No financial records, balances, authentication sessions or user data are changed.
+begin;
+set local lock_timeout = '5s';
+set local statement_timeout = '30s';
+revoke all on function public.add_credits(uuid,numeric,text,jsonb) from public, anon, authenticated;
+grant execute on function public.add_credits(uuid,numeric,text,jsonb) to service_role;
+revoke all on function public.claim_qrouter_jobs(integer,integer) from public, anon, authenticated;
+grant execute on function public.claim_qrouter_jobs(integer,integer) to service_role;
+revoke all on function public.claim_qrouter_poll_jobs(integer,integer) from public, anon, authenticated;
+grant execute on function public.claim_qrouter_poll_jobs(integer,integer) to service_role;
+revoke all on function public.claim_webhook_deliveries(integer,integer) from public, anon, authenticated;
+grant execute on function public.claim_webhook_deliveries(integer,integer) to service_role;
+revoke all on function public.consume_api_rate_limit(uuid,integer) from public, anon, authenticated;
+grant execute on function public.consume_api_rate_limit(uuid,integer) to service_role;
+revoke all on function public.consume_assistant_quota(uuid,integer,bigint,integer) from public, anon, authenticated;
+grant execute on function public.consume_assistant_quota(uuid,integer,bigint,integer) to service_role;
+revoke all on function public.consume_rate_limit(text,integer,integer) from public, anon, authenticated;
+grant execute on function public.consume_rate_limit(text,integer,integer) to service_role;
+revoke all on function public.erase_user_personal_data(uuid) from public, anon, authenticated;
+grant execute on function public.erase_user_personal_data(uuid) to service_role;
+revoke all on function public.finalize_qrouter_job(uuid,text,jsonb,text,numeric) from public, anon, authenticated;
+grant execute on function public.finalize_qrouter_job(uuid,text,jsonb,text,numeric) to service_role;
+revoke all on function public.purge_circuit_data(uuid,uuid) from public, anon, authenticated;
+grant execute on function public.purge_circuit_data(uuid,uuid) to service_role;
+revoke all on function public.purge_expired_circuits(integer) from public, anon, authenticated;
+grant execute on function public.purge_expired_circuits(integer) to service_role;
+revoke all on function public.purge_rate_limit_windows(interval) from public, anon, authenticated;
+grant execute on function public.purge_rate_limit_windows(interval) to service_role;
+revoke all on function public.queue_execution_group_with_quotes(uuid,jsonb) from public, anon, authenticated;
+grant execute on function public.queue_execution_group_with_quotes(uuid,jsonb) to service_role;
+revoke all on function public.queue_job_with_quote(uuid,numeric,numeric,numeric,numeric,jsonb,timestamptz) from public, anon, authenticated;
+grant execute on function public.queue_job_with_quote(uuid,numeric,numeric,numeric,numeric,jsonb,timestamptz) to service_role;
+revoke all on function public.record_assistant_tokens(uuid,bigint,integer) from public, anon, authenticated;
+grant execute on function public.record_assistant_tokens(uuid,bigint,integer) to service_role;
+revoke all on function public.release_job_credits(uuid,numeric) from public, anon, authenticated;
+grant execute on function public.release_job_credits(uuid,numeric) to service_role;
+revoke all on function public.requeue_awaiting_payment_execution_groups(uuid,integer) from public, anon, authenticated;
+grant execute on function public.requeue_awaiting_payment_execution_groups(uuid,integer) to service_role;
+revoke all on function public.requeue_awaiting_payment_jobs(uuid,integer) from public, anon, authenticated;
+grant execute on function public.requeue_awaiting_payment_jobs(uuid,integer) to service_role;
+revoke all on function public.reserve_job_credits(uuid,numeric) from public, anon, authenticated;
+grant execute on function public.reserve_job_credits(uuid,numeric) to service_role;
+revoke all on function public.settle_job_credits(uuid,numeric,numeric) from public, anon, authenticated;
+grant execute on function public.settle_job_credits(uuid,numeric,numeric) to service_role;
+commit;

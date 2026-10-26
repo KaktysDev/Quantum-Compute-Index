@@ -35,6 +35,8 @@ alter table public.experiment_runs add column if not exists preparation_status t
 alter table public.experiment_runs add column if not exists preparation_error jsonb;
 create index if not exists experiments_org_created on public.experiments(organization_id, created_at desc);
 create index if not exists experiment_runs_experiment on public.experiment_runs(experiment_id, created_at desc);
+create index if not exists experiments_circuit_idx on public.experiments(circuit_id);
+create index if not exists experiment_runs_group_idx on public.experiment_runs(group_id);
 alter table public.experiments enable row level security;
 alter table public.experiment_runs enable row level security;
 drop policy if exists "experiment member read" on public.experiments;
@@ -59,5 +61,5 @@ begin
 end $$;
 drop trigger if exists release_experiment_reference on public.circuits;
 create trigger release_experiment_reference after update of released_at on public.circuits for each row execute function public.release_experiment_reference();
-revoke all on function public.release_experiment_reference() from public;
+revoke all on function public.release_experiment_reference() from public, anon, authenticated;
 commit;

@@ -269,7 +269,7 @@ returns setof public.jobs language sql security definer set search_path=public,p
   from candidates where job.id=candidates.id
   returning job.*
 $$;
-revoke all on function public.claim_qrouter_poll_jobs(integer,integer) from public;
+revoke all on function public.claim_qrouter_poll_jobs(integer,integer) from public, anon, authenticated;
 grant execute on function public.claim_qrouter_poll_jobs(integer,integer) to service_role;
 
 create or replace function public.finalize_qrouter_job(
@@ -312,7 +312,7 @@ begin
   end if;
   return true;
 end$$;
-revoke all on function public.finalize_qrouter_job(uuid,text,jsonb,text,numeric) from public;
+revoke all on function public.finalize_qrouter_job(uuid,text,jsonb,text,numeric) from public, anon, authenticated;
 grant execute on function public.finalize_qrouter_job(uuid,text,jsonb,text,numeric) to service_role;
 
 create table if not exists public.artifacts (
@@ -373,7 +373,7 @@ returns setof public.jobs language sql security definer set search_path=public,p
   from candidates where job.id=candidates.id
   returning job.*
 $$;
-revoke all on function public.claim_qrouter_jobs(integer,integer) from public;
+revoke all on function public.claim_qrouter_jobs(integer,integer) from public, anon, authenticated;
 grant execute on function public.claim_qrouter_jobs(integer,integer) to service_role;
 
 create or replace function public.reserve_job_credits(p_job_id uuid,p_amount numeric) returns void language plpgsql security definer set search_path=public,pg_temp as $$declare o uuid;b numeric;begin select organization_id into o from public.jobs where id=p_job_id;select available into b from public.credit_accounts where organization_id=o for update;if b is null or b<p_amount then raise exception 'insufficient_credits';end if;update public.credit_accounts set available=available-p_amount,reserved=reserved+p_amount,updated_at=now() where organization_id=o;insert into public.ledger_entries(organization_id,job_id,type,amount,balance_after)values(o,p_job_id,'reserve',-p_amount,b-p_amount);end$$;
@@ -383,13 +383,13 @@ create or replace function public.add_credits(p_organization_id uuid,p_amount nu
 
 -- Credit-mutating security-definer functions must never be callable through
 -- PostgREST by end users; only the service role may execute them.
-revoke all on function public.reserve_job_credits(uuid,numeric) from public;
+revoke all on function public.reserve_job_credits(uuid,numeric) from public, anon, authenticated;
 grant execute on function public.reserve_job_credits(uuid,numeric) to service_role;
-revoke all on function public.settle_job_credits(uuid,numeric,numeric) from public;
+revoke all on function public.settle_job_credits(uuid,numeric,numeric) from public, anon, authenticated;
 grant execute on function public.settle_job_credits(uuid,numeric,numeric) to service_role;
-revoke all on function public.release_job_credits(uuid,numeric) from public;
+revoke all on function public.release_job_credits(uuid,numeric) from public, anon, authenticated;
 grant execute on function public.release_job_credits(uuid,numeric) to service_role;
-revoke all on function public.add_credits(uuid,numeric,text,jsonb) from public;
+revoke all on function public.add_credits(uuid,numeric,text,jsonb) from public, anon, authenticated;
 grant execute on function public.add_credits(uuid,numeric,text,jsonb) to service_role;
 
 -- Atomically stores a quote, reserves credits, and queues the job. On
@@ -421,7 +421,7 @@ begin
   insert into public.job_events(job_id,type,from_status,to_status,payload)values(p_job_id,'job.queued','funds_reserved','queued','{}');
   return 'queued';
 end$$;
-revoke all on function public.queue_job_with_quote(uuid,numeric,numeric,numeric,numeric,jsonb,timestamptz) from public;
+revoke all on function public.queue_job_with_quote(uuid,numeric,numeric,numeric,numeric,jsonb,timestamptz) from public, anon, authenticated;
 grant execute on function public.queue_job_with_quote(uuid,numeric,numeric,numeric,numeric,jsonb,timestamptz) to service_role;
 
 -- V2 submits a parent job with several independent executions. Quote and
@@ -463,7 +463,7 @@ begin
   update public.execution_groups set status='running',error=null,updated_at=now() where id=p_group_id;
   return 'queued';
 end$$;
-revoke all on function public.queue_execution_group_with_quotes(uuid,jsonb) from public;
+revoke all on function public.queue_execution_group_with_quotes(uuid,jsonb) from public, anon, authenticated;
 grant execute on function public.queue_execution_group_with_quotes(uuid,jsonb) to service_role;
 
 -- Unparks awaiting_payment execution groups after credits arrive.
@@ -506,7 +506,7 @@ begin
     exit when balance_exhausted;
   end loop;
 end$$;
-revoke all on function public.requeue_awaiting_payment_execution_groups(uuid,integer) from public;
+revoke all on function public.requeue_awaiting_payment_execution_groups(uuid,integer) from public, anon, authenticated;
 grant execute on function public.requeue_awaiting_payment_execution_groups(uuid,integer) to service_role;
 
 -- Unparks awaiting_payment jobs (oldest first) after credits arrive. Jobs whose
@@ -537,7 +537,7 @@ begin
     job_id=parked.id;outcome='queued';return next;
   end loop;
 end$$;
-revoke all on function public.requeue_awaiting_payment_jobs(uuid,integer) from public;
+revoke all on function public.requeue_awaiting_payment_jobs(uuid,integer) from public, anon, authenticated;
 grant execute on function public.requeue_awaiting_payment_jobs(uuid,integer) to service_role;
 
 create table if not exists public.webhook_endpoints (
@@ -580,7 +580,7 @@ returns setof public.webhook_deliveries language sql security definer set search
   update public.webhook_deliveries as delivery set lease_expires_at=now()+make_interval(secs=>greatest(15,p_lease_seconds))
   from candidates where delivery.id=candidates.id returning delivery.*
 $$;
-revoke all on function public.claim_webhook_deliveries(integer,integer) from public;
+revoke all on function public.claim_webhook_deliveries(integer,integer) from public, anon, authenticated;
 grant execute on function public.claim_webhook_deliveries(integer,integer) to service_role;
 
 -- Generic fixed-window counter. The old table keyed on api_key_id, which meant
@@ -617,7 +617,7 @@ begin
   returning request_count into v_counted;
   return v_counted<=greatest(1,p_limit);
 end$$;
-revoke all on function public.consume_rate_limit(text,integer,integer) from public;
+revoke all on function public.consume_rate_limit(text,integer,integer) from public, anon, authenticated;
 grant execute on function public.consume_rate_limit(text,integer,integer) to service_role;
 
 -- Retained so a deploy that still points at the old RPC keeps working. Nothing
@@ -641,7 +641,7 @@ begin
   delete from public.api_rate_windows where window_start < now() - p_older_than;
   return removed;
 end$$;
-revoke all on function public.purge_rate_limit_windows(interval) from public;
+revoke all on function public.purge_rate_limit_windows(interval) from public, anon, authenticated;
 grant execute on function public.purge_rate_limit_windows(interval) to service_role;
 
 create or replace function public.consume_api_rate_limit(p_api_key_id uuid,p_limit integer default 120)
@@ -654,7 +654,7 @@ begin
   -- mixed-version deploy cannot hand one organization two separate budgets.
   return public.consume_rate_limit('org:'||organization::text,p_limit,60);
 end$$;
-revoke all on function public.consume_api_rate_limit(uuid,integer) from public;
+revoke all on function public.consume_api_rate_limit(uuid,integer) from public, anon, authenticated;
 grant execute on function public.consume_api_rate_limit(uuid,integer) to service_role;
 
 -- ════════════════════════════════════════════════════════════════════════════
@@ -740,7 +740,7 @@ begin
   );
   return purged;
 end$$;
-revoke all on function public.purge_circuit_data(uuid,uuid) from public;
+revoke all on function public.purge_circuit_data(uuid,uuid) from public, anon, authenticated;
 grant execute on function public.purge_circuit_data(uuid,uuid) to service_role;
 
 -- Retention automation for circuits.expires_at, which was defined, returned in
@@ -771,7 +771,7 @@ begin
     end;
   end loop;
 end$$;
-revoke all on function public.purge_expired_circuits(integer) from public;
+revoke all on function public.purge_expired_circuits(integer) from public, anon, authenticated;
 grant execute on function public.purge_expired_circuits(integer) to service_role;
 
 -- ════════════════════════════════════════════════════════════════════════════
@@ -853,7 +853,7 @@ begin
   );
   return erased;
 end$$;
-revoke all on function public.erase_user_personal_data(uuid) from public;
+revoke all on function public.erase_user_personal_data(uuid) from public, anon, authenticated;
 grant execute on function public.erase_user_personal_data(uuid) to service_role;
 
 -- A new account receives a personal workspace and a small starting balance.

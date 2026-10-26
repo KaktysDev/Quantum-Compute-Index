@@ -61,7 +61,7 @@ begin
   return query select (m <= p_msg_limit and t < p_token_limit), m, t,
     w + make_interval(secs => p_window_seconds);
 end $$;
-revoke all on function public.consume_assistant_quota(uuid, integer, bigint, integer) from public;
+revoke all on function public.consume_assistant_quota(uuid, integer, bigint, integer) from public, anon, authenticated;
 grant execute on function public.consume_assistant_quota(uuid, integer, bigint, integer) to service_role;
 
 -- Add the streamed token count after a turn completes.
@@ -76,5 +76,5 @@ begin
     on conflict (organization_id, window_start)
     do update set tokens = assistant_usage.tokens + p_tokens;
 end $$;
-revoke all on function public.record_assistant_tokens(uuid, bigint, integer) from public;
+revoke all on function public.record_assistant_tokens(uuid, bigint, integer) from public, anon, authenticated;
 grant execute on function public.record_assistant_tokens(uuid, bigint, integer) to service_role;

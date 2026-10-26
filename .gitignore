@@ -41,3 +41,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 /sdk/typescript/dist/
+
+# Supabase CLI generated project metadata
+/supabase/.temp/

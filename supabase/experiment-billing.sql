@@ -15,6 +15,7 @@ create table if not exists public.provider_usage_reconciliation (
       or (status = 'confirmed' and actual_provider_cost is not null)),
   check (customer_charge_ceiling <= accepted_total)
 );
+create index if not exists provider_usage_org_idx on public.provider_usage_reconciliation(organization_id);
 alter table public.provider_usage_reconciliation enable row level security;
 drop policy if exists provider_usage_org_read on public.provider_usage_reconciliation;
 create policy provider_usage_org_read on public.provider_usage_reconciliation for select to authenticated
