@@ -4,9 +4,9 @@
 
 import { createHash } from "crypto";
 import type { RoutingConstraints, RoutingMode, TranspilationResult } from "../types";
-import { frontendInfo } from "./frontend";
+import { frontendInfo, workloadFromSource } from "./frontend";
 import { jcsHash } from "./jcs";
-import { deriveRequirements } from "./satisfy";
+import { deriveRequirements, satisfies } from "./satisfy";
 import {
   ADAPTER_VERSION,
   BUNDLE_SCHEMA,
@@ -69,12 +69,25 @@ export function buildEnvelope(input: {
 }
 
 export function verificationFromTranspile(result: TranspilationResult | null, capability: CapabilityProfile): VerificationReport {
-  const status = result ? verificationStatusOf(result.equivalent, result.verificationNote) : "unsupported";
+  let legality: VerificationStatus = "unsupported";
+  let legalityNote = "No compiled gate artifact was checked.";
+  if (result) {
+    try {
+      const requirements = deriveRequirements(workloadFromSource(result.qasm, "openqasm2", 0));
+      const verdict = satisfies(requirements, capability);
+      legality = verdict.ok ? "checked" : "failed";
+      legalityNote = verdict.ok ? "Compiled gate requirements satisfy the advertised target profile; provider schema and calibration are separate checks." : verdict.failures.map((failure) => failure.message).join("; ");
+    } catch (error) {
+      legality = "failed";
+      legalityNote = error instanceof Error ? error.message : "Compiled artifact could not be parsed.";
+    }
+  }
+  const status = legality === "failed" ? "failed" : result ? verificationStatusOf(result.equivalent, result.verificationNote) : "unsupported";
   return {
     status,
     gates_run: [
-      { gate: "G1", status: "proved", detail: "Parsed and type-checked." },
-      { gate: "G3", status: "checked", detail: "satisfies() re-run against the compiled artifact." },
+      { gate: "G1", status: result ? "checked" : "unsupported", detail: "Source accepted by the supported frontend; this is not a formal type or semantic proof." },
+      { gate: "G3", status: legality, detail: legalityNote },
       { gate: "G6", status, detail: result?.verificationNote ?? "No compiler verification." },
     ],
     bound_to: {
@@ -86,13 +99,21 @@ export function verificationFromTranspile(result: TranspilationResult | null, ca
 }
 
 export function verificationStatusOf(equivalent: boolean | null | undefined, note?: string): VerificationStatus {
-  if (equivalent === true) return "proved";
+  if (equivalent === true) return "checked";
   if (equivalent === false) return "failed";
   const text = note ?? "";
   if (/ancilla/i.test(text)) return "partial";
   if (/limited to|not attempted|disabled/i.test(text)) return "unsupported";
   if (/unavailable|threw|error|crash/i.test(text)) return "unsupported";
   return "unsupported";
+}
+
+/** Evidence levels used by the envelope policy. Failed checks always reject. */
+export function assertVerificationPolicy(status: VerificationStatus, minimum: VerificationStatus) {
+  const level: Record<VerificationStatus, number> = { failed: -1, unsupported: 0, partial: 1, provider_validated: 2, checked: 3, proved: 4 };
+  if (status === "failed" || minimum === "failed" || level[status] < level[minimum]) {
+    throw new Error(`Verification policy requires ${minimum}; artifact evidence is ${status}.`);
+  }
 }
 
 export function buildBundle(input: {
@@ -108,6 +129,7 @@ export function buildBundle(input: {
   quoteBinding: QuoteBinding;
   loweringProofs?: string[];
 }): ExecutionBundle {
+  assertVerificationPolicy(input.verification.status, input.envelope.policy.verification.minimum_status);
   const body = {
     schema_version: BUNDLE_SCHEMA,
     envelope_id: input.envelope.id,
@@ -120,7 +142,7 @@ export function buildBundle(input: {
       compiler: input.compiler,
       capability_fingerprint: input.capability.fingerprint,
       calibration_fingerprint: input.capability.calibration?.fingerprint ?? null,
-      lowering_proofs: input.loweringProofs ?? ["g5-ci"],
+      lowering_proofs: input.loweringProofs ?? [],
     },
     verification: input.verification,
     metrics: input.metrics,

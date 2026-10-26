@@ -52,7 +52,10 @@ function withNativeProgram(result: TranspilationResult, backend: Backend): Trans
   return {
     ...result,
     providerProgram: JSON.stringify(program),
-    verificationNote: [result.verificationNote, note].filter(Boolean).join(" "),
+    // A QASM numerical equivalence check does not validate the native conversion.
+    equivalent: null,
+    verificationStatus: "unsupported",
+    verificationNote: [result.verificationNote, note, "Native conversion equivalence has not been checked."].filter(Boolean).join(" "),
   };
 }
 

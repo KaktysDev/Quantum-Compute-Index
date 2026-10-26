@@ -57,7 +57,7 @@ export default async function QciPreviewPage() {
           <h1>Index preview</h1>
           {/* This one stays: it is the only thing distinguishing a dry run from
               the live index, which is a distinction worth a sentence. */}
-          <p>Computed live from the Braket rate card and macro feeds. Nothing here is written or published.</p>
+          <p>Research dry run from available rate-card and macro inputs. Nothing here is written or published.</p>
         </div>
         <Link href="/dashboard/qci" className="console-primary">
           <ArrowLeft size={14} /> Back to QCI
@@ -69,11 +69,11 @@ export default async function QciPreviewPage() {
           <FlaskConical size={13} style={{ verticalAlign: "-2px", marginRight: 6 }} />
           Dry run.
         </strong>{" "}
-        Prices are real — AWS price list{" "}
+        Published rate input — AWS price list{" "}
         <code>v{collected.priceCardVersion ?? "unavailable"}</code>, published{" "}
         {collected.priceCardDate?.slice(0, 10) ?? "—"}. Hardware quality metrics come from published
         reference specifications rather than live provider telemetry, so the quality-adjusted figures
-        are indicative. The published index only ever uses metrics an operator reported live.
+        are indicative. Production-cost figures are scenarios, and the basket ranking does not check a workload or provider access.
         {collected.unpriced.length > 0 ? (
           <>
             {" "}

@@ -1,7 +1,6 @@
 # qrouter.app
 
-Quantum compute from your terminal. One command, one pasted API key, then plain
-English.
+Inspect experiment campaigns, preview their full cost, and approve a run from your terminal. The existing assistant and single-circuit commands remain available.
 
 ```bash
 npx qrouter.app
@@ -49,6 +48,10 @@ Requires Node 18.17 or newer. The package has no dependencies.
 
 | Command | What it does |
 |---|---|
+| `qrouter experiments` | List immutable experiment definitions |
+| `qrouter experiment <id>` | Read its definition, runs, assessments, and limitations |
+| `qrouter experiment <id> --quote` | Preview the complete campaign cost without execution |
+| `qrouter experiment <id> --run --max-cost <ceiling>` | Preview, explicitly approve, and submit a campaign |
 | `qrouter` | Start the assistant (the default) |
 | `qrouter chat "run a bell state"` | Start it with a first message |
 | `qrouter run <file.qasm\|repo-url>` | Run a circuit without the assistant |
@@ -71,7 +74,11 @@ stderr, so `qrouter run x.qasm --yes --json | jq .result.counts` works.
 --shots <n>              shots to execute (default 1024)
 --target <backend|auto>  pin a backend (default auto)
 --mode <balanced|cost|speed|quality>
---max-cost <usd>         refuse routes quoted above this
+--max-cost <usd>         all-in ceiling; experiment runs require the exact stored ceiling
+--intent <simulate|hardware>  explicit intent for a single-circuit run
+--quote                  preview an experiment without execution
+--run                    approve an experiment run after preview
+--idempotency-key <key>   reuse a campaign-run key after an interrupted response
 --path <file.qasm>       circuit path, when the target is a repository
 --ref <branch>           repository ref
 --name <text>            label the job
@@ -88,6 +95,27 @@ stderr, so `qrouter run x.qasm --yes --json | jq .result.counts` works.
 
 Environment: `QROUTER_API_KEY` (never written to disk), `QROUTER_BASE_URL`,
 `QROUTER_DOWNLOAD_DIR`, `QROUTER_CONFIG_DIR`, plus the usual `NO_COLOR`.
+
+## Experiment campaigns
+
+Create a campaign in the experiment workspace or a [QRouterV2 SDK](../sdk/README.md). The CLI uses the same saved key and deployment configuration as other commands; it stores no new credentials.
+
+```bash
+qrouter experiments
+qrouter experiment "$EXPERIMENT_ID"
+qrouter experiment "$EXPERIMENT_ID" --quote
+qrouter experiment "$EXPERIMENT_ID" --run \
+  --max-cost "$APPROVED_CEILING" \
+  --idempotency-key "$RUN_KEY"
+```
+
+Read the immutable objective, execution intent, targets, reference and success criterion before approval. Set `APPROVED_CEILING` to the definition's exact `max_total_cost`, and `RUN_KEY` to a unique 8–255 character identifier for this run. The command retrieves the current definition, obtains a quote, verifies its definition hash and ceiling, and displays the complete estimate before asking you to type `run`.
+
+For non-interactive use, add `--yes` after reviewing the definition and quote. `--max-cost` is always required for `--run`; a different ceiling requires a new experiment definition. The CLI refuses an over-budget, invalid, or mismatched preview and submits no jobs. Simulation and hardware intent come from the reviewed definition, rather than being changed by run flags.
+
+Reuse the same `--idempotency-key` when retrying an interrupted response. If none is supplied, the CLI generates and prints one before submission; retain it for retries. A new key means a new run. An underfunded accepted run is reported as `awaiting_payment` with its existing identifiers, rather than silently submitted again.
+
+`qrouter experiment "$EXPERIMENT_ID" --json` writes the full evidence document to stdout. `--quote --json` writes the preview, while `--run --json` writes the accepted run response; preview and approval narration goes to stderr. Inspect evidence again later to see completed results and assessments. A completed run is not proof that the criterion passed, and a statistical pass does not establish quantum advantage.
 
 ## Results
 

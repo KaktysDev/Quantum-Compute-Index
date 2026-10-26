@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 import { resolveProviderLabel } from "@/lib/qrouter/providers";
 
-// `/dashboard` stays the stable post-login URL, while Routing is the first
-// thing a signed-in user sees. Old provider links carrying `?route=` still
+// `/dashboard` stays the stable post-login URL; experiments is the default and
+// execution shortcuts remain available. Old provider links carrying `?route=` still
 // land in Deploy with their selected target intact.
 export default async function DashboardHomePage({
   searchParams,
@@ -16,6 +16,6 @@ export default async function DashboardHomePage({
       ? `/dashboard/deploy?route=${encodeURIComponent(provider)}`
       : route
         ? "/dashboard/deploy"
-        : "/dashboard/routing",
+        : "/dashboard/experiments",
   );
 }

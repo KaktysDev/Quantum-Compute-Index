@@ -5,6 +5,7 @@
 // key may run on hardware. It asks /api/chat/quote, /api/v1/jobs and
 // /api/v1/session, and renders their answers.
 
+import { randomUUID } from "node:crypto";
 import { readSse } from "./sse.mjs";
 
 export class ApiError extends Error {
@@ -157,6 +158,28 @@ export function createClient({ baseUrl, apiKey, version = "0.0.0" }) {
     cancelJob: (id) => request(`/api/v1/jobs/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
 
     backends: () => request("/api/v1/backends"),
+
+    listExperiments: () => request("/api/v2/experiments").then((response) => response.data),
+    createExperiment: (definition, idempotencyKey = randomUUID()) => request("/api/v2/experiments", {
+      method: "POST", body: definition, extraHeaders: { "idempotency-key": idempotencyKey },
+    }).then((response) => response.data),
+    getExperiment: (id) => request(`/api/v2/experiments/${encodeURIComponent(id)}`).then((response) => response.data),
+    quoteExperiment: (id) => request(`/api/v2/experiments/${encodeURIComponent(id)}/quote`, {
+      method: "POST", timeoutMs: 90_000,
+    }).then((response) => response.data),
+    runExperiment: async (id, approval, idempotencyKey = randomUUID()) => {
+      try {
+        return (await request(`/api/v2/experiments/${encodeURIComponent(id)}/run`, {
+          method: "POST", body: approval, timeoutMs: 120_000,
+          extraHeaders: { "idempotency-key": idempotencyKey },
+        })).data;
+      } catch (error) {
+        // An underfunded approved run still exists. Preserve its identifiers.
+        if (error instanceof ApiError && error.status === 402 && error.body?.data) return error.body.data;
+        throw error;
+      }
+    },
+
 
     /**
      * Streams one assistant turn.

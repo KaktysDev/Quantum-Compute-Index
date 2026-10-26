@@ -16,7 +16,8 @@ export type UnavailabilityCode =
   | "provider_excluded"
   | "queue_limit"
   | "fidelity_limit"
-  | "cost_limit";
+  | "cost_limit"
+  | "pricing_unknown";
 
 export interface UnavailabilityReason {
   code: UnavailabilityCode;
@@ -58,6 +59,8 @@ export function resolutionFor(backend: Backend, reason: UnavailabilityReason): s
       return "Lower constraints.min_fidelity or choose a higher-fidelity backend.";
     case "cost_limit":
       return "Raise constraints.max_cost or choose a cheaper backend.";
+    case "pricing_unknown":
+      return "Configure a current native seller rate for the exact execution channel before requesting a paid quote.";
     case "kind_constraint":
     case "provider_not_allowed":
     case "provider_excluded":
@@ -147,12 +150,12 @@ export class BackendUnavailableError extends Error {
 /** The highest-scoring runnable backends, described relative to the requested one. */
 export function buildAlternatives(
   requested: Backend,
-  requestedCost: number,
+  requestedCost: number | null,
   candidates: Array<Pick<RouteCandidate, "backend" | "compatible" | "estimatedProviderCost">>,
   limit = 3,
 ): BackendAlternative[] {
   return candidates
-    .filter((candidate) => candidate.compatible && candidate.backend.id !== requested.id)
+    .filter((candidate) => candidate.compatible && candidate.estimatedProviderCost != null && candidate.backend.id !== requested.id)
     .slice(0, limit)
     .map((candidate) => ({
       backend_id: candidate.backend.id,
@@ -160,10 +163,10 @@ export function buildAlternatives(
       provider: candidate.backend.provider,
       kind: candidate.backend.kind,
       qubits: candidate.backend.qubits,
-      estimated_provider_cost: Math.round(candidate.estimatedProviderCost * 1_000_000) / 1_000_000,
+      estimated_provider_cost: Math.round(candidate.estimatedProviderCost! * 1_000_000) / 1_000_000,
       queue_seconds: candidate.backend.queueSeconds,
       fidelity: candidate.backend.fidelity,
-      differences: differencesFrom(requested, candidate.backend, requestedCost, candidate.estimatedProviderCost),
+      differences: differencesFrom(requested, candidate.backend, requestedCost ?? 0, candidate.estimatedProviderCost!),
       retry_with: { target: candidate.backend.id },
     }));
 }

@@ -97,7 +97,7 @@ export default function ProviderKeyForm() {
       if (!res.ok) throw new Error(j.error || "Save failed");
       setDrafts((d) => ({ ...d, [p.id]: "" }));
       setMulti((m) => ({ ...m, [p.id]: {} }));
-      setNotice(`Saved ${p.name}. ${p.testable ? "Use “Test connection” to verify." : "The next 9:30 AM ET refresh will include it."}`);
+      setNotice(`Saved ${p.name}. ${p.testable ? "Use “Test connection” to verify." : "The next configured research refresh can use it."}`);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
@@ -177,13 +177,13 @@ export default function ProviderKeyForm() {
       if (j.wrote) {
         const list = Array.isArray(j.constituents) ? j.constituents.join(", ") : "";
         setNotice(
-          `Live index updated — ${j.qpus} constituent${j.qpus === 1 ? "" : "s"}${
+          `Research index updated — ${j.qpus} constituent${j.qpus === 1 ? "" : "s"}${
             list ? `: ${list}` : ""
-          }. Open the Dashboard to view.`,
+          }. Open Index research to view.`,
         );
       } else {
         setNotice(
-          `No live snapshot written${
+          `No research snapshot written${
             j.reason ? ` — ${j.reason}` : ""
           }. Make sure the provider is enabled and its key is valid (try “Test connection”).`,
         );
@@ -216,14 +216,13 @@ export default function ProviderKeyForm() {
       {/* Recompute the index on demand (e.g. right after adding a key). */}
       <div className="glass flex flex-wrap items-center justify-between gap-3 rounded-2xl p-5">
         <div>
-          <h3 className="text-base font-medium text-white">Live index</h3>
+          <h3 className="text-base font-medium text-white">Research telemetry credentials</h3>
           <p className="mt-1 text-sm text-[var(--muted)]">
-            Recompute the QCI now from all enabled providers — use this after adding or updating a
-            key. It also refreshes automatically at 9:30 AM ET daily.
+            These keys feed research observations. They do not configure QRouter execution access or native billing rates. Refresh research data after updating a key; scheduled refresh depends on operator configuration.
           </p>
         </div>
         <button onClick={refresh} disabled={refreshing} className="btn btn-solid !py-2 !text-sm">
-          {refreshing ? "Refreshing…" : "Refresh index now"}
+          {refreshing ? "Refreshing…" : "Refresh research data"}
         </button>
       </div>
 
@@ -243,7 +242,7 @@ export default function ProviderKeyForm() {
                           : "border border-white/12 bg-white/5 text-[var(--muted)]"
                       }`}
                     >
-                      {p.enabled ? "active" : "disabled"}
+                      {p.enabled ? "research enabled" : "disabled"}
                     </span>
                   ) : (
                     <span className="rounded-full border border-white/12 bg-white/5 px-2 py-0.5 text-[10px] text-[var(--muted)]">

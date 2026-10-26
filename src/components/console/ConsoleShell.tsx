@@ -22,6 +22,7 @@ import {
   Cpu,
   GitBranch,
   KeyRound,
+  FileCheck2,
   LifeBuoy,
   LineChart,
   LogOut,
@@ -43,17 +44,17 @@ type NavItem = { href: string; label: string; icon: typeof Cpu; exact?: boolean 
 type NavGroup = { label: string; items: NavItem[] };
 
 // `exact` marks routes that must not match as a prefix. Deploy is a leaf route;
-// Routing owns the stable `/dashboard` landing redirect.
+// Experiments owns the stable `/dashboard` landing redirect.
 const GROUPS: NavGroup[] = [
   {
     label: "Workspace",
     items: [
-      { href: "/dashboard/routing", label: "Routing", icon: Route },
-      { href: "/dashboard/deploy", label: "Deploy", icon: MessagesSquare, exact: true },
+      { href: "/dashboard/experiments", label: "Experiments", icon: FileCheck2 },
+      { href: "/dashboard/routing", label: "Execution targets", icon: Route },
+      { href: "/dashboard/deploy", label: "Run a circuit", icon: MessagesSquare, exact: true },
       { href: "/dashboard/github", label: "Repositories", icon: GitBranch },
       { href: "/dashboard/tasks", label: "Activity", icon: Activity },
       { href: "/dashboard/providers", label: "Providers", icon: Cpu },
-      { href: "/dashboard/qci", label: "QCI Index", icon: LineChart },
     ],
   },
   {
@@ -69,6 +70,7 @@ const GROUPS: NavGroup[] = [
 
 const HELP: NavItem[] = [
   { href: "/docs", label: "Documentation", icon: BookOpen },
+  { href: "/dashboard/qci", label: "Index research", icon: LineChart },
   { href: "/dashboard/support", label: "Support", icon: LifeBuoy },
 ];
 
@@ -78,8 +80,8 @@ const EXTRA_TITLES: Record<string, string> = {
   "/dashboard/rankings": "Rankings",
   "/dashboard/instances": "Instances",
   "/dashboard/requests": "Requests",
-  "/dashboard/submit": "Deploy",
-  "/dashboard": "Routing",
+  "/dashboard/submit": "Run a circuit",
+  "/dashboard": "Experiments",
 };
 
 function useSectionTitle(pathname: string): string {

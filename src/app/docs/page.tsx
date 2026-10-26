@@ -30,7 +30,7 @@ import "./docs.css";
 
 export const metadata: Metadata = {
   title: "QRouter API Documentation",
-  description: "Build with the QRouter v1 and v2 APIs for quantum workload evaluation, compilation, routing, execution, and result retrieval.",
+  description: "Plan a private experiment campaign, review its budget, and inspect execution evidence with the QRouter workspace and APIs.",
 };
 
 const endpoints = [
@@ -60,7 +60,7 @@ const v2Endpoints = [
   ["GET", "/api/v2/executions/{id}/result", "Retrieve one normalized result as application/json."],
   ["GET", "/api/v2/executions/{id}/transpiled", "Download one compiled OpenQASM artifact as text/plain."],
   ["POST", "/api/v2/executions/{id}/cancel", "Cancel a single execution without touching its siblings."],
-  ["GET", "/api/v2/backends", "List targets with capability metadata and the current QCI snapshot."],
+  ["GET", "/api/v2/backends", "List targets with capability metadata and pricing provenance."],
 ];
 
 const v2Errors = [
@@ -85,7 +85,7 @@ const v2Errors = [
 
 const executionFields = [
   ["key", "string · required", "—", "Trimmed, 1–64 characters. Must be unique inside the job; duplicates are rejected."],
-  ["target", "string", "auto", "Backend id (1–120 characters) or auto to let the QCI Engine select one."],
+  ["target", "string", "auto", "Backend id (1–120 characters) or auto to let the execution router select one."],
   ["shots", "integer", "1024", "1 – 1,000,000 measurement repetitions."],
   ["routing_mode", "enum", "balanced", "balanced, cost, speed, or quality."],
   ["optimization_level", "integer", "2", "0 – 3 compiler optimization level."],
@@ -96,10 +96,10 @@ const executionFields = [
 ];
 
 const constraintFields = [
-  ["maxCost", "number", "Greater than 0. Rejects any candidate quoted above this total."],
+  ["maxCost", "number", "Greater than 0. Caps the total reservation including software fees and the allowed attempt budget."],
   ["maxQueueSeconds", "integer", "0 or greater. Rejects candidates with a longer expected queue."],
   ["minFidelity", "number", "Between 0 and 1 inclusive. Rejects lower-fidelity candidates."],
-  ["kind", "enum", "qpu or simulator."],
+  ["kind", "enum", "qpu or simulator. Hardware requires explicit hardware intent or a pinned hardware target."],
   ["providers", "string[]", "Up to 25 provider ids. Only these providers stay eligible."],
   ["excludeProviders", "string[]", "Up to 25 provider ids to remove from the candidate set."],
 ];
@@ -124,6 +124,7 @@ export default function DocsPage() {
         <nav className="docs-toc" aria-label="Documentation">
           <div>
             <p>Start here</p>
+            <a href="#experiments">Experiment campaigns</a>
             <a href="#quickstart">Run your first job</a>
             <a href="#cli-more">More CLI commands</a>
           </div>
@@ -184,12 +185,26 @@ export default function DocsPage() {
       <main className="docs-main">
         <section className="docs-intro">
           <p className="docs-eyebrow"><span /> QRouter documentation</p>
-          <h1>Run a quantum job in three steps.</h1>
-          <p>QRouter routes a circuit to the cheapest, fastest or most accurate machine that can actually run it, across every provider you have enabled. The quickest way in is the terminal — one command, one key, then plain English. The HTTP API is underneath it when you need to automate.</p>
+          <h1>Connect your experiment to its evidence.</h1>
+          <p>Start with a question, a circuit, a reference, and a budget. The experiment workspace connects those inputs to execution records and result assessments. The underlying execution APIs remain available for teams integrating their own tools.</p>
           <div className="docs-actions">
-            <a href="#quickstart">Start with the terminal <ArrowRight size={14} /></a>
+            <Link href="/dashboard/experiments">Open experiments <ArrowRight size={14} /></Link>
             <a href="#http">Or call the API <Code2 size={14} /></a>
           </div>
+        </section>
+
+        <section className="docs-section" id="experiments">
+          <div className="docs-section-title"><FileJson size={17} /><div><h2>Private experiment campaigns</h2><p>Define the question before running, then review the evidence against it.</p></div></div>
+          <div className="docs-flow">
+            <div><span>01</span><b>Define</b><p>Record an objective, a reusable circuit, and a success criterion. Provide a reference distribution or state why none is available.</p></div>
+            <div><span>02</span><b>Review</b><p>Choose simulation or hardware intent, targets, shots, and the complete campaign budget. Review execution estimates and software fees.</p></div>
+            <div><span>03</span><b>Approve</b><p>Explicitly approve the plan before submission. A campaign that exceeds its accepted budget must not start.</p></div>
+            <div><span>04</span><b>Assess</b><p>Inspect results, execution context, and uncertainty. A completed run can still be inconclusive or fail the stated criterion.</p></div>
+          </div>
+          <p className="docs-copy-text">Campaign definitions are versioned as new records when the question, circuit, reference, or plan changes. Keep comparisons tied to the same definition and reference; a backend change or hardware drift can change the outcome. A result assessment is not a claim of quantum advantage.</p>
+          <p className="docs-copy-text">A reference distribution lets the workspace assess distribution distance with finite-sample uncertainty. Without a suitable reference, retain the raw evidence and an explicit reason; do not infer correctness from a normalized counts histogram.</p>
+          <div className="docs-callout"><ShieldCheck size={16} /><p>Automatic execution defaults to simulation. Hardware runs require explicit hardware intent and a configured, supported integration. A catalog listing alone is not evidence of runnable hardware access.</p></div>
+          <p className="docs-copy-text">The campaign resource is exposed under <code>/api/v2/experiments</code>. Use the workspace to create a definition, review its plan, approve a run, and inspect its evidence. The existing circuit and execution APIs below provide the underlying resources.</p>
         </section>
 
         {/* ── The three steps ──────────────────────────────────────────────
@@ -198,13 +213,13 @@ export default function DocsPage() {
             non-conversational subcommands — is true and none of it is needed to
             get a first job running, so it moved down to `#cli-more`. */}
         <section className="docs-section" id="quickstart">
-          <div className="docs-section-title"><Terminal size={17} /><div><h2>Run your first job</h2><p>No SDK, no install, no scaffolding. About a minute end to end.</p></div></div>
+          <div className="docs-section-title"><Terminal size={17} /><div><h2>Run your first job</h2><p>Use an existing OpenQASM circuit and a workspace API key.</p></div></div>
 
           <ol className="docs-steps">
             <li>
               <div className="docs-step-body">
                 <h3>Open your terminal and run QRouter</h3>
-                <p>Node 18.17 or newer is the only requirement. Nothing is installed — <code>npx</code> fetches and runs it.</p>
+                <p>Node 18.17 or newer is the only requirement. <code>npx</code> fetches and runs the terminal client.</p>
                 <div className="docs-terminal">
                   <div className="docs-terminal-bar"><i /><i /><i /><span>terminal</span></div>
                   <pre><code><i>{"$ "}</i><b>npx qrouter.app</b></code></pre>
@@ -249,7 +264,7 @@ Quote  $2.14 · 1024 shots · ~4 min queue`}</i>{`
             </li>
           </ol>
 
-          <div className="docs-callout"><ShieldCheck size={16} /><p>Nothing runs and nothing is charged until you type <b>run</b>. The price on the confirmation line is QRouter&apos;s own quote for the backend it selected — never the assistant&apos;s estimate of one. Finished runs land in your Downloads folder as JSON with a readable <code>.txt</code> companion.</p></div>
+          <div className="docs-callout"><ShieldCheck size={16} /><p>The transcript above is illustrative; the actual backend, availability and quote depend on your deployment. Nothing runs and nothing is charged until you type <b>run</b>. The price on the confirmation line is QRouter&apos;s own quote for the backend it selected — never the assistant&apos;s estimate of one. Finished runs land in your Downloads folder as JSON with a readable <code>.txt</code> companion.</p></div>
         </section>
 
         <section className="docs-section" id="cli-more">
@@ -368,7 +383,7 @@ GITHUB_OAUTH_STATE_SECRET=$(openssl rand -base64 32)`}</code></pre>
           <div className="docs-schema">
             <div><code>circuit</code><b>string · required</b><p>OpenQASM 2 or supported OpenQASM 3 source, up to 256 KB.</p></div>
             <div><code>shots</code><b>integer · 1–1,000,000</b><p>Measurement repetitions. Default: <code>1024</code>.</p></div>
-            <div><code>target</code><b>backend id | auto</b><p>Pin a target or let the QCI Engine select one. Default: <code>auto</code>.</p></div>
+            <div><code>target</code><b>backend id | auto</b><p>Pin a target or let the execution router select one. Default: <code>auto</code>.</p></div>
             <div><code>routing_mode</code><b>enum</b><p><code>balanced</code>, <code>cost</code>, <code>speed</code>, or <code>quality</code>.</p></div>
             <div><code>optimization_level</code><b>integer · 0–3</b><p>Compiler optimization level. Default: <code>2</code>.</p></div>
             <div><code>failover</code><b>boolean</b><p>Try another quoted compatible backend after failure. Default: <code>true</code>.</p></div>
@@ -402,16 +417,17 @@ GITHUB_OAUTH_STATE_SECRET=$(openssl rand -base64 32)`}</code></pre>
             <div><b>Balanced</b><p>35% cost · 25% queue · 25% fidelity · 15% reliability</p></div>
             <div><b>Cost</b><p>70% cost with queue, fidelity, and reliability as tie-breakers.</p></div>
             <div><b>Speed</b><p>65% queue priority for latency-sensitive workloads.</p></div>
-            <div><b>Quality</b><p>65% fidelity plus 15% historical reliability.</p></div>
+            <div><b>Quality</b><p>65% fidelity plus 15% catalog reliability.</p></div>
           </div>
-          <p className="docs-copy-text">Constraints are hard filters. A target is rejected when it exceeds <code>maxCost</code> or <code>maxQueueSeconds</code>, falls below <code>minFidelity</code>, lacks circuit width, or is not connected.</p>
+          <p className="docs-copy-text">Policy scores are heuristics over catalog observations, not predictions of workload accuracy or completion time. Constraints are hard filters. A target is rejected when it exceeds <code>maxCost</code> or <code>maxQueueSeconds</code>, falls below <code>minFidelity</code>, lacks circuit width, or is not connected.</p>
         </section>
 
         <section className="docs-section" id="pricing">
-          <div className="docs-section-title"><CircleDollarSign size={17} /><div><h2>Pricing and settlement</h2><p>Quotes use the compiled circuit and a versioned QCI rate snapshot.</p></div></div>
+          <div className="docs-section-title"><CircleDollarSign size={17} /><div><h2>Pricing and settlement</h2><p>Quotes use the compiled circuit and a dated native rate for the selected execution channel.</p></div></div>
           <div className="docs-formula"><span>Total</span><b>=</b><code>provider cost</code><b>+</b><code>transpiler fee</code><b>+</b><code>platform fee</code></div>
-          <p className="docs-copy-text">A quote expires after 15 minutes. QRouter reserves the quoted total before submission, records the provider-rate inputs in <code>rateSnapshot</code>, records settlement after completion, and releases reserved credits after cancellation or failure.</p>
-          <div className="docs-callout"><CircleDollarSign size={16} /><p><b>Unit compatibility:</b> public copy uses <b>QC-hour</b>. Legacy response fields named <code>pricePerNqh</code> and <code>estimatedNqh</code> represent that same normalized QC-hour unit and remain in v1 for API compatibility.</p></div>
+          <p className="docs-copy-text">A quote expires after 15 minutes. The provider reservation includes the allowed attempt budget. QRouter adds compilation and platform fees, applies the all-in spend limit, and reserves the total before submission. The quote records the native rate, execution channel, effective dates, and attempt allowance in <code>rateSnapshot</code>. Unknown or expired rates block paid routing.</p>
+          <p className="docs-copy-text">The compilation fee is <code>$0.01 + $0.00002 × compiled gates + $0.00008 × compiled two-qubit gates</code>. Two-qubit gates are included in both counts. The platform fee is the greater of <code>$0.005</code> and <code>8%</code> of the provider reservation. A campaign sums its execution quotes.</p>
+          <div className="docs-callout"><CircleDollarSign size={16} /><p><b>Estimate and evidence:</b> the native execution quote is separate from the research index. A provider estimate is not an invoice, and actual provider cost is not reported by every integration. Inspect the stored cost basis and the <Link href="/terms#credits">credit terms</Link> when reviewing settlement.</p></div>
         </section>
 
         <section className="docs-section" id="lifecycle">
@@ -462,7 +478,7 @@ GITHUB_OAUTH_STATE_SECRET=$(openssl rand -base64 32)`}</code></pre>
           <p className="docs-copy-text">Every v2 response carries an <code>x-request-id</code> header. Send your own <code>x-request-id</code> to have it echoed back — the first 128 characters are kept — otherwise QRouter generates one and reuses it as the <code>request_id</code> in any error document.</p>
 
           <h3 className="docs-subhead">Backends and capabilities</h3>
-          <p className="docs-copy-text"><code>GET /api/v2/backends</code> returns the routing catalog under <code>data</code>, each entry extended with a <code>capabilities</code> object declaring its accepted input formats, that execution is asynchronous, and that results are reported as counts, probabilities, and shots. The response also carries a <code>qci</code> block with the snapshot timestamp, source, index level, and current price per QC-hour.</p>
+          <p className="docs-copy-text"><code>GET /api/v2/backends</code> returns the routing catalog under <code>data</code>, each entry extended with a <code>capabilities</code> object declaring its accepted input formats, that execution is asynchronous, and that results are reported as counts, probabilities, and shots. A legacy <code>qci</code> metadata block may be present for compatibility. It is research context, not the native rate basis used to quote an execution.</p>
         </section>
 
         <section className="docs-section" id="v2-request">
@@ -596,7 +612,7 @@ GITHUB_OAUTH_STATE_SECRET=$(openssl rand -base64 32)`}</code></pre>
 
         <section className="docs-section" id="production">
           <div className="docs-section-title"><ShieldCheck size={17} /><div><h2>Production checklist</h2><p>Required before enabling paid physical backends.</p></div></div>
-          <ol className="docs-checklist"><li>Apply the Supabase schema and QRouter migrations.</li><li>Configure Supabase, Stripe, artifact encryption, and provider credentials.</li><li>Create the GitHub App, set its callback URL, and configure the matching app credentials from <code>.env.local.example</code>.</li><li>Deploy the authenticated Qiskit compiler/worker and point the app at its URL.</li><li>Configure authenticated external schedulers for job polling, provider health checks, the daily index refresh, and the Stripe webhook.</li><li>Run credentialed smoke jobs against every enabled paid provider.</li><li>Run lint, typecheck, Node tests, Python worker tests, SDK builds, and the production web build.</li></ol>
+          <ol className="docs-checklist"><li>Apply the Supabase schema, QRouter resource migrations, and experiment campaign migration.</li><li>Configure Supabase, Stripe, artifact encryption, provider credentials, and dated native rate cards for each paid execution channel.</li><li>Create the GitHub App, set its callback URL, and configure the matching app credentials from <code>.env.local.example</code>.</li><li>Deploy the authenticated Qiskit compiler/worker and point the app at its URL.</li><li>Configure authenticated external schedulers for job polling, provider health checks, the daily index refresh, and the Stripe webhook.</li><li>Run credentialed smoke jobs against every enabled paid provider.</li><li>Run lint, typecheck, Node tests, Python worker tests, SDK builds, and the production web build.</li></ol>
         </section>
 
         <section className="docs-end"><p>Ready to deploy a repository circuit?</p><Link href="/dashboard/github/deploy">Open deployments <ArrowRight size={14} /></Link></section>

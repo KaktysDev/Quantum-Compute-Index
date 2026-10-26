@@ -1,9 +1,10 @@
 import type { QpuComponent } from "@/lib/qci/types";
 import type { Backend } from "./types";
+import { configuredNativePricing } from "./pricing";
 
 const same = (gates: string[]) => gates;
 
-export const BACKENDS: Backend[] = [
+const CATALOG: Backend[] = [
   {
     // The id is a stable API/storage key and stays as-is; the display name
     // reflects the hardware actually behind it today.
@@ -101,40 +102,25 @@ export const BACKENDS: Backend[] = [
   },
 ];
 
+/** QCI research observations never affect execution identity, quality, or prices. */
+export function configuredBackends(): Backend[] {
+  return CATALOG.map((backend) => ({ ...backend, nativePricing: configuredNativePricing(backend) }));
+}
+
+export const BACKENDS: Backend[] = configuredBackends();
 const BACKENDS_BY_ID = new Map(BACKENDS.map((backend) => [backend.id, backend]));
 
 export function getBackend(id: string): Backend | undefined {
   return BACKENDS_BY_ID.get(id);
 }
 
-const COMPONENT_MATCHERS: Record<string, (component: QpuComponent) => boolean> = {
-  "ibm-brisbane": (component) => /ibm/i.test(component.provider) || /brisbane/i.test(component.qpu),
-  "ionq-aria-1": (component) => /ionq/i.test(component.provider) || /aria/i.test(component.qpu),
-  "iqm-garnet": (component) => /iqm/i.test(component.provider) || /garnet/i.test(component.qpu),
-  "rigetti-ankaa-3": (component) => /rigetti/i.test(component.provider) || /ankaa/i.test(component.qpu),
-  "xanadu-borealis": (component) => /xanadu/i.test(component.provider) || /borealis/i.test(component.qpu),
-  "quandela-mosaiq": (component) => /quandela/i.test(component.provider) || /mosaiq/i.test(component.qpu),
-  "qi-starmon-5": (component) => /quantum inspire|starmon/i.test(`${component.provider} ${component.qpu}`),
-};
+/** @deprecated Research index observations are intentionally ignored by dispatch. */
+export function withQciSnapshot(_components: QpuComponent[] = []): Backend[] {
+  return BACKENDS;
+}
 
-export function withQciSnapshot(components: QpuComponent[] = []): Backend[] {
-  if (!components.length) return BACKENDS;
-  const matched = new Map<string, QpuComponent>();
-  for (const component of components) {
-    for (const [id, matcher] of Object.entries(COMPONENT_MATCHERS)) {
-      if (!matched.has(id) && matcher(component)) matched.set(id, component);
-    }
-  }
-  return BACKENDS.map((backend) => {
-    const component = matched.get(backend.id);
-    if (!component) return backend;
-    return {
-      ...backend,
-      queueSeconds: component.queueSeconds ?? backend.queueSeconds,
-      fidelity: component.fid2q || backend.fidelity,
-      pricePerNqh: component.pricePerNqh,
-      clops: component.clops,
-      status: component.status === "stale" ? "degraded" : backend.status,
-    };
-  });
+/** JSON catalog contract omits obsolete illustrative rate fields. */
+export function publicBackend(backend: Backend) {
+  const { pricePerShot: _shot, pricePerTask: _task, pricePerNqh: _nqh, ...publicFields } = backend;
+  return { ...publicFields, nativePricing: backend.nativePricing ?? { kind: "unknown", reason: "Native pricing has not been configured." } };
 }

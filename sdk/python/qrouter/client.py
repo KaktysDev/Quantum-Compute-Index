@@ -1,6 +1,7 @@
 import time
 import uuid
 from typing import Optional
+from urllib.parse import quote
 
 import httpx
 
@@ -216,6 +217,44 @@ class QRouterV2(QRouter):
 
     def cancel_execution(self, execution_id: str):
         return self._request("POST", f"/api/v2/executions/{execution_id}/cancel")["data"]
+
+    def list_experiments(self):
+        """List immutable experiment definitions belonging to this workspace."""
+        return self._request("GET", "/api/v2/experiments")["data"]
+
+    def create_experiment(self, definition: dict, *, idempotency_key: Optional[str] = None):
+        return self._request(
+            "POST", "/api/v2/experiments", json=definition,
+            headers={"Idempotency-Key": idempotency_key or str(uuid.uuid4())},
+        )["data"]
+
+    def get_experiment(self, experiment_id: str):
+        """Read the definition and its runs, assessments, and evidence limitations."""
+        return self._request("GET", f"/api/v2/experiments/{quote(experiment_id, safe='')}")["data"]
+
+    def quote_experiment(self, experiment_id: str):
+        """Preview the complete campaign estimate without submitting jobs."""
+        return self._request("POST", f"/api/v2/experiments/{quote(experiment_id, safe='')}/quote")["data"]
+
+    def run_experiment(self, experiment_id: str, *, approved_definition_hash: str,
+                       approved_max_total_cost: float, idempotency_key: Optional[str] = None):
+        """Submit explicitly approved inputs. Reuse the idempotency key on retries.
+
+        The hash and ceiling must match the immutable definition exactly. The
+        caller reviews the preview; this method does not approve it implicitly.
+        A 402 returns the parked run so callers can retain its identifiers.
+        """
+        try:
+            return self._request(
+                "POST", f"/api/v2/experiments/{quote(experiment_id, safe='')}/run",
+                headers={"Idempotency-Key": idempotency_key or str(uuid.uuid4())},
+                json={"approved_definition_hash": approved_definition_hash,
+                      "approved_max_total_cost": approved_max_total_cost},
+            )["data"]
+        except QRouterError as error:
+            if error.status_code == 402 and isinstance(error.body, dict) and "data" in error.body:
+                return error.body["data"]
+            raise
 
     def list_backends(self):
         return self._request("GET", "/api/v2/backends")["data"]

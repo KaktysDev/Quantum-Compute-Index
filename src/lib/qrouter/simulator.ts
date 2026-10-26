@@ -8,7 +8,7 @@ export interface SimulationResult {
   shots: number;
   backend: "qci-aer-gpu";
   executionMs: number;
-  metadata: { engine: string; qubits: number; depth: number };
+  metadata: { engine: string; qubits: number; depth: number; result_coordinates: "logical_qubits"; bit_order: "q0_right"; key_encoding: "binary" };
 }
 
 export function simulateCircuit(analysis: CircuitAnalysis, shots: number): SimulationResult {
@@ -27,6 +27,6 @@ export function simulateCircuit(analysis: CircuitAnalysis, shots: number): Simul
   return {
     counts, probabilities, shots, backend: "qci-aer-gpu",
     executionMs: Math.round((performance.now() - started) * 100) / 100,
-    metadata: { engine: "quantum-circuit state vector", qubits: analysis.qubits, depth: analysis.depth },
+    metadata: { engine: "quantum-circuit state vector", qubits: analysis.qubits, depth: analysis.depth, result_coordinates: "logical_qubits", bit_order: "q0_right", key_encoding: "binary" },
   };
 }

@@ -16,6 +16,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { NextResponse } from "next/server";
+import { providerPrice } from "@/lib/qrouter/pricing";
 import { isAssistantConfigured } from "@/lib/ai/assistant";
 import { quotaLimits } from "@/lib/ai/limits";
 import { resolvePrincipal, type Principal } from "@/lib/qrouter/auth";
@@ -90,7 +91,7 @@ export async function GET(request: Request) {
     // The same narrowing the job routes apply, so a test key is told up front
     // that it sees simulators only instead of discovering it at submit time.
     const reachable = backendsForPrincipal(principal, routing.backends);
-    const ready = reachable.filter((backend) => backend.available);
+    const ready = reachable.filter((backend) => backend.available && !providerPrice(backend, 1).error);
 
     return NextResponse.json({
       object: "session",
@@ -110,7 +111,7 @@ export async function GET(request: Request) {
       backends: {
         // `reachable` is what this key may target at all; `ready` is what can
         // take a job this second. A key with reachable > 0 and ready === 0 is a
-        // credentials problem on the deployment, not a problem with the key.
+        // credentials or native-pricing configuration gap, not a problem with the key.
         reachable: reachable.length,
         ready: ready.map((backend) => ({
           id: backend.id,
@@ -119,15 +120,11 @@ export async function GET(request: Request) {
           kind: backend.kind,
           qubits: backend.qubits,
           queue_seconds: backend.queueSeconds,
-          price_per_shot: backend.pricePerShot,
+          native_pricing: backend.nativePricing,
         })),
       },
-      qci: {
-        timestamp: routing.snapshot.ts,
-        source: routing.snapshot.source,
-        index: routing.snapshot.price,
-        price_per_qc_hour: routing.snapshot.vwap,
-      },
+      qci: null,
+      pricing_method: "native-v2",
       assistant: {
         configured: isAssistantConfigured(),
         limits: quotaLimits(),

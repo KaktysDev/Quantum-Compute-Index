@@ -13,6 +13,7 @@ export const createJobSchema = z.object({
   max_attempts: z.number().int().min(1).max(5).default(3),
   timeout_seconds: z.number().int().min(60).max(604_800).default(7_200),
   constraints: z.object({
+    executionIntent: z.enum(["simulate", "hardware"]).optional(),
     maxCost: z.number().positive().optional(),
     maxQueueSeconds: z.number().int().nonnegative().optional(),
     minFidelity: z.number().min(0).max(1).optional(),

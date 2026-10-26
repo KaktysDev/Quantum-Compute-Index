@@ -21,6 +21,7 @@ import type { DecodeMap, ExecutionBundle } from "./encoding/types";
 import { cancelProviderJob, getProviderStatus, submitToProvider } from "./execution";
 import { JOB_LEASE_SECONDS, nextAttemptCandidate, orchestrationError, retryDelaySeconds } from "./orchestration";
 import { resolveProviderTarget } from "./providerTargets";
+import { providerPrice, totalPrice } from "./pricing";
 import { normalizeProviderResult } from "./results";
 import { analysisFromTranspilation, transpileForBackend } from "./transpiler";
 import type { CircuitAnalysis, InputFormat, JobStatus, RouteDecision, TranspilationResult } from "./types";
@@ -47,19 +48,65 @@ export type OrchestratedJob = {
   execution_deadline_at: string | null;
   timeout_failover_pending: boolean;
 };
-type JobAttempt = { attempt: number; backend_id: string; provider_job_id: string | null; status: string };
+export type BillingEvidence = { status: "unknown" | "estimated" | "confirmed" | "internal-tariff"; estimated: number | null; actual?: number | null; ambiguous?: boolean };
+export type JobAttempt = { attempt: number; backend_id: string; provider_job_id: string | null; status: string; request?: { billing?: BillingEvidence }; response?: { billing?: BillingEvidence } };
+
+function usageOf(attempts: JobAttempt[]) {
+  return attempts.map((attempt) => {
+    const billing = attempt.response?.billing ?? attempt.request?.billing;
+    return { backendId: attempt.backend_id, cost: billing?.actual, confirmed: billing?.status === "confirmed" || billing?.status === "internal-tariff", ambiguous: billing?.ambiguous };
+  });
+}
+
+
+/** Missing vendor usage remains distinct from a reported zero-dollar attempt. */
+export function summarizeAttemptUsage(attempts: JobAttempt[], decision: RouteDecision) {
+  let estimate = 0;
+  let actual = 0;
+  let estimateComplete = true;
+  let confirmed = attempts.length > 0;
+  for (const attempt of attempts) {
+    const billing = attempt.response?.billing ?? attempt.request?.billing;
+    const expected = billing?.estimated ?? decision.candidates.find((c) => c.backend.id === attempt.backend_id)?.estimatedProviderCost;
+    if (expected != null && Number.isFinite(expected) && expected >= 0) estimate += expected;
+    else estimateComplete = false;
+    if ((billing?.status === "confirmed" || billing?.status === "internal-tariff")
+      && !billing.ambiguous && billing.actual != null && Number.isFinite(billing.actual) && billing.actual >= 0) actual += billing.actual;
+    else confirmed = false;
+  }
+  return { estimated: estimateComplete ? estimate : null, actual: confirmed ? actual : null, confirmed };
+}
+
 
 async function finishJob(admin: AdminClient, job: OrchestratedJob, status: "completed" | "failed" | "cancelled", input: {
   result?: Record<string, unknown>;
   error?: string;
   actualProviderCost?: number;
 }) {
+  const { data: attemptRows, error: attemptsError } = await admin.from("job_attempts").select("attempt,backend_id,provider_job_id,status,request,response").eq("job_id", job.id).order("attempt");
+  if (attemptsError) throw attemptsError;
+  const attempts = (attemptRows ?? []) as JobAttempt[];
+  const usage = summarizeAttemptUsage(attempts, job.route_decision);
+  const { estimated, confirmed } = usage;
+  const reconciliation = { status: confirmed ? "confirmed" : "pending", estimatedProviderCost: estimated,
+    actualProviderCost: usage.actual, acceptedBudget: job.route_decision.reservedTotal ?? job.route_decision.acceptedBudget,
+    attemptCount: attempts.length, providerReportedFinalAttemptCost: input.actualProviderCost ?? null };
+  // Events are the durable compatibility record even before the optional summary
+  // table migration is installed. Missing usage remains null, never zero.
+  const { error: evidenceError } = await admin.from("job_events").insert({ job_id: job.id, type: "job.usage_reconciliation", payload: reconciliation });
+  if (evidenceError) throw evidenceError;
+  try {
+    await admin.from("provider_usage_reconciliation").upsert({ job_id: job.id, organization_id: job.organization_id,
+      status: reconciliation.status, estimated_provider_cost: estimated, actual_provider_cost: reconciliation.actualProviderCost,
+      accepted_total: job.route_decision.reservedTotal ?? job.route_decision.acceptedBudget ?? 0, customer_charge_ceiling: job.route_decision.reservedTotal ?? job.route_decision.acceptedBudget ?? 0,
+      evidence: reconciliation, updated_at: new Date().toISOString() });
+  } catch { /* job_events above retains the evidence until the summary migration is installed. */ }
   const { data: changed, error } = await admin.rpc("finalize_qrouter_job", {
     p_job_id: job.id,
     p_status: status,
     p_result: input.result ?? null,
     p_error: input.error ?? null,
-    p_actual_provider_cost: input.actualProviderCost ?? null,
+    p_actual_provider_cost: attempts.length ? (confirmed ? usage.actual : estimated) : input.actualProviderCost ?? null,
   });
   if (error) throw error;
   if (!changed) return;
@@ -77,6 +124,7 @@ async function scheduleRetryOrFail(admin: AdminClient, job: OrchestratedJob, att
   const next = nextAttemptCandidate({
     decision: job.route_decision,
     attemptedBackendIds: attempts.map((attempt) => attempt.backend_id),
+    usage: usageOf(attempts),
     failoverEnabled: job.failover_enabled,
     maxAttempts: job.max_attempts,
   });
@@ -187,7 +235,7 @@ async function executionPlanFor(admin: AdminClient, job: OrchestratedJob, backen
 }
 
 export async function dispatchJob(admin: AdminClient, job: OrchestratedJob) {
-  const { data, error } = await admin.from("job_attempts").select("attempt,backend_id,provider_job_id,status").eq("job_id", job.id).order("attempt");
+  const { data, error } = await admin.from("job_attempts").select("attempt,backend_id,provider_job_id,status,request,response").eq("job_id", job.id).order("attempt");
   if (error) throw error;
   const attempts = (data ?? []) as JobAttempt[];
   const unfinished = attempts.at(-1)?.status === "dispatching" ? attempts.at(-1)! : null;
@@ -196,11 +244,23 @@ export async function dispatchJob(admin: AdminClient, job: OrchestratedJob) {
     : nextAttemptCandidate({
       decision: job.route_decision,
       attemptedBackendIds: attempts.map((attempt) => attempt.backend_id),
+      usage: usageOf(attempts),
       failoverEnabled: job.failover_enabled,
       maxAttempts: job.max_attempts,
     });
   if (!candidate) return finishJob(admin, job, "failed", { error: "No quoted failover backend remains." });
 
+  if (job.route_decision.pricingVersion !== "native-v2" || !candidate.compiled || candidate.quoteBinding !== "binding") {
+    return finishJob(admin, job, "failed", { error: "The accepted quote predates native pricing or compilation evidence. Request a new quote." });
+  }
+  const unfinishedBilling = unfinished?.response?.billing ?? unfinished?.request?.billing;
+  if (unfinished && candidate.backend.provider !== "qci" && (unfinishedBilling?.status !== "confirmed" || unfinishedBilling.actual !== 0 || unfinishedBilling.ambiguous)) {
+    return finishJob(admin, job, "failed", { error: "A prior external submission has an unknown outcome; reconcile it before authorizing another paid submission." });
+  }
+  const price = providerPrice(candidate.backend, job.shots);
+  if (price.error || price.cost == null || candidate.estimatedProviderCost == null || price.cost > candidate.estimatedProviderCost + 1e-6) {
+    return finishJob(admin, job, "failed", { error: price.error ?? "The current provider rate exceeds the accepted attempt price." });
+  }
   const attemptNumber = unfinished?.attempt ?? attempts.length + 1;
   const attemptToken = `${job.id}-${attemptNumber}`;
   if (!unfinished) {
@@ -209,13 +269,23 @@ export async function dispatchJob(admin: AdminClient, job: OrchestratedJob) {
       attempt: attemptNumber,
       backend_id: candidate.backend.id,
       status: "dispatching",
-      request: { shots: job.shots, idempotencyKey: attemptToken },
+      request: { shots: job.shots, idempotencyKey: attemptToken, billing: { status: "confirmed", estimated: price.cost, actual: 0, ambiguous: false } },
     });
     if (attemptError) throw attemptError;
   }
 
+  let submissionStarted = false;
   try {
     const plan = await executionPlanFor(admin, job, candidate.backend.id);
+    if (totalPrice(plan.analysis, job.route_decision.providerBudget ?? price.cost) > (job.route_decision.reservedTotal ?? job.route_decision.acceptedBudget ?? 0) + 1e-6) throw new Error("Compiled attempt exceeds the accepted total budget.");
+    // Record possible exposure BEFORE the network side effect. Local compile
+    // failures above are confirmed zero-cost; a timeout below is ambiguous.
+    const { error: exposureError } = await admin.from("job_attempts").update({ request: {
+      shots: job.shots, idempotencyKey: attemptToken,
+      billing: { status: "unknown", estimated: price.cost, ambiguous: candidate.backend.provider !== "qci" },
+    } }).eq("job_id", job.id).eq("attempt", attemptNumber);
+    if (exposureError) throw exposureError;
+    submissionStarted = true;
     const submission = await submitToProvider(
       candidate.backend.id,
       plan.analysis,
@@ -229,7 +299,7 @@ export async function dispatchJob(admin: AdminClient, job: OrchestratedJob) {
     await admin.from("job_attempts").update({
       provider_job_id: submission.providerJobId,
       status,
-      response: normalizedResult ?? {},
+      response: { ...(normalizedResult ?? {}), billing: { status: candidate.backend.provider === "qci" ? "internal-tariff" : "estimated", estimated: price.cost, ...(candidate.backend.provider === "qci" ? { actual: price.cost } : {}), ambiguous: false } },
       finished_at: status === "completed" ? now : null,
     }).eq("job_id", job.id).eq("attempt", attemptNumber);
 
@@ -263,8 +333,11 @@ export async function dispatchJob(admin: AdminClient, job: OrchestratedJob) {
   } catch (executionError) {
     const message = orchestrationError(executionError, "Provider submission failed.");
     const now = new Date().toISOString();
-    await admin.from("job_attempts").update({ status: "failed", error: { message }, finished_at: now }).eq("job_id", job.id).eq("attempt", attemptNumber);
-    await scheduleRetryOrFail(admin, job, [...attempts.filter((attempt) => attempt.attempt !== attemptNumber), { attempt: attemptNumber, backend_id: candidate.backend.id, provider_job_id: null, status: "failed" }], message);
+    const billing: BillingEvidence = submissionStarted
+      ? { status: "unknown", estimated: price.cost, ambiguous: candidate.backend.provider !== "qci" }
+      : { status: "confirmed", estimated: price.cost, actual: 0, ambiguous: false };
+    await admin.from("job_attempts").update({ status: "failed", response: { billing }, error: { message }, finished_at: now }).eq("job_id", job.id).eq("attempt", attemptNumber);
+    await scheduleRetryOrFail(admin, job, [...attempts.filter((attempt) => attempt.attempt !== attemptNumber), { attempt: attemptNumber, backend_id: candidate.backend.id, provider_job_id: null, status: "failed", response: { billing } }], message);
   }
 }
 
@@ -283,7 +356,12 @@ export async function pollJob(admin: AdminClient, job: OrchestratedJob) {
     const normalizedResult = provider.status === "completed" ? normalizeProviderResult(job.selected_backend_id, provider.result, job.shots, decodeMap) : undefined;
     await admin.from("job_attempts").update({
       status: provider.status,
-      response: normalizedResult ?? provider.result ?? {},
+      response: { ...(normalizedResult ?? provider.result ?? {}), billing: {
+        status: provider.actualProviderCost != null && Number.isFinite(provider.actualProviderCost) && provider.actualProviderCost >= 0 ? "confirmed" : job.route_decision.candidates.find((c) => c.backend.id === job.selected_backend_id)?.backend.provider === "qci" ? "internal-tariff" : "estimated",
+        estimated: job.route_decision.candidates.find((c) => c.backend.id === job.selected_backend_id)?.estimatedProviderCost ?? null,
+        ...(provider.actualProviderCost != null && Number.isFinite(provider.actualProviderCost) && provider.actualProviderCost >= 0 ? { actual: provider.actualProviderCost } : job.route_decision.candidates.find((c) => c.backend.id === job.selected_backend_id)?.backend.provider === "qci" ? { actual: job.route_decision.candidates.find((c) => c.backend.id === job.selected_backend_id)?.estimatedProviderCost ?? null } : {}),
+        ambiguous: false,
+      } },
       error: provider.error ? { message: provider.error } : null,
       finished_at: terminal ? new Date().toISOString() : null,
     }).eq("job_id", job.id).eq("provider_job_id", job.provider_job_id);
@@ -297,14 +375,14 @@ export async function pollJob(admin: AdminClient, job: OrchestratedJob) {
     }
     if (job.status === "cancellation_requested") {
       if (["failed", "cancelled"].includes(provider.status) && job.timeout_failover_pending) {
-        const { data: attempts } = await admin.from("job_attempts").select("attempt,backend_id,provider_job_id,status").eq("job_id", job.id).order("attempt");
+        const { data: attempts } = await admin.from("job_attempts").select("attempt,backend_id,provider_job_id,status,request,response").eq("job_id", job.id).order("attempt");
         await scheduleRetryOrFail(admin, job, (attempts ?? []) as JobAttempt[], "Execution deadline exceeded.");
       } else if (["failed", "cancelled"].includes(provider.status)) await finishJob(admin, job, "cancelled", {});
       else await admin.from("jobs").update({ lease_expires_at: null, updated_at: new Date().toISOString() }).eq("id", job.id).eq("status", "cancellation_requested");
       return;
     }
     if (provider.status === "failed" || provider.status === "cancelled") {
-      const { data: attempts } = await admin.from("job_attempts").select("attempt,backend_id,provider_job_id,status").eq("job_id", job.id).order("attempt");
+      const { data: attempts } = await admin.from("job_attempts").select("attempt,backend_id,provider_job_id,status,request,response").eq("job_id", job.id).order("attempt");
       await scheduleRetryOrFail(admin, job, (attempts ?? []) as JobAttempt[], provider.error ?? `Provider job ${provider.status}.`);
       return;
     }

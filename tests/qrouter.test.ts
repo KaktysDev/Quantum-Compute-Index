@@ -252,7 +252,7 @@ describe("QRouter circuit pipeline", () => {
     }));
     expect(response.status).toBe(200);
     expect(response.headers.get("x-request-id")).toBe("trace-abc");
-    await expect(response.json()).resolves.toMatchObject({ object: "list", qci: { source: expect.any(String) } });
+    await expect(response.json()).resolves.toMatchObject({ object: "list", qci: null, pricing_method: "native-v2" });
   });
 
   it("requires a well-formed Idempotency-Key on v2 writes", async () => {
@@ -586,22 +586,24 @@ describe("QRouter circuit pipeline", () => {
     expect(list.data[0]).toMatchObject({ id: deployment.id, project_id: project.id, status: "completed" });
   });
 
-  it("routes through the live QCI quote model", () => {
+  it("quotes native rates independently of the research index", () => {
     const analysis = analyzeCircuit(bell, "openqasm2");
     const decision = routeCircuit({ backends: BACKENDS, analysis, shots: 1024, target: "auto", mode: "balanced", qciSnapshotId: 42, qciTimestamp: "2026-07-11T00:00:00Z" });
     expect(decision.selected.id).toBe("qci-aer-gpu");
     const quote = buildQuote(decision, analysis, 1024);
     expect(quote.total).toBeGreaterThan(0);
-    expect(quote.rateSnapshot.qciSnapshotId).toBe(42);
+    expect(quote.rateSnapshot.qciSnapshotId).toBeUndefined();
+    expect(quote.rateSnapshot.pricingMethod).toBe("native-v2");
   });
 
   it("fails over only to an untried backend within the accepted quote", () => {
     const analysis = analyzeCircuit(bell, "openqasm2");
-    const decision = routeCircuit({ backends: BACKENDS, analysis, shots: 1024, target: "auto", mode: "balanced" });
+    const decision = routeCircuit({ backends: BACKENDS, analysis, shots: 1024, target: "auto", mode: "balanced", failover: { enabled: true, max_attempts: 3 } });
+    decision.candidates = decision.candidates.map((candidate) => ({ ...candidate, compiled: true, quoteBinding: "binding" }));
     const primary = decision.candidates.find((candidate) => candidate.backend.id === decision.selected.id)!;
     decision.candidates.push(
       { ...primary, backend: { ...primary.backend, id: "quoted-fallback", displayName: "Quoted fallback" }, score: primary.score - 0.01 },
-      { ...primary, backend: { ...primary.backend, id: "expensive-fallback", displayName: "Expensive fallback" }, estimatedProviderCost: primary.estimatedProviderCost + 1, score: primary.score - 0.02 },
+      { ...primary, backend: { ...primary.backend, id: "expensive-fallback", displayName: "Expensive fallback" }, estimatedProviderCost: primary.estimatedProviderCost! + 1, score: primary.score - 0.02 },
     );
 
     expect(nextAttemptCandidate({ decision, attemptedBackendIds: [], failoverEnabled: true, maxAttempts: 3 })?.backend.id).toBe(decision.selected.id);
@@ -670,7 +672,7 @@ describe("QRouter circuit pipeline", () => {
       expect(String(input instanceof Request ? input.url : input)).toContain("/models/gemini-3.5-flash:streamGenerateContent?alt=sse");
       expect(new Headers(init?.headers).get("x-goog-api-key")).toBe("test-gemini-key");
       const body = JSON.parse(String(init?.body));
-      expect(body.systemInstruction.parts[0].text).toContain("QCI Engine has already selected");
+      expect(body.systemInstruction.parts[0].text).toContain("workload router has already selected");
       expect(body.contents[0].parts[0].text).toContain("qci-aer-gpu");
       return new Response([
         `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: "QCI selected the simulator because it is compatible.", thought: false }] } }] })}`,
@@ -692,7 +694,7 @@ describe("QRouter circuit pipeline", () => {
       model: "gemini-3.5-flash",
       advice: "QCI selected the simulator because it is compatible.",
       decision: { selected: { id: "qci-aer-gpu" } },
-      qci: { source: "sample" },
+      qci: null,
       usage: { totalTokens: 49 },
     });
   });
@@ -898,15 +900,14 @@ describe("QRouter circuit pipeline", () => {
     expect(response.status).toBe(200);
   });
 
-  it("lists backends with QCI snapshot pricing and provenance", async () => {
-    const expected = sampleSnapshot();
+  it("lists native pricing separately from the research index", async () => {
     const response = await listBackends();
     const payload = await response.json();
     const ionq = payload.data.find((backend: { id: string }) => backend.id === "ionq-aria-1");
-    const expectedIonq = expected.components.find((component) => /ionq/i.test(component.provider));
     expect(response.status).toBe(200);
-    expect(payload.qci).toMatchObject({ source: "sample", index: expected.price, pricePerQcHour: expected.vwap });
-    expect(ionq.pricePerNqh).toBe(expectedIonq?.pricePerNqh);
+    expect(payload.qci).toBeNull();
+    expect(ionq.pricePerNqh).toBeUndefined();
+    expect(ionq.nativePricing).toMatchObject({ kind: "unknown" });
   });
 
   it("uses the same compiled QCI quote for chat confirmation and job execution", async () => {
@@ -962,14 +963,14 @@ describe("QRouter circuit pipeline", () => {
       status: "completed",
       selected_backend_id: "qci-aer-gpu",
       analysis: { transpilation: { compiler: "local", optimizationLevel: 3, backendId: "qci-aer-gpu" } },
-      quote: { rateSnapshot: { backend: "qci-aer-gpu", qciMethod: "provider-rate-v1" } },
+      quote: { rateSnapshot: { backend: "qci-aer-gpu", pricingMethod: "native-v2" } },
     });
     expect(Object.values(job.result.counts as Record<string, number>).reduce((sum, count) => sum + count, 0)).toBe(256);
   });
 
   it("does not let pricing snapshots overwrite physical qubit limits", () => {
     const backends = withQciSnapshot([{ provider: "IonQ", capacity: 999, clops: 123, queueSeconds: 1, fid2q: 0.9, pricePerNqh: 10, status: "live" } as never]);
-    expect(backends.find((backend) => backend.id === "ionq-aria-1")).toMatchObject({ qubits: 25, clops: 123 });
+    expect(backends.find((backend) => backend.id === "ionq-aria-1")).toMatchObject({ qubits: 25 });
   });
 
   it("produces correlated Bell measurements", async () => {
@@ -1055,10 +1056,12 @@ describe("QRouter circuit pipeline", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ "0": 0.4, "7": 0.6 })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ cost: 0.25 })));
     vi.stubGlobal("fetch", fetchMock);
-    await expect(getProviderStatus("ionq-aria-1", "ionq-job")).resolves.toMatchObject({
+    const status = await getProviderStatus("ionq-aria-1", "ionq-job");
+    expect(status).toMatchObject({
       status: "completed",
       actualProviderCost: 0.25,
-      result: { probabilities: { "000": 0.4, "111": 0.6 }, counts: { "000": 40, "111": 60 } },
+      result: { probabilities: { "000": 0.4, "111": 0.6 }, metadata: { result_coordinates: "physical_qubits", key_encoding: "binary" } },
     });
+    expect(status.result?.counts).toBeUndefined();
   });
 });

@@ -225,10 +225,11 @@ def serialize_layout(compiled):
     try:
         return {
             "logicalToPhysical": {
-                str(virtual): int(physical)
-                for virtual, physical in layout.initial_layout.get_virtual_bits().items()
+                str(logical): int(physical)
+                for logical, physical in enumerate(layout.final_index_layout(filter_ancillas=True))
             },
-            "routingPermutation": list(layout.routing_permutation()),
+            # final_index_layout already includes routing; applying it again is wrong.
+            "routingPermutation": [],
         }
     except Exception:
         return {"description": str(layout)}
@@ -487,6 +488,7 @@ def serialize_runtime_result(result):
         "publications": publications,
         "counts": first["counts"],
         "registers": first["registers"],
+        "metadata": {"result_coordinates": "classical", "bit_order": "q0_right", "key_encoding": "binary"},
     }
 
 
@@ -523,7 +525,7 @@ def execute(job_id: str, payload: JobInput):
         status = "completed"
         result_payload = {"counts": counts, "probabilities": probabilities,
                           "shots": payload.shots, "backend": "qci-aer-gpu", "executionMs": round((time.perf_counter() - started) * 1000, 2),
-                          "metadata": {"engine": "Qiskit Aer", "device": device, "qubits": circuit.num_qubits, "depth": compiled.depth()}}
+                          "metadata": {"engine": "Qiskit Aer", "device": device, "qubits": circuit.num_qubits, "depth": compiled.depth(), "result_coordinates": "classical", "bit_order": "q0_right", "key_encoding": "binary"}}
         error_message = None
     except Exception as error:
         status = "failed"

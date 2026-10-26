@@ -41,6 +41,9 @@ export type VerificationStatus =
   | "failed";
 
 export type BitOrder = "q0_left" | "q0_right";
+/** The indices represented by a provider histogram, before platform decoding. */
+export type ResultCoordinates = "classical" | "logical_qubits" | "physical_qubits";
+export type ResultKeyEncoding = "binary" | "decimal";
 export type QuoteBinding = "binding" | "indicative";
 
 export interface QubitRegister { name: string; size: number }
@@ -173,6 +176,9 @@ export interface ExecutionEnvelope {
 
 export interface DecodeMap {
   bit_order: BitOrder;
+  /** Classical memory already includes measurement assignments and routing. */
+  result_coordinates?: ResultCoordinates;
+  key_encoding?: ResultKeyEncoding;
   registers: Array<{ name: string; width: number; offset: number }>;
   measurement_map: Array<{ qubit: number; clbit: number }>;
   layout: { logical_to_physical: Record<number, number>; routing_permutation: number[] } | null;
@@ -234,6 +240,8 @@ export interface ResultSet {
     bit_order: BitOrder;
     source_bit_order: BitOrder;
     layout_applied: boolean;
+    result_coordinates?: ResultCoordinates;
+    measurement_map_applied?: boolean;
     synthetic: SyntheticFlag[];
   };
   raw: Record<string, unknown>;

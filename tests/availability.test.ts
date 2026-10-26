@@ -64,21 +64,12 @@ describe("unavailable backend routing", () => {
     }
   });
 
-  it("offers runnable alternatives with legible differences", () => {
+  it("does not substitute simulation for unavailable physical hardware", () => {
     try {
       route("ibm-brisbane");
       expect.unreachable("expected the pinned QPU to be rejected");
     } catch (error) {
-      const { alternatives } = error as BackendUnavailableError;
-      expect(alternatives.length).toBeGreaterThan(0);
-      // Every alternative must actually be runnable and not the rejected one.
-      expect(alternatives.some((item) => item.backend_id === "ibm-brisbane")).toBe(false);
-      const simulator = alternatives.find((item) => item.backend_id === "qci-aer-gpu");
-      expect(simulator).toBeDefined();
-      expect(simulator!.retry_with.target).toBe("qci-aer-gpu");
-      expect(simulator!.differences.join(" ")).toContain("simulator rather than physical quantum hardware");
-      // Differences must be self-describing prose, never empty filler.
-      expect(simulator!.differences.every((line) => line.trim().length > 0)).toBe(true);
+      expect((error as BackendUnavailableError).alternatives).toEqual([]);
     }
   });
 
@@ -100,8 +91,8 @@ describe("unavailable backend routing", () => {
       expect(body.error.type).toBe("backend_unavailable");
       expect(body.error.requested.reason_code).toBe("credentials_missing");
       expect(body.error.requested.resolution).toContain("IBM_QUANTUM_TOKEN");
-      expect(body.error.alternatives[0].retry_with.target).toBeTruthy();
-      expect(body.error.retry_with_auto).toEqual({ target: "auto" });
+      expect(body.error.alternatives).toEqual([]);
+      expect(body.error.retry_with_auto).toBeUndefined();
     }
   });
 

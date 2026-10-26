@@ -1,6 +1,8 @@
 # Quantum Compute Index — Methodology (QCI 2.0)
 
-**What it measures:** the quality-adjusted price of one hour of quantum compute, in USD, chain-linked daily across the provider market.
+> Product status: QCI is a secondary research model. It does not price executions, rank a customer's actual circuit, or demonstrate algorithm success. Execution quotes use dated native rates for their provider channel. Capability adjustments and production-cost figures depend on assumptions; treat them as model outputs, not transaction or operator-cost measurements. See [product roadmap](PRODUCT-ROADMAP.md).
+
+**What it models:** changes in selected published hourly rates, deflated by a hardware capability proxy and chain-linked across an eligible basket. This is not a market-wide transaction price or an empirically validated measure of useful compute.
 
 **Version:** `qci-2.0.0` · **Publication clock:** America/New_York · **Inception level:** 1000
 
@@ -68,7 +70,7 @@ This is directly observable. It needs no conversion constant, and both major sou
 | AWS Braket price list | dedicated **reservation rates in USD/hour** | none |
 | IBM Quantum | Pay-As-You-Go **$96/minute** = $5,760/hour | published list rate |
 
-Verified live rates (AWS price list `v20260407184508`):
+Historical rate-card example (AWS price list `v20260407184508`; not an execution rate configuration):
 
 | Device | USD/hour |
 |---|---|
@@ -86,7 +88,7 @@ Verified live rates (AWS price list `v20260407184508`):
 
 ## 3. Quality adjustment (hedonic)
 
-The index measures the price of *capability*, so price is **deflated** by quality rather than weighted by it:
+The model defines a proxy for *capability* and **deflates** price by that proxy rather than weighting price by it:
 
 ```
 π_d = P_d / q_d        USD per Quantum Capability Unit-hour
@@ -189,11 +191,11 @@ Superconducting device, $22M capex, 5-year life, 50% billable utilisation, 25 kW
 | **Energy** | **3.13** | **0.2%** |
 | **Total** | **1,590** | |
 
-**So: do cooling and energy prices drive the price of quantum compute? No — not today, and not close.** A dilution refrigerator drawing 25 kW costs about two dollars an hour to run, against a list price of $3,000–7,000 an hour. Doubling industrial electricity moves the modelled cost of a QPU-hour by roughly 0.2%.
+**Sensitivity within this scenario:** energy has a small contribution under the assumed capital cost, power, depreciation and utilization. This does not establish how operators set their prices. A dilution refrigerator drawing 25 kW costs about two dollars an hour to run, against a list price of $3,000–7,000 an hour. Doubling industrial electricity moves the modelled cost of a QPU-hour by roughly 0.2%.
 
 What sets the floor is **capital recovery** on a multi-million-dollar system that is billable maybe half the time. Since labour and consumables are themselves scaled off capex, ~99.8% of modelled cost traces back to the machine and its utilisation — not to what it consumes while running.
 
-The map draws these nodes **to scale**, so energy renders as a dot next to capital. Building it to imply otherwise would have been the easy thing to do and would have been false. The factors are still tracked live, because the ratios will change as hardware costs fall, and because a reader deserves to see the real magnitude rather than be told it is too small to show.
+The map sizes nodes by their contribution in this scenario. Their relative size reflects assumptions, not measured operator expenditure. Recorded macro inputs do not validate the assumed capital, utilization or labour values.
 
 `energyElasticity = d ln(cost) / d ln(electricity price)` is published exactly — it equals the energy share, since energy enters the total linearly.
 
@@ -293,3 +295,13 @@ Tables: `qci_index_points` (one self-contained row per day, including the ledger
 ## 10. Changing the methodology
 
 `QCI_METHODOLOGY_VERSION` is stamped on every point. Changing α, β, the weight caps, the verification threshold, or the capability definition changes what the level *means* — bump the version and recompute the series, never in place.
+
+## Interpretation limits
+
+The capability function is a modelling choice; its coefficients are not validated predictors of application success. Qubit count and median two-qubit error do not capture circuit layout, correlated errors, readout, algorithm structure or postselection. A quality-adjusted aggregate cannot replace a workload-specific reference and measured outcomes.
+
+Published reservation rates, on-demand rates, negotiated contracts and realized transaction prices represent different products. The eligible hourly-rate basket is not a complete provider market. Carry-forward values and insufficient overlap can leave a recorded level without a fresh, broadly representative comparison. Inspect coverage, sources, model version and snapshot age.
+
+Production-cost scenarios use assumed system costs, utilization, depreciation, power and broad external factors. They are not operator invoices, observed profit margins or a validated floor for sale prices.
+
+The map's hypothetical policy ranking has no customer circuit, current credential check or execution quote. It is separate from the execution router and must not be described as where a job would actually run.

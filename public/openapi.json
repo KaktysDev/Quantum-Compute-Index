@@ -3,11 +3,11 @@
   "info": {
     "title": "QRouter API",
     "version": "1.0.0",
-    "description": "One authenticated API for hardware-aware compilation, routing, pricing, and execution across quantum providers."
+    "description": "Private, budget-approved quantum experiment campaigns, native-rate quotes, circuit execution, and reproducible evidence. The research index does not price jobs."
   },
   "servers": [
     {
-      "url": "https://api.qrouter.dev"
+      "url": "https://qrouter.app"
     }
   ],
   "components": {
@@ -52,6 +52,223 @@
       }
     },
     "schemas": {
+      "CreateExperiment": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "objective",
+          "circuit_id",
+          "execution_intent",
+          "targets",
+          "shots",
+          "max_total_cost",
+          "reference",
+          "success_criterion"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "objective": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 2000
+          },
+          "circuit_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "previous_version_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "execution_intent": {
+            "type": "string",
+            "enum": [
+              "simulate",
+              "hardware"
+            ]
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 5,
+            "uniqueItems": true
+          },
+          "shots": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 1000000
+          },
+          "max_total_cost": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 100000
+          },
+          "reference": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "kind",
+                  "probabilities",
+                  "provenance"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "distribution"
+                  },
+                  "probabilities": {
+                    "type": "object",
+                    "minProperties": 1,
+                    "maxProperties": 4096,
+                    "propertyNames": {
+                      "pattern": "^[01]{1,128}$"
+                    },
+                    "additionalProperties": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "description": "Equal-width classical-bit keys; probabilities sum to one."
+                  },
+                  "provenance": {
+                    "type": "string",
+                    "minLength": 5,
+                    "maxLength": 1000
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "kind",
+                  "reason"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "none"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 10,
+                    "maxLength": 1000
+                  }
+                }
+              }
+            ]
+          },
+          "success_criterion": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "metric",
+                  "max_distance",
+                  "confidence"
+                ],
+                "properties": {
+                  "metric": {
+                    "const": "total_variation_distance"
+                  },
+                  "max_distance": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "confidence": {
+                    "type": "number",
+                    "minimum": 0.8,
+                    "maximum": 0.999
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "metric"
+                ],
+                "properties": {
+                  "metric": {
+                    "const": "record_only"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ExperimentApproval": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "approved_definition_hash",
+          "approved_max_total_cost"
+        ],
+        "properties": {
+          "approved_definition_hash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "approved_max_total_cost": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        },
+        "description": "Must exactly match the saved definition hash and campaign ceiling. Approval authorizes one idempotent campaign run."
+      },
+      "Experiment": {
+        "type": "object",
+        "required": [
+          "id",
+          "definition",
+          "definition_hash",
+          "source_hash",
+          "version",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "organization_id": {
+            "type": "string"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/CreateExperiment"
+          },
+          "definition_hash": {
+            "type": "string"
+          },
+          "source_hash": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "released_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "Constraints": {
         "type": "object",
         "properties": {
@@ -85,6 +302,14 @@
             "items": {
               "type": "string"
             }
+          },
+          "executionIntent": {
+            "type": "string",
+            "enum": [
+              "simulate",
+              "hardware"
+            ],
+            "description": "Automatic routes default to simulation. A pinned QPU also expresses hardware intent."
           }
         }
       },
@@ -205,11 +430,32 @@
       "CreateHostedJob": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["circuit_id", "executions"],
+        "required": [
+          "circuit_id",
+          "executions"
+        ],
         "properties": {
-          "circuit_id": { "type": "string", "format": "uuid" },
-          "executions": { "type": "array", "minItems": 1, "maxItems": 25, "description": "Each key must be unique within the job.", "items": { "$ref": "#/components/schemas/ExecutionTarget" } },
-          "metadata": { "$ref": "#/components/schemas/Metadata" }
+          "circuit_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "executions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 25,
+            "description": "Each key must be unique within the job.",
+            "items": {
+              "$ref": "#/components/schemas/ExecutionTarget"
+            }
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/Metadata"
+          },
+          "max_total_cost": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Complete group reservation ceiling including provider costs and software fees; checked before any execution is queued."
+          }
         }
       },
       "Metadata": {
@@ -280,11 +526,117 @@
       },
       "BackendListResponse": {
         "type": "object",
-        "required": ["object", "data", "qci"],
+        "required": [
+          "object",
+          "data",
+          "qci"
+        ],
         "properties": {
-          "object": { "const": "list" },
-          "data": { "type": "array", "items": { "type": "object", "properties": { "id": { "type": "string" }, "capabilities": { "type": "object", "properties": { "input_formats": { "type": "array", "items": { "enum": ["openqasm2", "openqasm3"] } }, "execution": { "const": "async" }, "result": { "type": "array", "items": { "type": "string" } } } } } } },
-          "qci": { "type": "object", "required": ["timestamp", "source", "index", "price_per_qc_hour"], "properties": { "timestamp": { "type": "string", "format": "date-time" }, "source": { "type": "string" }, "index": { "type": "number" }, "price_per_qc_hour": { "type": "number" } } }
+          "object": {
+            "const": "list"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "capabilities": {
+                  "type": "object",
+                  "properties": {
+                    "input_formats": {
+                      "type": "array",
+                      "items": {
+                        "enum": [
+                          "openqasm2",
+                          "openqasm3"
+                        ]
+                      }
+                    },
+                    "execution": {
+                      "const": "async"
+                    },
+                    "result": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "nativePricing": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "reason"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "unknown"
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "usdPerShot",
+                        "usdPerTask",
+                        "source",
+                        "observedAt",
+                        "validUntil",
+                        "channel"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "per-shot"
+                        },
+                        "usdPerShot": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "usdPerTask": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "source": {
+                          "type": "string"
+                        },
+                        "observedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "validUntil": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "channel": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "qci": {
+            "type": "null",
+            "description": "Research index is not a routing or billing input."
+          },
+          "pricing_method": {
+            "const": "native-v2"
+          },
+          "automatic_execution_intent": {
+            "const": "simulate"
+          }
         }
       },
       "Problem": {
@@ -499,6 +851,293 @@
     }
   ],
   "paths": {
+    "/api/v2/experiments": {
+      "get": {
+        "summary": "List up to 100 experiment definitions in this organization",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response with a data envelope.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "description": "Campaign migration or compiler unavailable. No job submitted.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Save an immutable experiment definition; does not execute",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful response with a data envelope.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "description": "Campaign migration or compiler unavailable. No job submitted.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateExperiment"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/experiments/{id}": {
+      "get": {
+        "summary": "Get definition and up to 50 runs with normalized results, per-execution confidence intervals, source and result hashes, and cost status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with a data envelope.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "description": "Campaign migration or compiler unavailable. No job submitted.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/experiments/{id}/quote": {
+      "post": {
+        "summary": "Compile and estimate all targets without submitting a provider job",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with a data envelope.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "description": "Campaign migration or compiler unavailable. No job submitted.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/experiments/{id}/run": {
+      "post": {
+        "summary": "Approve one campaign run; reprice and check complete ceiling before atomic funding",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful response with a data envelope.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "description": "Campaign migration or compiler unavailable. No job submitted.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient credits; response data contains the parked run and group IDs. Reuse the same idempotency key for recovery.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExperimentApproval"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/repositories/inspect": {
       "get": {
         "summary": "Inspect an authenticated GitHub repository for OpenQASM entrypoints and qrouter.json",

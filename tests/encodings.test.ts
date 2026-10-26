@@ -25,11 +25,11 @@ const analysis = analyzeCircuit(BELL, "openqasm2");
 function catalogBackend(id: string, available = true): Backend {
   const backend = BACKENDS.find((item) => item.id === id);
   if (!backend) throw new Error(`Missing catalog backend ${id}`);
-  return { ...backend, available };
+  return { ...backend, available, nativePricing: { kind: "per-shot", usdPerShot: backend.pricePerShot, usdPerTask: backend.pricePerTask, source: "test-rate", observedAt: "2026-01-01T00:00:00Z", validUntil: "9999-12-31T00:00:00Z", channel: backend.provider === "qci" ? "qrouter" : backend.provider === "ionq" ? (process.env.IONQ_API_KEY ? "ionq-direct" : "aws-braket") : backend.provider } };
 }
 
 function withAvailable(ids: string[]) {
-  return BACKENDS.map((backend) => ({ ...backend, available: ids.includes(backend.id) || backend.id === "qci-aer-gpu" }));
+  return BACKENDS.map((backend) => catalogBackend(backend.id, ids.includes(backend.id) || backend.id === "qci-aer-gpu"));
 }
 
 describe("native program encoders", () => {
@@ -250,11 +250,11 @@ describe("route + compile + submit for every catalog family", () => {
 describe("catalog adapter coverage", () => {
   const MEDIA: Record<string, string> = {
     "qci-aer-gpu": "text/qasm2",
-    "aws-sv1": "text/qasm3",
+    "aws-sv1": "application/vnd.amazon.braket.openqasm+json",
     "ibm-brisbane": "text/qasm3",
-    "ionq-aria-1": "application/json",
-    "rigetti-ankaa-3": "text/qasm3",
-    "iqm-garnet": "text/qasm3",
+    "ionq-aria-1": "application/vnd.amazon.braket.openqasm+json",
+    "rigetti-ankaa-3": "application/vnd.amazon.braket.openqasm+json",
+    "iqm-garnet": "application/vnd.amazon.braket.openqasm+json",
     "xanadu-borealis": "application/json",
     "quandela-mosaiq": "application/json",
     "qi-starmon-5": "text/cqasm",

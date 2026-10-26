@@ -38,7 +38,7 @@ export function verificationLabel(status: string | undefined): string {
 }
 
 export function quoteBindingLabel(binding: string | undefined): string {
-  if (binding === "binding") return "Price locked";
+  if (binding === "binding") return "Compiled estimate";
   if (binding === "indicative") return "Estimate";
   return "Quote";
 }

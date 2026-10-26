@@ -13,6 +13,7 @@ import { lruGet, lruSet } from "./cache";
 import { measurementMap, registerLayout } from "./frontend";
 import { nativeProgramFor, type NativeProgram } from "./native";
 import { opIdsFromTokens } from "./ops";
+import { qasm2ToQasm3, qasm2ToIonqCircuit } from "./wire";
 import { staticProfile } from "./satisfy";
 import { satisfies } from "./satisfy";
 import type {
@@ -82,6 +83,8 @@ function reusedNativeProgram(transpilation: TranspilationResult | null): NativeP
 function decodeMapFor(program: GateProgram | null, bitOrder: DecodeMap["bit_order"], layout: DecodeMap["layout"]): DecodeMap {
   return {
     bit_order: bitOrder,
+    result_coordinates: "classical",
+    key_encoding: "binary",
     registers: program ? registerLayout(program) : [],
     measurement_map: program ? measurementMap(program) : [],
     layout,
@@ -178,18 +181,21 @@ const ionq: EncodingAdapter = {
     const program = programOf(input.envelope);
     const decodeMap = decodeMapFor(program, "q0_left", layoutFrom(input.transpilation));
     if (!decodeMap.measurement_map.length) throw new EncodingError("IonQ encoding refused: the measurement map is empty; a circuit is never submitted without its classical mapping.");
-    const payload = JSON.stringify({
-      qubits: input.analysis.qubits,
+    decodeMap.result_coordinates = "physical_qubits";
+    const qasm = input.transpilation?.qasm ?? input.analysis.normalizedQasm2;
+    const direct = Boolean(process.env.IONQ_API_KEY);
+    const payload = direct ? JSON.stringify({
+      qubits: input.transpilation?.after.qubits ?? input.analysis.qubits,
       gateset: "qis",
-      qasm: input.transpilation?.qasm ?? input.analysis.normalizedQasm2,
+      circuit: qasm2ToIonqCircuit(qasm),
       measurement_map: decodeMap.measurement_map,
       registers: decodeMap.registers,
-    });
+    }) : JSON.stringify({ braketSchemaHeader: { name: "braket.ir.openqasm.program", version: "1" }, source: qasm2ToQasm3(qasm) });
     return buildBundle({
       envelope: input.envelope,
       backendId: input.backend.id,
       payload,
-      mediaType: "application/json",
+      mediaType: direct ? "application/vnd.ionq.circuit+json" : "application/vnd.amazon.braket.openqasm+json",
       decodeMap,
       capability: input.capability,
       compiler: compilerOf(input.transpilation),
@@ -208,9 +214,9 @@ const braket: EncodingAdapter = {
   encode: (input) => buildBundle({
     envelope: input.envelope,
     backendId: input.backend.id,
-    payload: input.transpilation?.artifactQasm ?? input.transpilation?.qasm ?? input.analysis.normalizedQasm2,
-    mediaType: "text/qasm3",
-    decodeMap: decodeMapFor(programOf(input.envelope), "q0_right", layoutFrom(input.transpilation)),
+    payload: JSON.stringify({ braketSchemaHeader: { name: "braket.ir.openqasm.program", version: "1" }, source: qasm2ToQasm3(input.transpilation?.qasm ?? input.analysis.normalizedQasm2) }),
+    mediaType: "application/vnd.amazon.braket.openqasm+json",
+    decodeMap: { ...decodeMapFor(programOf(input.envelope), "q0_left", layoutFrom(input.transpilation)), result_coordinates: "physical_qubits" },
     capability: input.capability,
     compiler: compilerOf(input.transpilation),
     verification: verificationFromTranspile(input.transpilation, input.capability),
@@ -265,7 +271,7 @@ const quantumInspire: EncodingAdapter = {
       backendId: input.backend.id,
       payload: program.format === "cqasm-1.0" ? program.source : JSON.stringify(program),
       mediaType: "text/cqasm",
-      decodeMap: decodeMapFor(programOf(input.envelope), "q0_right", layoutFrom(input.transpilation)),
+      decodeMap: { ...decodeMapFor(programOf(input.envelope), "q0_right", layoutFrom(input.transpilation)), result_coordinates: "physical_qubits", key_encoding: "decimal" },
       capability: input.capability,
       compiler: compilerOf(input.transpilation),
       verification: verificationFromTranspile(input.transpilation, input.capability),

@@ -6,9 +6,9 @@
 
 import type { NormalizedResult } from "../results";
 import { PLATFORM_BIT_ORDER, RES_SCHEMA } from "./types";
-import type { BitOrder, DecodeMap, ResultData, ResultSet, SyntheticFlag } from "./types";
+import type { BitOrder, DecodeMap, ResultCoordinates, ResultData, ResultKeyEncoding, ResultSet, SyntheticFlag } from "./types";
 
-const DECODER_VERSION = "qee-decode-1.0.0";
+const DECODER_VERSION = "qee-decode-1.1.0";
 
 function numericMap(value: unknown): Record<string, number> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -21,9 +21,10 @@ function isBinary(value: string) {
   return /^[01]+$/.test(value);
 }
 
-function integerToBits(value: string, width: number, sourceOrder: BitOrder) {
-  const bits = Number(value).toString(2).padStart(width, "0");
-  return sourceOrder === "q0_left" ? bits : bits;
+function integerToBits(value: string, width: number) {
+  if (!/^\d+$/.test(value)) throw new Error(`Invalid decimal result key "${value}".`);
+  // BigInt avoids loss of measured bits above Number.MAX_SAFE_INTEGER.
+  return BigInt(value).toString(2).padStart(width, "0");
 }
 
 export function normalizeBitOrder(bits: string, source: BitOrder, target: BitOrder = PLATFORM_BIT_ORDER) {
@@ -48,6 +49,7 @@ export function rewriteStates(
   values: Record<string, number>,
   sourceOrder: BitOrder,
   width: number,
+  keyEncoding: ResultKeyEncoding = "binary",
 ): { map: Record<string, number>; registersPreserved: boolean } {
   const registersPreserved = Object.keys(values).some((key) => /\s/.test(key));
   const map: Record<string, number> = {};
@@ -55,7 +57,7 @@ export function rewriteStates(
     if (registersPreserved) {
       const fields = state.trim().split(/\s+/).map((field) => {
         const clean = field.replace(/[|>]/g, "");
-        const bits = /^\d+$/.test(clean) && !isBinary(clean) ? integerToBits(clean, clean.length, sourceOrder) : clean;
+        const bits = keyEncoding === "decimal" || (/^\d+$/.test(clean) && !isBinary(clean)) ? integerToBits(clean, clean.length) : clean;
         return normalizeBitOrder(bits, sourceOrder);
       });
       const key = fields.join(" ");
@@ -63,8 +65,8 @@ export function rewriteStates(
       continue;
     }
     const clean = state.replace(/[|>]/g, "");
-    const bits = /^\d+$/.test(clean) && !isBinary(clean)
-      ? integerToBits(clean, width, sourceOrder)
+    const bits = keyEncoding === "decimal" || (/^\d+$/.test(clean) && !isBinary(clean))
+      ? integerToBits(clean, width)
       : padBits(clean, width);
     const key = normalizeBitOrder(bits, sourceOrder);
     map[key] = (map[key] ?? 0) + value;
@@ -104,8 +106,13 @@ function applyMeasurementMap(bits: string, decodeMap: DecodeMap | undefined) {
 }
 
 export function largestRemainderCounts(probabilities: Record<string, number>, shots: number) {
+  if (!Number.isSafeInteger(shots) || shots < 0) throw new Error("Synthetic counts require a non-negative integer shot count.");
+  const total = Object.values(probabilities).reduce((sum, value) => sum + value, 0);
+  if (!Number.isFinite(total) || Math.abs(total - 1) > 1e-6 || Object.values(probabilities).some((value) => !Number.isFinite(value) || value < 0)) {
+    throw new Error("Synthetic counts require a normalized probability distribution.");
+  }
   const entries = Object.entries(probabilities).map(([state, probability]) => {
-    const exact = probability * shots;
+    const exact = probability / total * shots;
     return { state, count: Math.floor(exact), remainder: exact - Math.floor(exact) };
   });
   let remaining = shots - entries.reduce((sum, item) => sum + item.count, 0);
@@ -124,8 +131,16 @@ export function decodeProviderResult(input: {
   bundleId?: string;
 }): ResultSet {
   const payload = input.raw ?? {};
-  const sourceOrder: BitOrder = input.decodeMap?.bit_order
-    ?? (input.backendId.startsWith("ionq") ? "q0_left" : "q0_right");
+  const metadata = payload.metadata && typeof payload.metadata === "object" ? payload.metadata as Record<string, unknown> : {};
+  const coordinates: ResultCoordinates = metadata.result_coordinates === "classical" || metadata.result_coordinates === "logical_qubits" || metadata.result_coordinates === "physical_qubits"
+    ? metadata.result_coordinates
+    : input.decodeMap?.result_coordinates ?? (input.backendId.startsWith("ionq") || input.backendId.startsWith("qi-") ? "physical_qubits" : "classical");
+  const sourceOrder: BitOrder = metadata.bit_order === "q0_left" || metadata.bit_order === "q0_right"
+    ? metadata.bit_order
+    : input.decodeMap?.bit_order ?? (input.backendId.startsWith("ionq") ? "q0_left" : "q0_right");
+  const keyEncoding: ResultKeyEncoding = metadata.key_encoding === "decimal" || metadata.key_encoding === "binary" ? metadata.key_encoding : input.decodeMap?.key_encoding ?? "binary";
+  const measuredQubits = Array.isArray(payload.measuredQubits) && payload.measuredQubits.every((value) => Number.isSafeInteger(value) && value >= 0)
+    ? payload.measuredQubits as number[] : null;
   const registerMaps = payload.registers && typeof payload.registers === "object" && !Array.isArray(payload.registers)
     ? Object.entries(payload.registers as Record<string, unknown>)
       .map(([name, value]) => ({ name, map: numericMap(value) }))
@@ -140,22 +155,33 @@ export function decodeProviderResult(input: {
     ?? (Array.isArray(payload.quasi_dists) ? numericMap(payload.quasi_dists[0]) : null);
   const synthetic: SyntheticFlag[] = [];
   const data: ResultData[] = [];
+  const classicalWidth = input.decodeMap?.registers.reduce((sum, register) => sum + register.width, 0) ?? 0;
+  const physicalWidth = Math.max(0, ...Object.values(input.decodeMap?.layout?.logical_to_physical ?? {}).map((value) => value + 1), ...(input.decodeMap?.measurement_map ?? []).map((value) => value.qubit + 1));
   const width = keyWidth([
     ...Object.keys(countsSource ?? {}),
     ...Object.keys(probabilitySource ?? {}),
     ...Object.keys(quasiSource ?? {}),
-  ], input.decodeMap?.registers.reduce((sum, register) => sum + register.width, 0) ?? 1);
+  ], coordinates === "classical" ? classicalWidth : measuredQubits?.length ?? physicalWidth);
+  let layoutApplied = false;
+  let measurementApplied = false;
 
-  const remap = (values: Record<string, number>) => {
-    const rewritten = rewriteStates(values, sourceOrder, width);
-    if (!input.decodeMap?.layout && !input.decodeMap?.measurement_map.length) return rewritten.map;
+  const remap = (values: Record<string, number>, registerWidth?: number) => {
+    const rewritten = rewriteStates(values, sourceOrder, registerWidth ?? width, keyEncoding);
+    // Provider classical memory is already expressed in destination classical bits.
+    // Applying qubit layout or measurement assignments here would map it twice.
+    if (coordinates === "classical" || registerWidth !== undefined) return rewritten.map;
     const next: Record<string, number> = {};
     for (const [state, value] of Object.entries(rewritten.map)) {
-      if (/\s/.test(state)) {
-        next[state] = (next[state] ?? 0) + value;
-        continue;
+      if (/\s/.test(state)) throw new Error("Qubit-coordinate histograms cannot contain classical register fields.");
+      let bits = state;
+      if (measuredQubits) {
+        const expanded = Array.from({ length: Math.max(physicalWidth, ...measuredQubits.map((q) => q + 1)) }, () => "0");
+        measuredQubits.forEach((qubit, index) => { expanded[expanded.length - 1 - qubit] = state[state.length - 1 - index] ?? "0"; });
+        bits = expanded.join("");
       }
-      const laid = applyLayout(state, input.decodeMap);
+      const laid = coordinates === "physical_qubits" ? applyLayout(bits, input.decodeMap) : { bits, applied: false };
+      layoutApplied ||= laid.applied;
+      measurementApplied ||= Boolean(input.decodeMap?.measurement_map.length);
       const measured = applyMeasurementMap(laid.bits, input.decodeMap);
       next[measured] = (next[measured] ?? 0) + value;
     }
@@ -188,7 +214,8 @@ export function decodeProviderResult(input: {
       ? Object.values(counts).reduce((sum, count) => sum + count, 0)
       : input.expectedShots;
 
-  if (!counts && probabilities && Object.values(probabilities).every((value) => value >= 0)) {
+  if (!counts && probabilities && Object.values(probabilities).every((value) => value >= 0)
+    && Math.abs(Object.values(probabilities).reduce((sum, value) => sum + value, 0) - 1) <= 1e-6) {
     counts = largestRemainderCounts(probabilities, shots);
     synthetic.push({ field: "counts", reason: "derived_from_probabilities", method: "largest_remainder" });
   }
@@ -208,7 +235,7 @@ export function decodeProviderResult(input: {
         type: "counts",
         register: name,
         shots,
-        counts: remap(map),
+        counts: remap(map, input.decodeMap?.registers.find((register) => register.name === name)?.width ?? keyWidth(Object.keys(map), 1)),
       });
     }
   }
@@ -222,7 +249,9 @@ export function decodeProviderResult(input: {
       decoder_version: DECODER_VERSION,
       bit_order: PLATFORM_BIT_ORDER,
       source_bit_order: sourceOrder,
-      layout_applied: Boolean(input.decodeMap?.layout),
+      layout_applied: layoutApplied,
+      result_coordinates: coordinates,
+      measurement_map_applied: measurementApplied,
       synthetic,
     },
     raw: payload,
@@ -245,6 +274,9 @@ export function resultSetToNormalized(result: ResultSet, expectedShots: number):
       source_bit_order: result.provenance.source_bit_order,
       layout_applied: result.provenance.layout_applied,
       synthetic: result.provenance.synthetic,
+      result_coordinates: result.provenance.result_coordinates,
+      measurement_map_applied: result.provenance.measurement_map_applied,
+      registers: Object.fromEntries(result.data.filter((item): item is Extract<ResultData, { type: "counts" }> => item.type === "counts").map((item) => [item.register, item.counts])),
       ...(quasi ? { quasi: quasi.quasi, mitigation: quasi.mitigation } : {}),
       result_set: { schema_version: result.schema_version, bundle_id: result.bundle_id, types: result.data.map((item) => item.type) },
     },

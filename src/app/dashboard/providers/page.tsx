@@ -1,8 +1,7 @@
 import ProviderCatalog from "@/components/ProviderCatalog";
-import { getLatestSnapshot } from "@/lib/qci/store";
-import { withQciSnapshot } from "@/lib/qrouter/catalog";
+import { loadPublicRoutingContext } from "@/lib/qrouter/routingContext";
 
 export default async function ProvidersPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  const [latest, query] = await Promise.all([getLatestSnapshot(), searchParams]);
-  return <ProviderCatalog backends={withQciSnapshot(latest.components)} initialQuery={query.q ?? ""} />;
+  const [{ backends }, query] = await Promise.all([loadPublicRoutingContext(), searchParams]);
+  return <ProviderCatalog backends={backends} asOf={Date.now()} initialQuery={query.q ?? ""} />;
 }

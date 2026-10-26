@@ -58,6 +58,9 @@ export function requireScopeV2(principal: Principal, scope: ApiScope): void {
  * instead of being rejected after a QPU has already been selected.
  */
 export function backendsForPrincipal(principal: Principal, backends: Backend[]): Backend[] {
+  // Anonymous development tenants have no durable credit reservation. They
+  // must never inherit configured external provider credentials or paid workers.
+  if (principal.demo) return backends.filter((backend) => backend.id === "qci-aer-gpu" && backend.kind === "simulator");
   if (principal.environment !== "test") return backends;
   return backends.filter((backend) => backend.kind === "simulator");
 }
@@ -69,6 +72,9 @@ export function backendsForPrincipal(principal: Principal, backends: Backend[]):
  * reasons are left alone so existing behaviour is unchanged.
  */
 export function assertTargetAllowed(principal: Principal, target: string, backends: Backend[]): void {
+  if (principal.demo && target !== "auto" && target !== "qci-aer-gpu") {
+    throw new AuthorizationError("Development demo mode executes only the inline QCI simulator. Configure authenticated storage and use a funded account for external providers.");
+  }
   if (principal.environment !== "test" || target === "auto") return;
   const requested = backends.find((backend) => backend.id === target);
   if (!requested || requested.kind === "simulator") return;

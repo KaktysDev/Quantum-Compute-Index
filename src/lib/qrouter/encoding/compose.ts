@@ -134,7 +134,17 @@ export function encodeBundles(input: {
   return input.compiled.map((item) => encodeForBackend({
     envelope: input.envelope,
     backend: item.backend,
-    analysis: input.analysis,
+    analysis: {
+      ...input.analysis,
+      qubits: item.transpilation.after.qubits,
+      classicalBits: item.transpilation.after.classicalBits,
+      depth: item.transpilation.after.depth,
+      gates: item.transpilation.after.gates,
+      twoQubitGates: item.transpilation.after.twoQubitGates,
+      measurements: item.transpilation.after.operations.measure ?? 0,
+      gateCounts: item.transpilation.after.operations,
+      normalizedQasm2: item.transpilation.qasm,
+    },
     transpilation: item.transpilation,
     quoteBinding: item.quoteBinding,
   }));

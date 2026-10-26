@@ -6,11 +6,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   // Needed so per-page canonical URLs and Open Graph assets resolve absolutely.
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://qrouter.dev"),
-  title: "QRouter — Intelligent Routing for Quantum Compute",
-  description: "QRouter evaluates, compiles, prices, and intelligently routes quantum workloads across compatible backends through one API.",
+  title: "QRouter — Quantum Experiments You Can Review",
+  description: "Plan private quantum experiments, approve a budget, and keep inputs, execution records, and result evidence together.",
   openGraph: {
-    title: "QRouter — The Quantum Execution Layer",
-    description: "One API for workload-specific quantum backend evaluation, routing, and execution.",
+    title: "QRouter — Quantum Experiments You Can Review",
+    description: "A reviewable workflow for quantum experiments and their evidence.",
   },
 };
 

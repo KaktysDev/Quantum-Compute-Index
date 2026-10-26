@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BraketClient } from "@aws-sdk/client-braket";
-import { sampleSnapshot } from "@/lib/qci/sample";
 import * as store from "@/lib/qci/store";
 import { POLICIES, rankDevices } from "@/lib/qci/v2/routing";
 import type { DeviceDerived } from "@/lib/qci/v2/types";
@@ -13,7 +12,12 @@ import { resetProviderTargetCache, resolveProviderTarget } from "@/lib/qrouter/p
 import { routeCircuit } from "@/lib/qrouter/route";
 import { loadPublicRoutingContext, loadRoutingContext, resetRoutingContextCache } from "@/lib/qrouter/routingContext";
 import * as admin from "@/lib/supabase/admin";
-import type { Backend } from "@/lib/qrouter/types";
+import type { Backend, NativePricing } from "@/lib/qrouter/types";
+import { executionChannel } from "@/lib/qrouter/pricing";
+
+function testPricing(backend: Backend): NativePricing {
+  return { kind: "per-shot", usdPerShot: backend.pricePerShot, usdPerTask: backend.pricePerTask, source: "test fixture", observedAt: "2026-01-01T00:00:00Z", validUntil: "9999-12-31T00:00:00Z", channel: executionChannel(backend) };
+}
 
 const BELL = `OPENQASM 2.0;
 include "qelib1.inc";
@@ -29,6 +33,7 @@ function qpus(): Backend[] {
   return BACKENDS.filter((backend) => backend.kind === "qpu").map((backend) => ({
     ...backend,
     available: true,
+    nativePricing: testPricing(backend),
     status: "online",
   }));
 }
@@ -47,7 +52,7 @@ function policyPool(): Backend[] {
     { ...base, id: "cheap", displayName: "Cheap", provider: "a", queueSeconds: 8_000, fidelity: 0.90, pricePerShot: 0.00001, pricePerTask: 0.01 },
     { ...base, id: "fast", displayName: "Fast", provider: "b", queueSeconds: 2, fidelity: 0.91, pricePerShot: 0.02, pricePerTask: 8 },
     { ...base, id: "precise", displayName: "Precise", provider: "c", queueSeconds: 4_000, fidelity: 0.999, pricePerShot: 0.008, pricePerTask: 3 },
-  ];
+  ].map((backend) => ({ ...backend, nativePricing: testPricing(backend) }));
 }
 
 function device(id: string, over: Partial<DeviceDerived> = {}): DeviceDerived {
@@ -76,10 +81,10 @@ function device(id: string, over: Partial<DeviceDerived> = {}): DeviceDerived {
 describe("routeCircuit policies and constraints", () => {
   it("selects different QPUs under cost, speed, and quality", () => {
     const backends = policyPool();
-    const cost = routeCircuit({ backends, analysis, shots: 1024, target: "auto", mode: "cost" });
-    const speed = routeCircuit({ backends, analysis, shots: 1024, target: "auto", mode: "speed" });
-    const quality = routeCircuit({ backends, analysis, shots: 1024, target: "auto", mode: "quality" });
-    const balanced = routeCircuit({ backends, analysis, shots: 1024, target: "auto", mode: "balanced" });
+    const cost = routeCircuit({ backends, analysis, shots: 1024, target: "auto", mode: "cost", constraints: { executionIntent: "hardware" } });
+    const speed = routeCircuit({ backends, analysis, shots: 1024, target: "auto", mode: "speed", constraints: { executionIntent: "hardware" } });
+    const quality = routeCircuit({ backends, analysis, shots: 1024, target: "auto", mode: "quality", constraints: { executionIntent: "hardware" } });
+    const balanced = routeCircuit({ backends, analysis, shots: 1024, target: "auto", mode: "balanced", constraints: { executionIntent: "hardware" } });
 
     expect(cost.selected.id).toBe("cheap");
     expect(speed.selected.id).toBe("fast");
@@ -89,7 +94,7 @@ describe("routeCircuit policies and constraints", () => {
   });
 
   it("honours kind, provider, fidelity, queue, and cost constraints", () => {
-    const backends = BACKENDS.map((backend) => ({ ...backend, available: true, status: "online" as const }));
+    const backends = BACKENDS.map((backend) => ({ ...backend, nativePricing: testPricing(backend), available: true, status: "online" as const }));
     expect(routeCircuit({
       backends, analysis, shots: 128, target: "auto", mode: "balanced",
       constraints: { kind: "simulator" },
@@ -97,7 +102,7 @@ describe("routeCircuit policies and constraints", () => {
 
     expect(routeCircuit({
       backends, analysis, shots: 128, target: "auto", mode: "cost",
-      constraints: { providers: ["ibm"] },
+      constraints: { providers: ["ibm"], executionIntent: "hardware" },
     }).selected.id).toBe("ibm-brisbane");
 
     expect(routeCircuit({
@@ -131,7 +136,7 @@ describe("routeCircuit policies and constraints", () => {
   });
 
   it("keeps estimated NQH identical across candidates", () => {
-    const decision = routeCircuit({ backends: qpus(), analysis, shots: 2048, target: "auto", mode: "balanced" });
+    const decision = routeCircuit({ backends: qpus(), analysis, shots: 2048, target: "auto", mode: "balanced", constraints: { executionIntent: "hardware" } });
     const values = new Set(decision.candidates.map((item) => item.estimatedNqh));
     expect(values.size).toBe(1);
   });
@@ -139,7 +144,7 @@ describe("routeCircuit policies and constraints", () => {
   it("still offers alternatives when a pinned QPU is unavailable", () => {
     try {
       routeCircuit({
-        backends: BACKENDS.map((backend) => backend.id === "ibm-brisbane" ? { ...backend, available: false } : { ...backend, available: true }),
+        backends: BACKENDS.map((backend) => backend.id === "ibm-brisbane" ? { ...backend, available: false } : { ...backend, nativePricing: testPricing(backend), available: true }),
         analysis, shots: 64, target: "ibm-brisbane", mode: "balanced",
       });
       expect.unreachable("expected pinned backend to fail");
@@ -151,81 +156,25 @@ describe("routeCircuit policies and constraints", () => {
 });
 
 describe("routing context cache", () => {
-  afterEach(() => {
-    resetRoutingContextCache();
-    vi.restoreAllMocks();
-  });
-
-  it("reuses a warm demo snapshot instead of refetching", async () => {
-    const snap = vi.spyOn(store, "getLatestSnapshot").mockResolvedValue(sampleSnapshot());
-    const first = await loadRoutingContext(true);
-    const second = await loadRoutingContext(true);
-    expect(snap).toHaveBeenCalledTimes(1);
-    expect(second).toBe(first);
-  });
-
-  it("coalesces concurrent demo loads onto one snapshot read", async () => {
-    let finish!: (value: ReturnType<typeof sampleSnapshot>) => void;
-    const snap = vi.spyOn(store, "getLatestSnapshot").mockImplementation(
-      () => new Promise((resolve) => { finish = resolve; }),
-    );
-    const pending = Promise.all([loadRoutingContext(true), loadRoutingContext(true)]);
-    expect(snap).toHaveBeenCalledTimes(1);
-    finish(sampleSnapshot());
-    const [left, right] = await pending;
-    expect(left).toBe(right);
-  });
-
-  it("keeps demo, live, and public catalogs on separate cache keys", async () => {
-    vi.spyOn(store, "getLatestSnapshot").mockResolvedValue(sampleSnapshot());
+  afterEach(() => { resetRoutingContextCache(); vi.restoreAllMocks(); });
+  it("never reads the legacy index for demo, live, or public execution", async () => {
+    const indexRead = vi.spyOn(store, "getLatestSnapshot").mockRejectedValue(new Error("research must stay isolated"));
     vi.spyOn(healthMod, "loadPersistedBackendHealth").mockResolvedValue([]);
-    const maybeSingle = vi.fn().mockResolvedValue({
-      data: { id: 9, ts: "2026-09-01T00:00:00Z", source: "live", price: 1100, vwap: 15, components: [] },
-    });
-    vi.spyOn(admin, "createAdminClient").mockReturnValue({
-      from: (table: string) => {
-        if (table === "qci_snapshots") {
-          return { select: () => ({ order: () => ({ limit: () => ({ maybeSingle }) }) }) };
-        }
-        return { select: async () => ({ data: [], error: null }) };
-      },
-    } as never);
-
-    const demo = await loadRoutingContext(true);
-    const live = await loadRoutingContext(false);
-    const pub = await loadPublicRoutingContext();
-    expect(demo.snapshot.id).toBeNull();
-    expect(live.snapshot.id).toBe(9);
-    expect(pub.snapshot.id).toBeNull();
-    expect(maybeSingle).toHaveBeenCalledTimes(1);
-
-    await loadRoutingContext(false);
-    expect(maybeSingle).toHaveBeenCalledTimes(1);
+    for (const context of await Promise.all([loadRoutingContext(true), loadRoutingContext(false), loadPublicRoutingContext()])) {
+      expect(context.snapshot).toMatchObject({ id: null, source: "unavailable", components: [] });
+      expect(context.backends.every((b) => b.pricePerNqh == null)).toBe(true);
+    }
+    expect(indexRead).not.toHaveBeenCalled();
   });
-
-  it("loads the public snapshot and health in parallel on a cache miss", async () => {
-    let releaseSnapshot!: () => void;
-    let releaseHealth!: () => void;
-    let snapshotStarted!: () => void;
-    let healthStarted!: () => void;
-    const snapshotReady = new Promise<void>((resolve) => { snapshotStarted = resolve; });
-    const healthReady = new Promise<void>((resolve) => { healthStarted = resolve; });
-    vi.spyOn(store, "getLatestSnapshot").mockImplementation(async () => {
-      snapshotStarted();
-      await new Promise<void>((resolve) => { releaseSnapshot = resolve; });
-      return sampleSnapshot();
-    });
-    vi.spyOn(healthMod, "loadPersistedBackendHealth").mockImplementation(async () => {
-      healthStarted();
-      await new Promise<void>((resolve) => { releaseHealth = resolve; });
-      return [];
-    });
-
-    const pending = loadPublicRoutingContext();
-    await Promise.all([snapshotReady, healthReady]);
-    releaseSnapshot();
-    releaseHealth();
-    await expect(pending).resolves.toMatchObject({ snapshot: { source: "sample" } });
+  it("coalesces health reads and keeps context keys separate", async () => {
+    const health = vi.spyOn(healthMod, "loadPersistedBackendHealth").mockResolvedValue([]);
+    const [left, right] = await Promise.all([loadPublicRoutingContext(), loadPublicRoutingContext()]);
+    expect(left).toBe(right);
+    expect(await loadPublicRoutingContext()).toBe(left);
+    expect(health).toHaveBeenCalledOnce();
+    expect(await loadRoutingContext(true)).not.toBe(left);
+    expect(await loadRoutingContext(false)).not.toBe(left);
+    expect(health).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -299,11 +248,12 @@ describe("catalog and health indexes", () => {
     expect(withQciSnapshot([])).toBe(BACKENDS);
   });
 
-  it("overlays QCI queue and price without changing qubit counts", () => {
+  it("ignores research index observations for execution", () => {
     const backends = withQciSnapshot([{
       provider: "IonQ", qpu: "Aria", capacity: 999, clops: 50, queueSeconds: 3, fid2q: 0.91, pricePerNqh: 8, status: "live",
     } as never]);
-    expect(backends.find((item) => item.id === "ionq-aria-1")).toMatchObject({ qubits: 25, queueSeconds: 3, clops: 50, pricePerNqh: 8 });
+    expect(backends.find((item) => item.id === "ionq-aria-1")).toMatchObject({ qubits: 25, queueSeconds: 1200 });
+    expect(backends.find((item) => item.id === "ionq-aria-1")?.pricePerNqh).toBeUndefined();
   });
 
   it("indexes health by backend id and leaves an empty overlay untouched", () => {

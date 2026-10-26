@@ -68,6 +68,27 @@ class CompilerTest(unittest.TestCase):
         self.assertEqual(job["status"], "completed")
         self.assertEqual(sum(job["result"]["counts"].values()), 128)
         self.assertTrue(set(job["result"]["counts"]).issubset({"00", "11"}))
+        self.assertEqual(job["result"]["metadata"]["result_coordinates"], "classical")
+
+    def test_swapped_measurements_return_classical_memory(self):
+        source = BELL.replace("h q[0];\ncx q[0],q[1];\nmeasure q -> c;", "x q[0];\nmeasure q[0] -> c[1];\nmeasure q[1] -> c[0];")
+        payload = JobInput(qasm=source, shots=16)
+        insert_stored_job("swapped-measurements", payload)
+        execute("swapped-measurements", payload)
+        result = get_stored_job("swapped-measurements")["result"]
+        self.assertEqual(result["counts"], {"10": 16})
+        self.assertEqual(result["metadata"]["result_coordinates"], "classical")
+
+    def test_layout_uses_numeric_logical_indices_and_includes_routing_once(self):
+        class FinalLayout:
+            def final_index_layout(self, filter_ancillas):
+                self.assert_filter = filter_ancillas
+                return [2, 0]
+        class Compiled:
+            layout = FinalLayout()
+        result = worker.serialize_layout(Compiled())
+        self.assertEqual(result["logicalToPhysical"], {"0": 2, "1": 0})
+        self.assertEqual(result["routingPermutation"], [])
 
     def test_reuses_a_persisted_job_for_the_same_idempotency_key(self):
         payload = JobInput(qasm=BELL, shots=16)

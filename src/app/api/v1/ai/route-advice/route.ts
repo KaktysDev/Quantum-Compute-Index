@@ -33,7 +33,9 @@ function publicCandidates(decision: ReturnType<typeof routeCircuit>) {
     rejectionReasons: candidate.rejectionReasons,
     score: candidate.score,
     estimatedProviderCost: candidate.estimatedProviderCost,
-    estimatedNqh: candidate.estimatedNqh,
+    estimatedTotalCost: candidate.estimatedTotalCost,
+    pricingEvidence: candidate.pricingEvidence,
+    paretoOptimal: candidate.paretoOptimal,
     quoteBinding: candidate.quoteBinding,
     compiled: candidate.compiled,
   }));
@@ -45,7 +47,7 @@ function deterministicAdvice(
 ) {
   return [
     `- Recommended ${decision.selected.displayName} using the ${decision.mode} policy.`,
-    `- Estimated total: $${quote.total.toFixed(6)}; provider execution: $${quote.providerCost.toFixed(6)}.`,
+    `- Total reservation: $${quote.total.toFixed(6)}; provider attempt budget: $${quote.providerCost.toFixed(6)}.`,
     `- ${decision.explanation.join(" ")}`,
   ].join("\n");
 }
@@ -53,9 +55,9 @@ function deterministicAdvice(
 async function explainRoute(prompt: unknown, fallback: string, signal: AbortSignal) {
   const system = [
     "You are the QRouter route advisor.",
-    "The QCI Engine has already selected the quantum backend and computed the quote.",
+    "The workload router has already selected a compiled backend and computed a native-rate estimate.",
     "Use only the supplied JSON, never change the selected backend or invent prices.",
-    "Keep the response under 180 words with short bullets and label sample QCI data clearly.",
+    "Keep the response under 180 words with short bullets. Distinguish compiled artifact checks, pricing estimates, and measured results. Never claim quantum advantage or guaranteed accuracy from catalog fidelity.",
   ].join(" ");
   const warnings: string[] = [];
 
@@ -120,6 +122,7 @@ export async function POST(request: Request) {
       optimizationLevel: input.optimization_level,
       source: input.circuit,
       format: input.format,
+      failover: { enabled: input.failover, max_attempts: input.max_attempts },
     });
     const { decision, quote } = prepared;
     const candidates = publicCandidates(decision);
@@ -141,12 +144,7 @@ export async function POST(request: Request) {
         candidates,
       },
       quote,
-      qci: {
-        snapshotId: snapshot.id,
-        timestamp: snapshot.ts,
-        source: snapshot.source,
-        pricePerQcHour: snapshot.vwap,
-      },
+      qci: null,
       transpilation: slimTranspilation(publicTranspilation(prepared.transpilation)),
       question: input.question ?? "Explain the selected route, the main tradeoff, and one practical optimization to try next.",
     };

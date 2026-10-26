@@ -8,36 +8,11 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Play } from "lucide-react";
 
 const STAGES = [
-  {
-    name: "Analyze",
-    label: "Circuit profile",
-    prompt: "bell.qasm validated · OpenQASM 2.0 · 2 qubits · depth 4 · H + CX",
-    result: "CIRCUIT PROFILE READY · 2Q / DEPTH 4",
-  },
-  {
-    name: "Transpile",
-    label: "Target-aware compile",
-    prompt: "Compile for QCI Aer GPU · all-to-all connectivity · optimization level 2.",
-    result: "LOCAL COMPILE READY · ARTIFACT STORED",
-  },
-  {
-    name: "Score",
-    label: "Eligibility and QCI score",
-    prompt: "Apply credentials and hard constraints first · 1 of 8 catalog targets is routable.",
-    result: "QCI AER GPU · ONLY ELIGIBLE TARGET",
-  },
-  {
-    name: "Route",
-    label: "Balanced policy",
-    prompt: "Select QCI Aer GPU · 2-second queue · reserve the $0.018246 total quote.",
-    result: "QCI AER GPU SELECTED · QUOTE RESERVED",
-  },
-  {
-    name: "Execute",
-    label: "Normalized result",
-    prompt: "Execution completed · |00⟩ 51.4% · |11⟩ 48.6% · result and QASM ready.",
-    result: "EXECUTION COMPLETED · NORMALIZED COUNTS READY",
-  },
+  { name: "Define", label: "Experiment intent", prompt: "Question: does bell.qasm preserve the expected two-qubit correlation? Record the reference and success criterion.", result: "QUESTION + CRITERION RECORDED" },
+  { name: "Quote", label: "Execution plan", prompt: "Choose a simulation or hardware run. Review the provider estimate, compilation fee, and platform fee together.", result: "EXECUTION PLAN READY FOR REVIEW" },
+  { name: "Approve", label: "Campaign budget", prompt: "Review the complete quote against the campaign budget. Approve the plan explicitly before execution.", result: "BUDGET APPROVAL PRECEDES EXECUTION" },
+  { name: "Run", label: "Execution record", prompt: "Compile the circuit for a supported backend. Keep the source, compilation settings, and provider attempt with the experiment.", result: "INPUTS + EXECUTION CONTEXT CONNECTED" },
+  { name: "Review", label: "Result evidence", prompt: "Compare the recorded result with the reference. Inspect uncertainty and keep an inconclusive outcome visible.", result: "ASSESS THE EVIDENCE AGAINST THE QUESTION" },
 ] as const;
 
 const STAGE_MS = 4600;
@@ -98,12 +73,12 @@ export default function HeroConsole() {
   const stage = STAGES[active];
 
   return (
-    <div ref={hostRef} className="ql-console" aria-label="QRouter workflow demo">
+    <div ref={hostRef} className="ql-console" aria-label="Illustrative experiment workflow">
       <span className="ql-console-scanline" aria-hidden="true" />
       <header className="ql-console-chrome">
         <i /><i /><i />
-        <b>qrouter · local execution</b>
-        <em>~/examples/bell.qasm</em>
+        <b>qrouter · experiment workflow</b>
+        <em>illustrative campaign</em>
       </header>
 
       <div className="ql-console-tabs" role="tablist" aria-label="Workflow stages">
@@ -141,10 +116,10 @@ export default function HeroConsole() {
           <span className="ql-caret" aria-hidden="true" />
         </p>
         <div className="ql-console-meta">
-          <span>MODE <b>BALANCED</b></span>
-          <span>TARGET <b>AUTO</b></span>
-          <span>SHOTS <b>1,024</b></span>
-          <button type="button" aria-label="Run sample" onClick={() => {
+          <span>QUESTION <b>DEFINED</b></span>
+          <span>BUDGET <b>REVIEWED</b></span>
+          <span>EVIDENCE <b>RECORDED</b></span>
+          <button type="button" aria-label="Show next workflow stage" onClick={() => {
             pinnedUntil.current = Date.now() + 9000;
             setActive((v) => (v + 1) % STAGES.length);
           }}>
@@ -156,7 +131,7 @@ export default function HeroConsole() {
       <footer className="ql-console-result">
         <Check />
         <span key={stage.result} className="ql-result-text">{stage.result}</span>
-        <small>LOCAL DEMO · CATALOG RATE SNAPSHOT</small>
+        <small>WORKFLOW ILLUSTRATION · NO JOB IS SUBMITTED</small>
       </footer>
     </div>
   );

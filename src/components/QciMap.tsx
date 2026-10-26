@@ -1,65 +1,8 @@
 "use client";
 
-// ──────────────────────────────────────────────────────────────────────────────
-// The QRouter map.
-//
-// One picture of the whole system: the ROUTER in the middle, the machines it can
-// route to fanning left, and what an hour on them costs to produce fanning
-// right. The router scores today's basket under the selected policy, and the
-// winning path lights up.
-//
-// WHY THE ROUTER IS THE CENTRE AND NOT THE PRICE
-// The index and the router are not two products. The index is the price signal
-// the router routes on. Drawing the price alone in the middle showed a number
-// with no consumer; drawing the router with the price inside it shows what the
-// number is FOR.
-//
-// THE RANKING IS REAL, THE TRAFFIC IS NOT
-// The winning machine is computed from the published point by routing.ts under
-// QRouter's own published policy weights. It is a real answer to "where would a
-// job land right now". It is NOT a replay of live jobs, and the map says so.
-//
-// ── WHAT IS DRAWN AT REST, AND WHY ───────────────────────────────────────────
-// An earlier version drew everything it knew, all the time, and buried the
-// finding. The correction over-shot: it hid every NAME behind a hover too, so
-// the resting picture was a ring of anonymous grey dots that told a first-time
-// reader nothing at all and could not be understood without pawing at it.
-//
-// The rule now is the middle one. A node's IDENTITY is always drawn — you can
-// read "IQM", "Capital", "Energy" without touching anything — and only its
-// NUMBERS (rate, share, unit value) wait for the cursor. Identity is what makes
-// the picture legible; numbers are what make it noisy.
-//
-// Node area is still strictly proportional to real contribution, so the energy
-// node is genuinely a dot next to capital's; the picture still states that
-// finding.
-//
-// FORM
-// Flat. There was a pass at rendering each node as a glass bubble — radial
-// gradient, specular cap, drop shadow, a slow bob, blurred caustics behind the
-// field — and the result read as a tray of scattered ball bearings. Fake
-// lighting is not depth; it is just noise with a highlight on it.
-//
-// So the whole picture is now hairlines and flat marks:
-//   · Targets are hollow rings. Cost drivers are flat discs. That is the entire
-//     encoding of which side of the router something is on, and it survives at
-//     5px the way no gradient does.
-//   · The core is a bare ring — no fill, no glow. It can be bare because every
-//     edge stops EDGE_GAP short of the marks at both ends, so nothing has to be
-//     painted opaque to hide a line crossing it. Those gaps are most of what
-//     makes the diagram read as drawn rather than as a wireframe.
-//   · There is exactly ONE emphasised thing: the machine the policy picked. Its
-//     edge and ring go to full ink and it takes a solid centre dot. Everything
-//     else sits between 18% and 45%.
-// Hue is still reserved for status, per the console's house rule.
-//
-// TWO AUDIENCES, ONE LAYOUT
-//   "public"     — what it costs, where a job lands, what it is made of.
-//   "diagnostic" — per-field provenance and tier, staleness, merges, exclusions.
-// Keeping them one component is deliberate: the diagnostic view has to be
-// looking at exactly the same numbers the public view shows, or it is not a
-// check on anything.
-// ──────────────────────────────────────────────────────────────────────────────
+// Research-only visualization of the QCI basket and production-cost scenarios.
+// This ranking has no circuit, provider-access checks, or execution quote.
+// It is independent from the workload execution router.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { COST_CONSTANTS_REVIEWED_ON } from "@/lib/qci/v2/registry";
@@ -523,11 +466,11 @@ export default function QciMap({
     <section className="qci-map-panel" data-mode={mode}>
       <header className="qci-sec-head">
         <div>
-          <h2>{diagnostic ? "Router attribution" : "Where your job would run"}</h2>
+          <h2>{diagnostic ? "Research basket attribution" : "Research basket comparison"}</h2>
           <p>
             {diagnostic
-              ? "Every constituent with its source tier, staleness and exclusion state, under the live routing policy."
-              : "Pick a policy and the router re-decides. Click any bubble for its numbers."}
+              ? "Constituent provenance, staleness, and exclusion state under a hypothetical basket policy."
+              : "Explore a hypothetical basket ranking. It does not check your circuit or predict its outcome."}
           </p>
         </div>
         {diagnostic ? (
@@ -543,8 +486,8 @@ export default function QciMap({
           Real weights, real ranking. Changing this re-ranks the live basket and
           re-lights the winning path, so the reader can see the trade-off rather
           than be told about it. */}
-      <div className="qci-policy-bar" role="group" aria-label="Routing policy">
-        <span className="qci-policy-label">Policy</span>
+      <div className="qci-policy-bar" role="group" aria-label="Hypothetical research policy">
+        <span className="qci-policy-label">Research policy</span>
         <div className="qci-seg">
           {POLICIES.map((p) => (
             <button
@@ -561,7 +504,7 @@ export default function QciMap({
         <span className="qci-policy-note">
           {ranking.missingAxes.length > 0
             ? "No queue data today — its weight is shared out, not scored as zero."
-            : "Live ranking, not replayed traffic."}
+            : "Hypothetical ranking · no workload or access checks."}
         </span>
       </div>
 
@@ -576,7 +519,7 @@ export default function QciMap({
             className="qci-graph"
             viewBox={`0 0 ${W} ${H}`}
             role="img"
-            aria-label="QRouter routing map over the Quantum Compute Index"
+            aria-label="Quantum Compute Index research basket and cost model"
             preserveAspectRatio="xMidYMid meet"
           >
             {/* The two fan headings and the intake. Set as micro-caps: they are
@@ -650,11 +593,11 @@ export default function QciMap({
                 }}
                 tabIndex={0}
                 role="button"
-                aria-label="QRouter core and index summary"
+                aria-label="Research index summary"
               >
                 <circle className="qci-hub-ring" r={HUB_R} />
                 <text y={-13} textAnchor="middle" className="qci-hub-brand">
-                  QROUTER
+                  QCI MODEL
                 </text>
                 <text y={10} textAnchor="middle" className="qci-hub-value">
                   ${money(shownPrice)}
@@ -735,7 +678,7 @@ export default function QciMap({
               className="qci-verdict"
               onClick={() => setSelected({ kind: "device", id: winner.device.id })}
             >
-              <span className="qci-verdict-eyebrow">Routes to</span>
+              <span className="qci-verdict-eyebrow">Basket ranks first</span>
               <span className="qci-verdict-name">
                 {winner.device.provider} · {winner.device.device}
               </span>
@@ -900,26 +843,26 @@ function QciMapDetail({
             mono
           />
           {d.queueSeconds != null ? (
-            <Row k="Queue now" v={duration(d.queueSeconds)} hint="live from the control plane" mono />
+            <Row k="Recorded queue" v={duration(d.queueSeconds)} hint="observation at the snapshot time, not a completion-time guarantee" mono />
           ) : null}
           <Row
             k="Cost per capability"
             v={`$${money(d.qualityAdjustedPrice, 0)} / hour`}
-            hint="price adjusted for how much it can actually do"
+            hint="price divided by a modelled hardware capability proxy"
             mono
           />
           <Row k="Share of index" v={pct(d.weight)} mono />
           {d.costPerHour ? (
-            <Row k="Costs to run" v={`$${money(d.costPerHour)} / hour`} mono />
+            <Row k="Modelled running cost" v={`$${money(d.costPerHour)} / hour`} mono />
           ) : null}
           {d.costCoverage ? (
-            <Row k="Price vs cost" v={`${d.costCoverage.toFixed(1)}× cost`} mono />
+            <Row k="Price vs modelled cost" v={`${d.costCoverage.toFixed(1)}× cost`} mono />
           ) : null}
           <Row
             k="Data"
             v={
               d.fresh ? (
-                <span className="qci-pill ok">measured today</span>
+                <span className="qci-pill ok">recorded today</span>
               ) : (
                 <span className="qci-pill warn">
                   last seen {d.staleDays}d ago
@@ -1006,7 +949,7 @@ function QciMapDetail({
                   <span className="qci-detail-value">
                     <b>${money(d.pricePerHour)}</b>
                     <small className={d.fresh ? "ok" : "warn"}>
-                      {d.fresh ? "live" : `${d.staleDays}d ago`}
+                      {d.fresh ? "fresh" : `${d.staleDays}d ago`}
                     </small>
                   </span>
                 </button>
@@ -1014,7 +957,7 @@ function QciMapDetail({
             ))}
         </ul>
         <button className="qci-detail-back" onClick={() => onSelect({ kind: "root" })}>
-          ← Back to the router
+          ← Back to the research basket
         </button>
       </aside>
     );
@@ -1083,25 +1026,25 @@ function QciMapDetail({
         </dl>
         {selected.group === "energy" ? (
           <p className="qci-detail-note strong">
-            Electricity is tracked live and it is small. The tracked hardware draws roughly{" "}
+            This cost scenario uses assumed hardware power of roughly{" "}
             {money(c?.basketPowerKw ?? 0, 0)} kW; at industrial tariffs that is a few dollars an
             hour against list prices in the thousands. Doubling electricity prices would move the
-            cost of a quantum hour by about {((c?.energyElasticity ?? 0) * 100).toFixed(2)}%. The
+            modelled production cost by about {((c?.energyElasticity ?? 0) * 100).toFixed(2)}%. The
             node is drawn to scale.
           </p>
         ) : null}
         {selected.group === "cryogenics" ? (
           <p className="qci-detail-note">
             Cryogens and consumables track the US producer price index for industrial gas
-            manufacturing. No daily helium price feed exists anywhere, so this is an honest proxy
-            rather than a helium spot price.
+            manufacturing. This collection uses a broad industrial proxy
+            rather than an operator invoice or a helium spot price.
           </p>
         ) : null}
         {selected.group === "capital" ? (
           <p className="qci-detail-note strong">
-            This is what sets the floor under quantum compute prices: paying off a
+            This scenario assumes the capital cost of a
             multi-million-dollar machine over a five-year life, spread across the fraction of hours
-            it can actually be sold. It dwarfs everything else.
+            it can actually be sold. Its contribution depends on the assumed utilization and depreciation.
           </p>
         ) : null}
         {selected.group === "labour" ? (
@@ -1112,7 +1055,7 @@ function QciMapDetail({
         ) : null}
         {items.length > 0 ? (
           <>
-            <p className="qci-detail-note">Live inputs feeding this driver.</p>
+            <p className="qci-detail-note">Recorded inputs to this scenario.</p>
             <ul className="qci-detail-list">
               {items.map((f) => (
                 <li key={f.id}>
@@ -1133,20 +1076,18 @@ function QciMapDetail({
         ) : hasFeed ? (
           /* A collector exists and did not answer — a real, fixable outage. */
           <p className="qci-detail-note warn">
-            This driver has a live source and it is not reporting, so the pinned default is in
-            force. That is an outage or a missing API key, not the normal state.
+            No observation is available from the configured collector. A pinned default is in use; inspect its source and age before interpreting this scenario.
           </p>
         ) : (
           /* No feed exists in the world. Saying "not reporting right now" here
              would promise a number that is never coming. */
           <p className="qci-detail-note">
-            There is no feed for this anywhere — nobody publishes it. It is modelled from the
-            installed cost of the system, and those constants were last reviewed{" "}
+            This scenario uses configured constants rather than operator-cost observations. Those constants were last reviewed{" "}
             {COST_CONSTANTS_REVIEWED_ON}.
           </p>
         )}
         <button className="qci-detail-back" onClick={() => onSelect({ kind: "root" })}>
-          ← Back to the router
+          ← Back to the research basket
         </button>
       </aside>
     );
@@ -1161,8 +1102,8 @@ function QciMapDetail({
   return (
     <aside className="qci-map-detail" key="root">
       <header>
-        <p className="qci-detail-eyebrow">QRouter core</p>
-        <h3>{policyLabel} routing</h3>
+        <p className="qci-detail-eyebrow">Research basket</p>
+        <h3>{policyLabel} research ranking</h3>
       </header>
 
       <p className="qci-detail-note">{policyBlurb}</p>
@@ -1170,14 +1111,14 @@ function QciMapDetail({
       {winner ? (
         <div className="qci-rank-card" data-winner="true">
           <p>
-            A job submitted now lands on <b>{winner.device.provider} {winner.device.device}</b> at $
-            {money(winner.device.pricePerHour)}/hour.
+            This hypothetical basket ranks <b>{winner.device.provider} {winner.device.device}</b> first, using a published rate of $
+            {money(winner.device.pricePerHour)}/hour. This is not an execution recommendation.
           </p>
           <AxisBars axes={winner.axes} weights={weights} />
         </div>
       ) : (
         <p className="qci-detail-note warn">
-          No machine in today&rsquo;s basket carries a usable price, so there is nothing to route to.
+          No machine in the recorded basket carries a usable price for this research comparison.
         </p>
       )}
 
@@ -1215,7 +1156,7 @@ function QciMapDetail({
         </p>
       ) : null}
 
-      <h4 className="qci-detail-subhead">The price it routes on</h4>
+      <h4 className="qci-detail-subhead">Published rates and model outputs</h4>
       {/* Public reads five figures. Everything below that line — the axis
           sources, the coverage ratios, the repricing-versus-hardware split — is
           a methodology check rather than a fact about today, and a reader who
@@ -1234,7 +1175,7 @@ function QciMapDetail({
           mono
         />
         {point.costBasisPerHour ? (
-          <Row k="Costs to produce" v={`$${money(point.costBasisPerHour)} / hour`} mono />
+          <Row k="Modelled production cost" v={`$${money(point.costBasisPerHour)} / hour`} mono />
         ) : null}
         {diagnostic ? (
           <>
@@ -1245,7 +1186,7 @@ function QciMapDetail({
               mono
             />
             {point.costCoverageRatio ? (
-              <Row k="Price vs cost" v={`${point.costCoverageRatio.toFixed(1)}× cost`} mono />
+              <Row k="Price vs modelled cost" v={`${point.costCoverageRatio.toFixed(1)}× cost`} mono />
             ) : null}
             <Row
               k="Coverage"

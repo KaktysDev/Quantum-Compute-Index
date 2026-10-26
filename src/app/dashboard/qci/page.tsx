@@ -35,6 +35,8 @@ export default async function QciPage() {
 
   return (
     <div className="console-page qci-page">
+      <div className="console-page-heading"><div><p className="qr-eyebrow">Research</p><h1>Quantum Compute Index</h1><p>An experimental basket of published rates and hardware proxies.</p></div><Link href="/dashboard/experiments" className="console-primary">Open experiments <ArrowRight size={14} /></Link></div>
+      <div className="console-note"><strong>Research model.</strong> This aggregate is not a job quote, a transaction benchmark, or a measure of algorithm success. Device capability and production-cost figures include modelling assumptions. Use your experiment’s quote and measured results for execution decisions.</div>
       {latest ? (
         /* The hero carries four facts and one number. Everything that used to
            sit here as permanent body copy — the methodology sentence, the
@@ -42,13 +44,12 @@ export default async function QciPage() {
            reader who returns to this page daily does not need the paragraph and
            a reader arriving for the first time gets it from the map below. */
         <header className="qci-hero">
-          <p className="qci-hero-eyebrow">Quantum Compute Index</p>
+          <p className="qci-hero-eyebrow">Research index level</p>
           <div className="qci-hero-line">
             <h1>
-              <span className="qci-hero-currency">$</span>
-              {money(latest.usdPerQpuHour)}
+              {money(latest.level, 2)}
             </h1>
-            <span className="qci-hero-unit">per QPU-hour</span>
+            <span className="qci-hero-unit">1,000 at inception</span>
             <span
               className="qci-hero-change"
               data-dir={latest.inception ? "new" : flat ? "flat" : up ? "up" : "down"}
@@ -63,28 +64,17 @@ export default async function QciPage() {
 
           <dl className="qci-hero-stats qci-card">
             <div>
-              <dt>Level</dt>
-              <dd>{money(latest.level, 2)}</dd>
-              <small>1,000 at inception</small>
+              <dt>Basket hourly rate</dt>
+              <dd>${money(latest.usdPerQpuHour)}</dd>
+              <small>published rate aggregate</small>
             </div>
             <div>
               <dt>Machines</dt>
               <dd>{latest.devices.length}</dd>
               <small>across {providers} providers</small>
             </div>
-            {latest.costBasisPerHour ? (
-              <div>
-                <dt>Cost to produce</dt>
-                <dd>${money(latest.costBasisPerHour)}</dd>
-                <small>
-                  {latest.costCoverageRatio
-                    ? `price is ${latest.costCoverageRatio.toFixed(1)}× that`
-                    : "modelled, per hour"}
-                </small>
-              </div>
-            ) : null}
             <div>
-              <dt>Measured</dt>
+              <dt>Snapshot recorded</dt>
               <dd>{since(latest.ts)}</dd>
               <small>{new Date(latest.ts).toISOString().slice(0, 10)}</small>
             </div>
@@ -92,7 +82,7 @@ export default async function QciPage() {
         </header>
       ) : (
         <header className="qci-hero">
-          <p className="qci-hero-eyebrow">Quantum Compute Index</p>
+          <p className="qci-hero-eyebrow">Research index level</p>
           <div className="qci-hero-line">
             <h1 className="qci-hero-empty">Awaiting the first measurement</h1>
           </div>
@@ -106,16 +96,15 @@ export default async function QciPage() {
         <section className="qci-map-panel">
           <header className="qci-sec-head">
             <div>
-              <h2>How a job gets routed</h2>
-              <p>Nothing is drawn here until real observations exist.</p>
+              <h2>Research basket</h2>
+              <p>No research basket is drawn until a stored observation exists.</p>
             </div>
           </header>
           <div className="qci-empty">
             <h3>No index points yet</h3>
             <p>{v2.emptyReason}</p>
             <p>
-              Trigger a refresh from Admin → Health. The index never renders synthetic history — a
-              blank panel means nothing has been measured, not that the chart failed.
+              No stored research snapshot is available. Experiment execution and quotes do not require a public index history.
             </p>
           </div>
         </section>
@@ -127,8 +116,8 @@ export default async function QciPage() {
         <Link href="/dashboard/routing">
           <Route size={15} />
           <span>
-            <b>Routing fabric</b>
-            <small>Where your job actually runs, and why</small>
+            <b>Execution targets</b>
+            <small>Inspect configured backend availability</small>
           </span>
           <ArrowRight size={13} />
         </Link>
@@ -144,7 +133,7 @@ export default async function QciPage() {
           <Cpu size={15} />
           <span>
             <b>Compute network</b>
-            <small>Providers, queues, fidelity and rates</small>
+            <small>Provider integration and capability details</small>
           </span>
           <ArrowRight size={13} />
         </Link>

@@ -1,3 +1,5 @@
+> **Implementation status (2026-10-26):** This is a historical design proposal, not a support or correctness guarantee. The current implementation distinguishes classical-memory, logical-qubit and physical-qubit results and consumes provider-specific quoted payloads at dispatch. Numerical circuit checks are reported as **checked**, not formal proofs. Native conversion equivalence remains unsupported. Basis/angle preparation validates inputs; amplitude preparation and qRAM are unavailable research scaffolding. Dynamic, timed and photonic execution require independently validated backend support. Read the code and returned evidence status for current behavior; the phase tables and audit counts below are historical.
+
 # The QRouter Encoding Layer — Architecture, Evidence, and Migration Plan
 
 **Version:** `qee-1.0.0-draft` · **Status:** proposal · **Scope:** everything between a submitted program and the bytes a provider actually executes

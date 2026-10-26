@@ -58,6 +58,7 @@ export function deriveRequirements(workload: Workload): RequirementSet {
   let twoQubitGates = 0;
   if (program) {
     let measured = false;
+    const expanding = new Set<string>();
     const visit = (statements: typeof program.body, countMetrics: boolean) => {
       for (const statement of statements) {
         if (statement.op === "measure") {
@@ -66,6 +67,15 @@ export function deriveRequirements(workload: Workload): RequirementSet {
           continue;
         }
         if (statement.op === "gate") {
+          const definition = program.gate_defs[statement.name.toLowerCase()];
+          if (definition) {
+            if (expanding.has(statement.name)) throw new Error(`Recursive gate definition "${statement.name}" is not supported.`);
+            if (definition.args.length !== statement.qubits.length || definition.params.length !== statement.params.length) throw new Error(`Gate "${statement.name}" has the wrong number of operands or parameters.`);
+            expanding.add(statement.name);
+            visit(definition.body, countMetrics);
+            expanding.delete(statement.name);
+            continue;
+          }
           addInstruction(seen, statement.name, statement.qubits.length, statement.params.length);
           if (countMetrics) {
             gates += 1;
@@ -89,7 +99,6 @@ export function deriveRequirements(workload: Workload): RequirementSet {
       }
     };
     visit(program.body, true);
-    for (const def of Object.values(program.gate_defs)) visit(def.body, false);
   }
   const qubits = program ? program.qubits.reduce((sum, register) => sum + register.size, 0) : 0;
   const classicalBits = program ? program.clbits.reduce((sum, register) => sum + register.size, 0) : 0;

@@ -1,160 +1,45 @@
 import type { Metadata } from "next";
-import CompanyLogos from "@/components/CompanyLogos";
-import QciChart from "@/components/QciChart";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import SiteFooter from "@/components/SiteFooter";
 import LandingNav from "@/components/landing/LandingNav";
-import { getPublicQci } from "@/lib/qci/v2/store";
 import "../landing.css";
 
-export const dynamic = "force-dynamic";
-
 export const metadata: Metadata = {
-  title: "Quantum Compute Index and Pricing — QRouter",
-  description: "Methodology, data sources, update cadence, and limitations for the Quantum Compute Index.",
+  title: "Execution Pricing — QRouter",
+  description: "Understand QRouter's provider execution estimates, compilation fees, platform fees, and experiment campaign budgets.",
 };
 
-// These describe QCI 2.0 — the index this page now publishes. They used to
-// describe v1: "sample benchmarks", a quality-weighted blend, and a synthetic
-// "QC-hour". All three were retired with the engine. Full write-up:
-// docs/QCI-METHODOLOGY.md.
-const STEPS = [
-  {
-    n: "01",
-    title: "Observe the rate",
-    body: "Published hourly reservation rates, read from the sellers' own live rate cards. A machine with no published hourly rate does not enter the headline index — per-shot prices are never converted, because that conversion needs an assumption.",
-  },
-  {
-    n: "02",
-    title: "Deflate by capability",
-    body: "Each rate is divided by what the hardware can actually do, from the two numbers every vendor publishes: qubit count and median two-qubit error. Price is deflated by quality, not weighted by it, so a machine getting better reads as a price fall.",
-  },
-  {
-    n: "03",
-    title: "Chain-link the move",
-    body: "Only machines observed on both days are compared, and the index moves on their shared move. Adding or dropping a provider changes the basket without moving the level — a composition change is not a price change.",
-  },
+const PARTS = [
+  { n: "01", title: "Provider execution", formula: "The selected backend’s execution reservation", body: "Estimated from a dated native rate for the selected provider channel, multiplied by the allowed attempt budget. Unknown or expired rates block paid routing." },
+  { n: "02", title: "Compilation fee", formula: "$0.01 + $0.00002 × gates + $0.00008 × two-qubit gates", body: "Calculated from the compiled circuit. Two-qubit gates also count toward the total gate count. This software fee is shown separately from provider execution." },
+  { n: "03", title: "Platform fee", formula: "The greater of $0.005 or 8% of the provider reservation", body: "Charged per execution for the platform workflow. The exact amount appears in the quote alongside the compilation fee and provider estimate." },
 ];
 
-export default async function PricingPage() {
-  // Same source as the landing page and the console. This page used to read
-  // v1, which published a different figure under the same words.
-  const qci = await getPublicQci(365);
-  const money = (v: number) => v.toLocaleString("en-US", { maximumFractionDigits: 0 });
-
+export default function PricingPage() {
   return (
     <>
       <LandingNav />
       <main className="qci-subpage qci-light relative mx-auto w-full max-w-7xl px-6 sm:px-10">
-      {/* hero */}
-      <section className="qci-subpage-hero py-16 sm:py-20">
-        <p className="mono-label flex items-center gap-2 text-white/70">
-          <span className="inline-block h-1.5 w-1.5 bg-white" />
-          Pricing
-        </p>
-        <h1 className="qci-subpage-title mt-5 max-w-4xl text-white">
-          How the index is priced
-        </h1>
-        <p className="qci-subpage-lede mt-6 max-w-xl">
-          The Quantum Compute Index is an indicative view of normalized quantum-compute pricing across its configured data basket.
-        </p>
-      </section>
+        <section className="qci-subpage-hero py-16 sm:py-20">
+          <p className="mono-label flex items-center gap-2"><span className="inline-block h-1.5 w-1.5 bg-current" /> EXECUTION PRICING</p>
+          <h1 className="qci-subpage-title mt-5 max-w-4xl">Know what you are approving.</h1>
+          <p className="qci-subpage-lede mt-6 max-w-2xl">Each execution quote separates the provider estimate from QRouter’s software fees. Review the combined amount before approving an experiment campaign.</p>
+          <div className="mt-8 flex flex-wrap gap-5"><Link href="/dashboard/experiments" className="inline-flex items-center gap-2 text-sm font-medium">Open experiments <ArrowRight size={16} /></Link><Link href="/docs#pricing" className="text-sm underline underline-offset-4">Read the quote contract</Link></div>
+        </section>
 
-      {/* steps — a left-to-right flow: rates → score → blend */}
-      <section className="pb-6">
-        <div className="grid items-stretch gap-4 md:grid-cols-3">
-          {STEPS.map((s, i) => (
-            <div key={s.n} className="relative glass glass-hover sheen rounded-2xl p-7">
-              <p className="tabular text-3xl leading-none text-emerald-300/70">{s.n}</p>
-              <h3 className="mt-4 text-xl font-medium text-white">{s.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">{s.body}</p>
-              {i < STEPS.length - 1 && (
-                <span
-                  aria-hidden
-                  className="pointer-events-none absolute right-[-1.15rem] top-1/2 z-10 hidden -translate-y-1/2 text-lg text-[var(--muted)] md:block"
-                >
-                  →
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* simplified formula */}
-      <section className="py-10" id="methodology">
-        <div className="glass-panel rounded-2xl p-7 text-center sm:p-9">
-          <p className="mono-label">The index, in one line</p>
-          <p className="tabular mx-auto mt-4 max-w-full text-lg leading-relaxed text-white sm:text-2xl">
-            ln(I<sub>t</sub> / I<sub>t−1</sub>) = Σ w̄<sub>d</sub> · ln(π<sub>d,t</sub> / π
-            <sub>d,t−1</sub>)
-          </p>
-          <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-[var(--muted)]">
-            A matched-sample Törnqvist chain index over quality-deflated hourly rates. The sum runs
-            only over machines observed on both days. This is not an audited transaction benchmark.
-          </p>
-          <div className="mx-auto mt-8 grid max-w-4xl gap-4 text-left sm:grid-cols-2">
-            <div className="border-t border-white/10 pt-4"><p className="mono-label">What it represents</p><p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">What an hour of quantum computing costs across every machine on the market with a published hourly rate — one QPU-hour being one hour of exclusive access to one processor.</p></div>
-            <div className="border-t border-white/10 pt-4"><p className="mono-label">Data sources</p><p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">The sellers&rsquo; own published rate cards and the operators&rsquo; own calibration data. Every figure carries the tier it came from; nothing is ever simulated to fill a gap.</p></div>
-            <div className="border-t border-white/10 pt-4"><p className="mono-label">Update cadence</p><p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">One point per day. A day with thin coverage is published as provisional and marked as such on the chart rather than quietly smoothed.</p></div>
-            <div className="border-t border-white/10 pt-4"><p className="mono-label">Limitations</p><p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">Per-shot pricing is deliberately not converted into an hourly rate, so machines sold only per shot are outside the headline. Published list rates are not negotiated prices.</p></div>
+        <section id="fees" className="pb-16" aria-label="Quote components">
+          <div className="grid items-stretch gap-4 md:grid-cols-3">
+            {PARTS.map((part) => <article key={part.n} className="glass rounded-2xl p-7"><p className="tabular text-3xl leading-none text-emerald-700">{part.n}</p><h2 className="mt-4 text-xl font-medium">{part.title}</h2><p className="mt-4 font-mono text-sm leading-relaxed">{part.formula}</p><p className="mt-4 text-sm leading-relaxed text-[var(--muted)]">{part.body}</p></article>)}
           </div>
-        </div>
-      </section>
+          <div className="glass mt-5 rounded-2xl p-7"><p className="mono-label">TOTAL QUOTE</p><p className="mt-4 text-xl font-medium sm:text-2xl">Provider reservation + compilation fee + platform fee</p><p className="mt-3 max-w-3xl text-sm leading-relaxed text-[var(--muted)]">A campaign combines the quotes for its executions. Adding targets, repetitions, or permitted retry attempts increases the reservation. Review the full campaign total and set a budget that includes both.</p></div>
+        </section>
 
-      {/* chart — the same component, on the same series, as the console tab */}
-      <section className="py-8">
-        <div className="glass-panel rounded-3xl p-6 sm:p-8">
-          <div className="mb-5 flex items-center justify-between">
-            <div>
-              <p className="mono-label">$ / QPU-hour</p>
-              <p className="tabular mt-2 text-4xl text-white sm:text-5xl">
-                <span className="align-top text-xl text-[var(--accent)] sm:text-2xl">$</span>
-                {qci.hasData ? money(qci.usdPerQpuHour) : "—"}
-              </p>
-            </div>
-            <span className="mono-label rounded-full border border-white/15 bg-white/5 px-3 py-1">
-              {qci.hasData ? "published" : "awaiting data"}
-            </span>
-          </div>
-          {qci.hasData && qci.series.length > 0 ? (
-            <div className="pricing-chart w-full">
-              {/* prefix/decimals rather than a `format` callback: this is a
-                  Server Component, and a function cannot be handed to a Client
-                  Component across that boundary. */}
-              <QciChart
-                points={qci.series}
-                height={320}
-                prefix="$"
-                ariaLabel="Quantum Compute Index history"
-              />
-            </div>
-          ) : (
-            <p className="mono-label normal-case tracking-normal text-[var(--muted-dim)]">
-              {qci.emptyReason ??
-                "No index point has been published yet. Nothing is drawn until one is — this page never shows a modelled or sample line."}
-            </p>
-          )}
-          <p className="mono-label mt-6 normal-case tracking-normal text-[var(--muted-dim)]">
-            {qci.hasData
-              ? `Measured across ${qci.machines} machines from ${qci.providers} providers. One point per day, drawn only from what was measured.`
-              : ""}
-          </p>
-        </div>
-      </section>
-
-      {/* providers */}
-      <section className="py-16">
-        <h2 className="text-4xl font-medium tracking-tight text-white sm:text-5xl">Provider inputs</h2>
-        <p className="mt-3 max-w-xl text-[var(--muted)]">
-          Priced from the sellers&rsquo; own published rate cards and the operators&rsquo; own
-          calibration data. Nothing is charted that was not measured.
-        </p>
-        <div className="mt-10">
-          <CompanyLogos />
-        </div>
-      </section>
-
-      <SiteFooter />
+        <section className="grid gap-10 border-t border-black/10 py-14 md:grid-cols-2" id="budget">
+          <div><h2 className="text-2xl font-medium tracking-tight">Estimates have a scope.</h2><p className="mt-4 text-sm leading-relaxed text-[var(--muted)]">A quote records its backend, rate basis, shot count, and expiry. Provider execution time and reported costs may differ from estimates. Inspect the execution record for the cost information actually available; an estimated amount is not an invoice.</p><p className="mt-4 text-sm leading-relaxed text-[var(--muted)]">Quotes expire after 15 minutes. Credits are reserved before submission. Cancellation and credit settlement follow the <Link href="/terms#credits" className="underline underline-offset-4">credit and quote terms</Link>.</p></div>
+          <div><h2 className="text-2xl font-medium tracking-tight">Start with the workflow you need.</h2><p className="mt-4 text-sm leading-relaxed text-[var(--muted)]">The current product uses per-execution quotes and prepaid credits. We do not publish subscription tiers or a separate campaign-service price. <Link href="/contact" className="underline underline-offset-4">Contact us</Link> to discuss your experiment workflow and access requirements.</p><p className="mt-4 text-sm leading-relaxed text-[var(--muted)]">The Quantum Compute Index is a separate research view. Its modelled aggregate does not determine your experiment’s software fees or establish which backend will meet your success criterion.</p><Link href="/dashboard/qci" className="mt-5 inline-flex items-center gap-2 text-sm underline underline-offset-4">View index research <ArrowRight size={14} /></Link></div>
+        </section>
+        <SiteFooter />
       </main>
     </>
   );

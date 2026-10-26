@@ -5,6 +5,7 @@
 // the cases a conversation is the wrong shape — scripts, CI, and checking on a
 // job that outlived the session that started it.
 
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -35,7 +36,7 @@ import {
 
 export const VERSION = "0.1.0";
 
-const BOOLEAN_FLAGS = new Set(["help", "version", "yes", "no-color", "no-summary", "json", "wait", "no-save"]);
+const BOOLEAN_FLAGS = new Set(["help", "version", "yes", "no-color", "no-summary", "json", "wait", "no-save", "quote", "run"]);
 
 /** Tiny long-flag parser: `--flag`, `--flag value`, `--flag=value`, `-h`, `-v`. */
 export function parseArgs(argv) {
@@ -86,6 +87,10 @@ const USAGE = `
   ${style.gray("usage")}
     npx qrouter.app                       start the assistant (default)
     qrouter chat [message]                start it with a first message
+    qrouter experiments                  list experiment definitions
+    qrouter experiment <id>               inspect definition and result evidence
+    qrouter experiment <id> --quote       preview the complete campaign cost
+    qrouter experiment <id> --run         approve and submit a campaign
     qrouter run <file.qasm|repo-url>      run a circuit without the assistant
     qrouter status <job-id> [--wait]      check, or finish, an earlier job
     qrouter cancel <job-id>               ask the provider to stop a running job
@@ -97,11 +102,17 @@ const USAGE = `
     --shots <n>            shots to execute (default 1024)
     --target <backend|auto> pin a backend (default auto)
     --mode <balanced|cost|speed|quality>  routing preference
-    --max-cost <usd>       refuse routes above this quote
+    --max-cost <usd>       cap the complete execution reservation
+    --intent <simulate|hardware>  explicit execution intent
     --path <file.qasm>     circuit path, when the target is a repository
     --ref <branch>         repository ref (default the repo's default branch)
     --name <text>          label the job
     --yes                  skip the confirmation prompt
+
+  ${style.gray("experiment run options")}
+    --max-cost <usd>       required; must equal the immutable campaign ceiling
+    --yes                  explicit non-interactive approval (otherwise type run)
+    --idempotency-key <key> reuse this key when retrying the same run
 
   ${style.gray("global options")}
     --key <qci_...>        use this key instead of the stored one
@@ -156,6 +167,10 @@ async function proposalFromArgs({ client, targetArg, flags }) {
   if (!Number.isFinite(shots) || shots < 1) throw new Error(`--shots must be a positive number (got "${flags.shots}").`);
 
   const constraints = {};
+  if (flags.intent !== undefined) {
+    if (!["simulate", "hardware"].includes(flags.intent)) throw new Error("--intent must be simulate or hardware.");
+    constraints.executionIntent = flags.intent;
+  }
   if (flags["max-cost"] !== undefined) {
     const maxCost = Number(flags["max-cost"]);
     if (!Number.isFinite(maxCost) || maxCost <= 0) throw new Error(`--max-cost must be a positive number (got "${flags["max-cost"]}").`);
@@ -303,6 +318,111 @@ async function commandRun(flags, positional) {
   return outcome.job?.status === "completed" ? 0 : 1;
 }
 
+function renderExperimentEvidence(evidence) {
+  const experiment = evidence?.experiment;
+  const definition = experiment?.definition;
+  if (!experiment || !definition) throw new Error("The server returned no experiment definition.");
+  rows([
+    ["experiment", experiment.id], ["name", definition.name], ["version", experiment.version],
+    ["objective", definition.objective], ["intent", definition.execution_intent],
+    ["targets", definition.targets?.join(", ")], ["shots", definition.shots],
+    ["campaign ceiling", money(definition.max_total_cost, 6)], ["definition hash", experiment.definition_hash],
+    ["source hash", experiment.source_hash], ["released", experiment.released_at ?? "no"],
+    ["reference", definition.reference?.kind],
+    ["reference provenance", definition.reference?.provenance ?? definition.reference?.reason],
+    ["success criterion", definition.success_criterion?.metric],
+    ["maximum distance", definition.success_criterion?.max_distance],
+    ["confidence", definition.success_criterion?.confidence],
+  ]);
+  if (definition.reference?.kind === "distribution") {
+    const entries = Object.entries(definition.reference.probabilities ?? {});
+    rows([["reference probabilities", entries.slice(0, 8).map(([state, probability]) => `${state}: ${probability}`).join(", ")]]);
+    if (entries.length > 8) info(`${entries.length - 8} further reference outcomes; inspect the full definition with --json.`);
+  }
+  if (!evidence.runs?.length) info("No campaign runs recorded.");
+  for (const run of evidence.runs ?? []) {
+    blank();
+    rows([["run", run.id], ["status", run.status], ["execution group", run.group_id]]);
+    for (const execution of run.executions ?? []) {
+      rows([
+        ["target", execution.selected_backend_id ?? execution.target], ["execution", execution.status],
+        ["assessment", execution.assessment?.status], ["reason", execution.assessment?.reason],
+        ["distance", execution.assessment?.distance], ["interval", execution.assessment?.interval?.join(" – ")],
+        ["cost evidence", execution.cost_status], ["charged USD", execution.charged_usd],
+      ]);
+    }
+  }
+  for (const limitation of evidence.limitations ?? []) info(style.gray(limitation));
+}
+
+async function commandExperiments(flags, positional) {
+  if (positional.length) return fail("Use qrouter experiments to list definitions, or qrouter experiment <id> to inspect one.");
+  const options = commonOptions(flags);
+  const { client } = await authenticate({ ...options, allowPrompt: process.stdin.isTTY });
+  const experiments = await client.listExperiments();
+  if (flags.json) { data(JSON.stringify(experiments)); return 0; }
+  blank();
+  if (!experiments.length) info("No experiment definitions yet. Create one in the experiment workspace or SDK.");
+  for (const experiment of experiments) rows([
+    [experiment.definition?.name ?? experiment.id, experiment.id],
+    ["version / intent", `${experiment.version} / ${experiment.definition?.execution_intent ?? "unknown"}`],
+    ["campaign ceiling", money(experiment.definition?.max_total_cost, 6)],
+  ]);
+  blank();
+  return 0;
+}
+
+async function commandExperiment(flags, positional) {
+  const experimentId = positional[0];
+  if (!experimentId || positional.length !== 1) return fail("Pass one experiment id: qrouter experiment <id>.");
+  if ((flags.run !== undefined && flags.run !== true) || (flags.quote !== undefined && flags.quote !== true)) return fail("--run and --quote are boolean switches.");
+  if (flags.run && flags.quote) return fail("Choose --quote or --run; a run always previews its own quote first.");
+  const options = commonOptions(flags);
+  const { client } = await authenticate({ ...options, allowPrompt: process.stdin.isTTY });
+  const evidence = await client.getExperiment(experimentId);
+  const experiment = evidence?.experiment;
+  const definition = experiment?.definition;
+  if (!definition || !/^[a-f0-9]{64}$/.test(experiment.definition_hash ?? "")) return fail("The server returned an invalid experiment definition or hash.");
+  if (!flags.run && !flags.quote) {
+    if (flags.json) data(JSON.stringify(evidence));
+    else { blank(); renderExperimentEvidence(evidence); blank(); }
+    return 0;
+  }
+  if (experiment.released_at) return fail("This experiment's circuit was released. Nothing was submitted.");
+  const ceiling = definition.max_total_cost;
+  if (!Number.isFinite(ceiling) || ceiling <= 0) return fail("The stored experiment ceiling is invalid. Nothing was submitted.");
+  if (flags.run) {
+    const approved = typeof flags["max-cost"] === "string" ? Number(flags["max-cost"]) : NaN;
+    if (!Number.isFinite(approved) || approved !== ceiling) return fail(`--run requires --max-cost exactly equal to the stored campaign ceiling (${ceiling} USD). Nothing was submitted.`);
+    if (flags.yes !== true && !process.stdin.isTTY) return fail("Refusing to run without confirmation. Pass --yes after reviewing the definition and quote.");
+    if (flags["idempotency-key"] !== undefined && (typeof flags["idempotency-key"] !== "string" || flags["idempotency-key"].length < 8 || flags["idempotency-key"].length > 255)) return fail("--idempotency-key must contain 8–255 characters.");
+  }
+  const quote = await client.quoteExperiment(experimentId);
+  if (quote?.definition_hash !== experiment.definition_hash || quote.max_total_cost !== ceiling) return fail("The quote does not match the reviewed definition and ceiling. Nothing was submitted.");
+  if (quote.currency !== "usd" || !Number.isFinite(quote.total) || quote.total < 0) return fail("The preview did not return a valid USD total. Nothing was submitted.");
+  if (!flags.run && flags.json) { data(JSON.stringify(quote)); return 0; }
+  blank();
+  renderExperimentEvidence({ experiment, runs: [] });
+  rows([["preview total", money(quote.total, 6)], ["approved ceiling", money(ceiling, 6)]]);
+  for (const execution of quote.executions ?? []) rows([[execution.selected_backend_id ?? execution.target, money(execution.quote?.total, 6)]]);
+  info(quote.note ?? "Preview only. Costs are recalculated before reservation.");
+  if (quote.within_budget !== true || quote.total > ceiling) return fail("The preview exceeds the campaign ceiling. Nothing was submitted.");
+  if (!flags.run) return 0;
+  if (flags.yes !== true) {
+    const answer = ((await askOnce(`  ${accent(glyph.caret)} type ${style.bold("run")} to approve this definition and ceiling: `)) ?? "").trim().toLowerCase();
+    if (answer !== "run") { info("Cancelled. Nothing was submitted."); return 0; }
+  }
+  const idempotencyKey = flags["idempotency-key"] ?? randomUUID();
+  info(`Run idempotency key: ${idempotencyKey}. Reuse this key if the response is interrupted.`);
+  const approval = { approved_definition_hash: experiment.definition_hash, approved_max_total_cost: ceiling };
+  const result = await client.runExperiment(experimentId, approval, idempotencyKey);
+  if (flags.json) data(JSON.stringify(result));
+  else rows([["run", result.run?.id], ["execution group", result.run?.group_id], ["outcome", result.outcome]]);
+  if (result.outcome === "awaiting_payment") { warn("The approved run is parked awaiting credits. Keep its run id and idempotency key."); return 1; }
+  info(`Inspect evidence with: qrouter experiment ${experimentId}`);
+  return 0;
+}
+
 async function commandStatus(flags, positional) {
   const options = commonOptions(flags);
   const jobId = positional[0];
@@ -384,7 +504,7 @@ async function commandCancel(flags, positional) {
 
 async function commandBackends(flags) {
   const options = commonOptions(flags);
-  const { client, session } = await authenticate({ ...options, allowPrompt: process.stdin.isTTY });
+  const { session } = await authenticate({ ...options, allowPrompt: process.stdin.isTTY });
   if (flags.json) {
     data(JSON.stringify(session.backends));
     return 0;
@@ -394,15 +514,17 @@ async function commandBackends(flags) {
   if (ready.length === 0) {
     warn(`No backend is accepting jobs right now.`);
     if (session.backends?.reachable) {
-      line(`  ${style.gray(`${session.backends.reachable} backend(s) are reachable but need provider credentials on the server.`)}`);
+      line(`  ${style.gray(`${session.backends.reachable} backend(s) are reachable but need execution credentials or a valid native rate on the server.`)}`);
     }
   } else {
     rows(
       ready.map((backend) => [
         backend.display_name ?? backend.id,
         `${style.gray(backend.id)}  ${backend.kind}  ${backend.qubits ?? "?"}q  ${
-          backend.price_per_shot ? money(backend.price_per_shot, 6) : style.gray("—")
-        }/shot  ${style.gray(`queue ~${duration((backend.queue_seconds ?? 0) * 1000)}`)}`,
+          backend.native_pricing?.kind === "per-shot"
+            ? `${money(backend.native_pricing.usdPerTask, 6)}/task + ${money(backend.native_pricing.usdPerShot, 6)}/shot`
+            : style.gray("native rate unavailable")
+        }  ${style.gray(`queue ~${duration((backend.queue_seconds ?? 0) * 1000)}`)}`,
       ]),
       { indent: "  " },
     );
@@ -461,7 +583,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
 
   const [command, ...rest] = positional;
-  const known = ["chat", "run", "status", "cancel", "backends", "whoami", "session", "login", "logout", "help"];
+  const known = ["experiments", "experiment", "chat", "run", "status", "cancel", "backends", "whoami", "session", "login", "logout", "help"];
   const resolved = known.includes(command) ? command : null;
 
   if (flags.help || resolved === "help") {
@@ -473,6 +595,10 @@ export async function main(argv = process.argv.slice(2)) {
 
   try {
     switch (resolved) {
+      case "experiments":
+        return await commandExperiments(flags, rest);
+      case "experiment":
+        return await commandExperiment(flags, rest);
       case "run":
         return await commandRun(flags, rest);
       case "status":

@@ -41,6 +41,7 @@ export async function POST(request: Request) {
       optimizationLevel: input.optimization_level,
       source: input.circuit,
       format: input.format,
+      failover: { enabled: input.failover, max_attempts: input.max_attempts },
     });
     const { decision, quote } = prepared;
 
@@ -75,6 +76,9 @@ export async function POST(request: Request) {
           compatible: candidate.compatible,
           score: candidate.score,
           estimatedProviderCost: candidate.estimatedProviderCost,
+          estimatedTotalCost: candidate.estimatedTotalCost,
+          pricingEvidence: candidate.pricingEvidence,
+          paretoOptimal: candidate.paretoOptimal,
           rejectionReasons: candidate.rejectionReasons,
           quoteBinding: candidate.quoteBinding,
           compiled: candidate.compiled,

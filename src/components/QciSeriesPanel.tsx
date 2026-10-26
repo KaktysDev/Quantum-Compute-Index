@@ -45,7 +45,7 @@ const METRICS: Array<{
   {
     key: "usdPerQpuHour",
     symbol: "Price",
-    label: "Price of a quantum hour",
+    label: "Basket of published hourly rates",
     unit: "USD per QPU-hour",
     dp: 0,
     money: true,
@@ -55,8 +55,8 @@ const METRICS: Array<{
   {
     key: "usdPerQcu",
     symbol: "Quality-adj.",
-    label: "Cost per unit of capability",
-    unit: "USD per capability-hour",
+    label: "Quality-adjusted price model",
+    unit: "USD per modelled capability-hour",
     dp: 0,
     money: true,
     flatReason:
@@ -75,7 +75,7 @@ const METRICS: Array<{
   {
     key: "costBasis",
     symbol: "Cost",
-    label: "Modelled cost to produce",
+    label: "Production-cost scenario",
     unit: "USD per QPU-hour",
     dp: 0,
     money: true,
@@ -102,7 +102,7 @@ export default function QciSeriesPanel({
   hasData: boolean;
   emptyReason?: string;
 }) {
-  const [metric, setMetric] = useState<MetricKey>("usdPerQpuHour");
+  const [metric, setMetric] = useState<MetricKey>("level");
   const [range, setRange] = useState<(typeof RANGES)[number]["label"]>("ALL");
   const [hovered, setHovered] = useState<ChartPoint | null>(null);
 
@@ -160,13 +160,13 @@ export default function QciSeriesPanel({
         <header className="qci-sec-head">
           <div>
             <h2>History</h2>
-            <p>One point per day, drawn only from what was measured.</p>
+            <p>Stored research snapshots; derived series depend on model assumptions.</p>
           </div>
         </header>
         <div className="qci-empty">
           <h3>{hasData ? "Not enough points to chart yet" : "Nothing recorded yet"}</h3>
           <p>{emptyReason ?? "The index needs one recorded point before it can be charted."}</p>
-          <p>A blank chart means nothing was measured — never that a line failed to draw.</p>
+          <p>No stored series is available for this view.</p>
         </div>
       </section>
     );
@@ -177,7 +177,7 @@ export default function QciSeriesPanel({
       <header className="qci-sec-head">
         <div>
           <h2>History</h2>
-          <p>One point per day, drawn only from what was measured.</p>
+          <p>Stored research snapshots; derived series depend on model assumptions.</p>
         </div>
       </header>
 
@@ -234,7 +234,7 @@ export default function QciSeriesPanel({
 
         {flat && visible.length > 1 ? (
           <p className="qci-flat-note">
-            <b>Measured, and unchanged.</b> {active.flatReason}
+            <b>Recorded series unchanged.</b> {active.flatReason}
             {alsoMoved.length > 0 ? (
               <>
                 {" "}

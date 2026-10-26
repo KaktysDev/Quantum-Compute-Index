@@ -126,6 +126,62 @@ export interface CreateHostedJob {
   metadata?: Record<string, string>;
 }
 
+export interface ExperimentDefinition {
+  name: string;
+  objective: string;
+  circuit_id: string;
+  previous_version_id?: string;
+  execution_intent: "simulate" | "hardware";
+  targets: string[];
+  shots: number;
+  max_total_cost: number;
+  reference: { kind: "distribution"; probabilities: Record<string, number>; provenance: string }
+    | { kind: "none"; reason: string };
+  success_criterion: { metric: "total_variation_distance"; max_distance: number; confidence: number }
+    | { metric: "record_only" };
+}
+
+export interface Experiment {
+  id: string;
+  organization_id: string;
+  version: number;
+  definition: ExperimentDefinition;
+  definition_hash: string;
+  source_hash: string;
+  created_at: string;
+  released_at: string | null;
+}
+
+export interface ExperimentEvidence extends JsonObject {
+  schema_version: "experiment-evidence/1";
+  experiment: Experiment;
+  runs: JsonObject[];
+  generated_at: string;
+  limitations: string[];
+}
+
+export interface ExperimentQuote extends JsonObject {
+  definition_hash: string;
+  total: number;
+  max_total_cost: number;
+  within_budget: boolean;
+  currency: "usd";
+  executions: JsonObject[];
+  note: string;
+}
+
+export interface ExperimentApproval {
+  approved_definition_hash: string;
+  approved_max_total_cost: number;
+}
+
+export interface ExperimentRunResult extends JsonObject {
+  run: { id: string; group_id: string | null };
+  group: HostedJob;
+  outcome: string;
+  replayed: boolean;
+}
+
 // Terminal for polling purposes: awaiting_payment only clears once the caller
 // buys credits, so waiting on it would spin until the caller gives up.
 const SETTLED_STATUSES = ["completed", "failed", "cancelled", "awaiting_payment"];
@@ -209,6 +265,31 @@ export class QRouterV2 {
     result: (id: string) => this.request<JsonObject>(`/api/v2/executions/${encodeURIComponent(id)}/result`),
     transpiledQasm: (id: string) => this.request<string>(`/api/v2/executions/${encodeURIComponent(id)}/transpiled`, {}, "text"),
     cancel: (id: string) => this.request<{ data: Execution }>(`/api/v2/executions/${encodeURIComponent(id)}/cancel`, { method: "POST" }).then((response) => response.data),
+  };
+
+  experiments = {
+    list: async () => (await this.request<{ data: Experiment[] }>("/api/v2/experiments")).data,
+    create: async (definition: ExperimentDefinition, idempotencyKey = crypto.randomUUID()) =>
+      (await this.request<{ data: Experiment }>("/api/v2/experiments", {
+        method: "POST", headers: { "idempotency-key": idempotencyKey }, body: JSON.stringify(definition),
+      })).data,
+    /** Returns the immutable definition together with its run evidence. */
+    get: async (id: string) => (await this.request<{ data: ExperimentEvidence }>(`/api/v2/experiments/${encodeURIComponent(id)}`)).data,
+    /** Compile and quote only; no execution is submitted. */
+    quote: async (id: string) => (await this.request<{ data: ExperimentQuote }>(`/api/v2/experiments/${encodeURIComponent(id)}/quote`, { method: "POST" })).data,
+    /** Caller supplies the reviewed hash and exact ceiling. Reuse the key when retrying. */
+    run: async (id: string, approval: ExperimentApproval, idempotencyKey = crypto.randomUUID()) => {
+      try {
+        return (await this.request<{ data: ExperimentRunResult }>(`/api/v2/experiments/${encodeURIComponent(id)}/run`, {
+          method: "POST", headers: { "idempotency-key": idempotencyKey }, body: JSON.stringify(approval),
+        })).data;
+      } catch (error) {
+        const parked = error instanceof QRouterError && error.status === 402
+          ? error.body as { data?: ExperimentRunResult } | null : null;
+        if (parked?.data) return parked.data;
+        throw error;
+      }
+    },
   };
 
   backends = {

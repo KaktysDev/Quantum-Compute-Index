@@ -29,6 +29,12 @@ export interface EncodingRecipe {
   build(input: DataSpec): GateProgram;
 }
 
+function validateValues(input: DataSpec, basis = false) {
+  if (!input.values.length || input.values.some((value) => !Number.isFinite(value))) throw new Error("Encoding requires a non-empty array of finite values.");
+  if (basis && input.values.some((value) => value !== 0 && value !== 1)) throw new Error("Basis encoding accepts only classical bits (0 or 1).");
+  if (input.qubits !== undefined && input.qubits !== input.values.length) throw new Error("Basis and angle encoding require one qubit per value.");
+}
+
 function program(qubits: number, body: Stmt[]): GateProgram {
   return {
     qubits: [{ name: "q", size: qubits }],
@@ -51,10 +57,12 @@ export const basisV1: EncodingRecipe = {
   id: "basis/v1",
   maturity: "stable",
   estimate(input) {
+    validateValues(input, true);
     const qubits = input.values.length;
     return { qubits, depth: 1, two_qubit_ops: 0, ancillas: 0, caveats: ["One qubit per classical bit. Production-ready."] };
   },
   build(input) {
+    validateValues(input, true);
     const body = input.values.flatMap((value, index) => (value ? [x(index)] : []));
     return program(input.values.length, body);
   },
@@ -64,29 +72,23 @@ export const angleV1: EncodingRecipe = {
   id: "angle/v1",
   maturity: "stable",
   estimate(input) {
+    validateValues(input);
     return { qubits: input.values.length, depth: 1, two_qubit_ops: 0, ancillas: 0, caveats: ["One rotation per feature. Production-ready."] };
   },
   build(input) {
+    validateValues(input);
     return program(input.values.length, input.values.map((value, index) => ry(value, index)));
   },
 };
 
 export const amplitudeV1: EncodingRecipe = {
   id: "amplitude/v1",
-  maturity: "experimental",
-  estimate(input) {
-    const qubits = Math.max(1, Math.ceil(Math.log2(Math.max(1, input.values.length))));
-    return {
-      qubits,
-      depth: 2 ** qubits,
-      two_qubit_ops: 2 ** qubits,
-      ancillas: 0,
-      caveats: ["Generic state preparation is exponential in qubit count. Cost must be accepted before quoting."],
-    };
+  maturity: "research",
+  estimate() {
+    throw new Error("amplitude/v1 is unavailable: validated arbitrary state preparation has not been implemented. No executable resource estimate is available.");
   },
-  build(input) {
-    const qubits = Math.max(1, Math.ceil(Math.log2(Math.max(1, input.values.length))));
-    return program(qubits, input.values.slice(0, qubits).map((value, index) => ry(2 * Math.acos(Math.min(1, Math.max(-1, value))), index)));
+  build() {
+    throw new Error("amplitude/v1 is unavailable: independent feature rotations are not amplitude encoding. Use an explicitly constructed and validated state-preparation circuit.");
   },
 };
 

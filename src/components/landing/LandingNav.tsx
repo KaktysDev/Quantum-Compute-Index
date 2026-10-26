@@ -13,8 +13,7 @@ import LogoMark from "@/components/LogoMark";
 
 const SECTION_TABS = [
   { id: "product", label: "Product" },
-  { id: "engine", label: "Engine" },
-  { id: "index", label: "Index" },
+  { id: "workflow", label: "Workflow" },
   { id: "developers", label: "Developers" },
 ] as const;
 
@@ -72,8 +71,8 @@ export default function LandingNav() {
     <div className={`ql-nav-wrap ${scrolled ? "scrolled" : ""}`}>
       <div className="ql-announce">
         <i aria-hidden="true" />
-        <span>QRouter private beta is live</span>
-        <Link href="/signin">Join the waitlist →</Link>
+        <span>Private quantum experiments, with a reviewable budget</span>
+        <Link href="/dashboard/experiments">Open experiments →</Link>
       </div>
 
       <header className="ql-nav ql-shell">
@@ -107,8 +106,8 @@ export default function LandingNav() {
             <Link href="/signin" onClick={() => setOpen(false)}>
               Log in <ArrowUpRight />
             </Link>
-            <Link href="/signin" className="cta" onClick={() => setOpen(false)}>
-              Join waitlist
+            <Link href="/dashboard/experiments" className="cta" onClick={() => setOpen(false)}>
+              Open experiments
             </Link>
           </div>
         </nav>
@@ -117,8 +116,8 @@ export default function LandingNav() {
           <Link href="/signin" className="ql-login">
             Log in <ArrowUpRight />
           </Link>
-          <Link href="/signin" className="ql-cta">
-            Join waitlist
+          <Link href="/dashboard/experiments" className="ql-cta">
+            Open experiments
           </Link>
           <button
             type="button"

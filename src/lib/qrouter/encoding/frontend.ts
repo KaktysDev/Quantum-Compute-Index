@@ -209,7 +209,7 @@ export function parseGateProgram(source: string, format: InputFormat): GateProgr
     }
     if (/^gate\s+/i.test(statement)) {
       const def = parseGateDef(statement);
-      if (def) gate_defs[def.name] = def;
+      if (def) gate_defs[def.name.toLowerCase()] = def;
       continue;
     }
     if (/^(OPENQASM|include)\b/i.test(statement)) continue;

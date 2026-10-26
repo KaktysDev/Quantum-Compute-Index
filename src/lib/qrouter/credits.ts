@@ -16,11 +16,22 @@ interface ParkedExecutionGroupJob extends ParkedJob {
   group_id: string;
 }
 
+export function assertRequeueGroupBudget(quotes: Array<{ total: number }>, metadata: Record<string, unknown> | null) {
+  const raw = metadata?.approved_max_total_cost;
+  if (raw == null) return;
+  const ceiling = Number(raw);
+  const total = quotes.reduce((sum, quote) => sum + quote.total, 0);
+  if (!Number.isFinite(ceiling) || ceiling <= 0 || !Number.isFinite(total) || total > ceiling + 1e-6) {
+    throw new Error("Refreshed execution-group quotes exceed the approved total budget; request new approval.");
+  }
+}
+
 /**
  * Unlocks jobs parked as awaiting_payment once credits arrive. Jobs whose quote
  * is still valid are reserved and queued atomically in SQL; expired quotes are
- * re-issued from the stored routing decision (same accepted rates, fresh
- * validity window) and queued through the same atomic RPC.
+ * re-issued only from a native-rate decision whose pricing is still current.
+ * Legacy index-priced jobs require a fresh user quote. Group approval ceilings
+ * are checked again before the atomic queue RPC.
  */
 export async function requeueAwaitingPaymentJobs(admin: AdminClient, organizationId: string) {
   const { data: groupData, error: groupError } = await admin.rpc("requeue_awaiting_payment_execution_groups", { p_organization_id: organizationId });
@@ -47,6 +58,9 @@ export async function requeueAwaitingPaymentJobs(admin: AdminClient, organizatio
           platform_fee: quote.platformFee, total: quote.total, rate_snapshot: quote.rateSnapshot, expires_at: quote.expiresAt,
         };
       });
+      const { data: group, error: groupReadError } = await admin.from("execution_groups").select("metadata").eq("id", entry.group_id).eq("organization_id", organizationId).maybeSingle();
+      if (groupReadError || !group) throw new Error("Cannot verify the execution group's approved budget.");
+      assertRequeueGroupBudget(quotes, group.metadata as Record<string, unknown> | null);
       const { data: outcome, error: queueError } = await admin.rpc("queue_execution_group_with_quotes", { p_group_id: entry.group_id, p_quotes: quotes });
       if (queueError) throw queueError;
       if (outcome === "awaiting_payment") break;

@@ -51,7 +51,7 @@ const CH_REPRO = `${HEADER}qreg q[2];\ncreg c[2];\nx q[0];\nh q[1];\nch q[0],q[1
 function catalog(id: string, available = true): Backend {
   const backend = BACKENDS.find((item) => item.id === id);
   if (!backend) throw new Error(`Missing ${id}`);
-  return { ...backend, available };
+  return { ...backend, available, nativePricing: { kind: "per-shot", usdPerShot: backend.pricePerShot, usdPerTask: backend.pricePerTask, source: "test-rate", observedAt: "2026-01-01T00:00:00Z", validUntil: "9999-12-31T00:00:00Z", channel: backend.provider === "qci" ? "qrouter" : backend.provider === "ionq" ? (process.env.IONQ_API_KEY ? "ionq-direct" : "aws-braket") : backend.provider } };
 }
 
 describe("G5 lowering proofs", () => {
@@ -539,7 +539,7 @@ describe("compile cache isolation", () => {
       .mockResolvedValueOnce(mapA)
       .mockResolvedValueOnce(mapB);
     vi.spyOn(transpiler, "transpileForBackend").mockImplementation(async (target) => (
-      fakeTranspile(target, `MAP:${JSON.stringify(target.couplingMap)}`)
+      fakeTranspile(target, `${BELL}\n// MAP:${JSON.stringify(target.couplingMap)}`)
     ));
 
     const input = {
@@ -553,8 +553,8 @@ describe("compile cache isolation", () => {
     };
     const first = await prepareExecution(input);
     const second = await prepareExecution(input);
-    expect(first.transpilation.qasm).toBe("MAP:[[0,1],[1,2]]");
-    expect(second.transpilation.qasm).toBe("MAP:[[0,1],[1,3]]");
+    expect(first.transpilation.qasm).toContain("MAP:[[0,1],[1,2]]");
+    expect(second.transpilation.qasm).toContain("MAP:[[0,1],[1,3]]");
   });
 });
 

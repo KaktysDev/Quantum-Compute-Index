@@ -1,6 +1,18 @@
 export type InputFormat = "openqasm2" | "openqasm3";
 export type RoutingMode = "balanced" | "cost" | "speed" | "quality";
 export type BackendKind = "qpu" | "simulator";
+export type ExecutionIntent = "simulate" | "hardware";
+
+/** Native commercial units. No market index or synthetic compute-hour conversion. */
+export type NativePricing = {
+  kind: "per-shot";
+  usdPerShot: number;
+  usdPerTask: number;
+  source: string;
+  observedAt: string;
+  validUntil: string;
+  channel: string;
+} | { kind: "unknown"; reason: string };
 
 export type JobStatus =
   | "created"
@@ -49,6 +61,7 @@ export interface Backend {
   pricePerShot: number;
   pricePerTask: number;
   pricePerNqh?: number;
+  nativePricing?: NativePricing;
   clops?: number;
   description: string;
   region?: string;
@@ -59,6 +72,7 @@ export interface Backend {
 }
 
 export interface RoutingConstraints {
+  executionIntent?: ExecutionIntent;
   maxCost?: number;
   maxQueueSeconds?: number;
   minFidelity?: number;
@@ -72,7 +86,10 @@ export interface RouteCandidate {
   compatible: boolean;
   rejectionReasons: string[];
   score: number;
-  estimatedProviderCost: number;
+  estimatedProviderCost: number | null;
+  estimatedTotalCost?: number | null;
+  pricingEvidence?: NativePricing;
+  paretoOptimal?: boolean;
   estimatedNqh: number;
   quoteBinding?: "binding" | "indicative";
   satisfaction?: { ok: boolean; notes?: string[]; failures?: Array<{ code: string; message: string }> };
@@ -87,6 +104,12 @@ export interface RouteDecision {
   qciSnapshotId?: number | null;
   qciTimestamp?: string;
   encoding?: import("./encoding/types").EncodingTrace;
+  executionIntent?: ExecutionIntent;
+  acceptedBudget?: number;
+  maxAttempts?: number;
+  providerBudget?: number;
+  reservedTotal?: number;
+  pricingVersion?: "native-v2";
 }
 
 export interface Quote {

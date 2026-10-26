@@ -1,19 +1,17 @@
 import { NextResponse } from "next/server";
+import { publicBackend } from "@/lib/qrouter/catalog";
 import { loadPublicRoutingContext } from "@/lib/qrouter/routingContext";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const { snapshot, backends } = await loadPublicRoutingContext();
+  const { backends } = await loadPublicRoutingContext();
   return NextResponse.json({
     object: "list",
-    data: backends,
-    qci: {
-      timestamp: snapshot.ts,
-      source: snapshot.source,
-      index: snapshot.price,
-      pricePerQcHour: snapshot.vwap,
-    },
+    data: backends.map(publicBackend),
+    qci: null,
+    pricingMethod: "native-v2",
+    automaticExecutionIntent: "simulate",
     updated_at: new Date().toISOString(),
   });
 }

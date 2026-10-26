@@ -26,6 +26,11 @@ const ACTIVE_EXECUTION_STATUSES = ["created", "analyzing", "quoted", "funds_rese
 /** Simultaneous remote transpiles / artifact uploads per execution group. */
 const EXECUTION_FANOUT_LIMIT = Number(process.env.QROUTER_EXECUTION_CONCURRENCY ?? 4);
 
+function enforceGroupBudget(prepared: PreparedExecution[], ceiling?: number) {
+  const total = Math.round(prepared.reduce((sum, item) => sum + item.quote.total, 0) * 1_000_000) / 1_000_000;
+  if (ceiling != null && total > ceiling) throw new V2ApiError(422, "campaign_budget_exceeded", `The total quote ($${total.toFixed(6)}) exceeds the approved campaign ceiling ($${ceiling.toFixed(6)}). No executions were queued.`);
+}
+
 /** Mirrors the group rollup in finalize_qrouter_job so demo and SQL agree. */
 function groupStatusFrom(statuses: string[]): V2GroupStatus {
   if (statuses.some((status) => ACTIVE_EXECUTION_STATUSES.includes(status))) return "running";
@@ -372,6 +377,7 @@ export async function getExecutionGroup(principal: Principal, groupId: string): 
 async function createDemoGroup(principal: Principal, circuit: DemoCircuit, input: CreateExecutionGroupInput, idempotencyKey: string, requestHash: string) {
   const now = new Date().toISOString();
   const prepared = await prepareGroupExecutions(principal, circuit as unknown as DbRow & { source: string }, input, true);
+  enforceGroupBudget(prepared, input.max_total_cost);
   const groupId = newV2Id();
   const executions = await mapWithConcurrency(prepared, EXECUTION_FANOUT_LIMIT, async (item) => {
     const id = newV2Id();
@@ -388,7 +394,9 @@ async function createDemoGroup(principal: Principal, circuit: DemoCircuit, input
     };
     demoJobs.set(id, job);
     try {
-      const submission = await submitToProvider(item.decision.selected.id, item.executionAnalysis, item.shots, `${id}-1`, item.bundles[0]);
+      const bundle = item.bundles.find((candidate) => candidate.backend_id === item.decision.selected.id);
+      if (!bundle) throw new Error("The selected backend has no compiled execution bundle.");
+      const submission = await submitToProvider(item.decision.selected.id, item.executionAnalysis, item.shots, `${id}-1`, bundle, { localDemo: true });
       job.status = submission.status === "completed" ? "completed" : "submitted";
       job.result = submission.result ? normalizeProviderResult(item.decision.selected.id, submission.result, item.shots, item.encoding?.selected_bundle?.decode_map) : null;
       job.completed_at = job.status === "completed" ? new Date().toISOString() : null;
@@ -403,13 +411,18 @@ async function createDemoGroup(principal: Principal, circuit: DemoCircuit, input
   const status = groupStatusFrom(executions.map((execution) => String(execution.status)));
   const pending = status === "running" || status === "awaiting_payment";
   const group: DemoGroup = {
-    id: groupId, circuit_id: circuit.id, organization_id: principal.organizationId, status, metadata: input.metadata,
+    id: groupId, circuit_id: circuit.id, organization_id: principal.organizationId, status, metadata: { ...input.metadata, ...(input.max_total_cost == null ? {} : { approved_max_total_cost: String(input.max_total_cost) }) },
     executions, created_at: now, updated_at: new Date().toISOString(), completed_at: pending ? null : new Date().toISOString(),
     error: status === "failed" ? { message: "All execution targets failed." } : null, idempotency_key: idempotencyKey, request_hash: requestHash,
   };
   demoV2Groups.set(groupId, group);
   return { group: groupResource(group), replayed: false, outcome: status === "running" ? "queued" : status };
 }
+
+// Demo storage has no unique constraint. Coalesce concurrent same-key requests
+// before the first awaited circuit read or submission, mirroring production's
+// unique (organization_id, idempotency_key) boundary.
+const demoGroupInflight = new Map<string, { requestHash: string; promise: ReturnType<typeof createDemoGroup> }>();
 
 export async function createExecutionGroup(principal: Principal, input: CreateExecutionGroupInput, idempotencyKey: string, requestId: string) {
   const requestHash = hashRequest(input);
@@ -419,19 +432,31 @@ export async function createExecutionGroup(principal: Principal, input: CreateEx
       if (existing.request_hash !== requestHash) throw new V2ApiError(409, "idempotency_conflict", "Idempotency key was already used for a different job.");
       return { group: groupResource(existing), replayed: true, outcome: existing.status };
     }
-    const circuit = await readCircuit(principal, input.circuit_id) as unknown as DemoCircuit;
-    return createDemoGroup(principal, circuit, input, idempotencyKey, requestHash);
+    const pendingKey = JSON.stringify([principal.organizationId, idempotencyKey]);
+    const pending = demoGroupInflight.get(pendingKey);
+    if (pending) {
+      if (pending.requestHash !== requestHash) throw new V2ApiError(409, "idempotency_conflict", "Idempotency key was already used for a different job.");
+      return { ...await pending.promise, replayed: true };
+    }
+    const promise = (async () => {
+      const circuit = await readCircuit(principal, input.circuit_id) as unknown as DemoCircuit;
+      return createDemoGroup(principal, circuit, input, idempotencyKey, requestHash);
+    })();
+    demoGroupInflight.set(pendingKey, { requestHash, promise });
+    try { return await promise; }
+    finally { if (demoGroupInflight.get(pendingKey)?.promise === promise) demoGroupInflight.delete(pendingKey); }
   }
   const replay = await existingGroup(principal, idempotencyKey, requestHash);
   if (replay) return { group: await getExecutionGroup(principal, String(replay.id)), replayed: true, outcome: replay.status };
   const circuit = await readCircuit(principal, input.circuit_id);
   const prepared = await prepareGroupExecutions(principal, circuit, input, false);
+  enforceGroupBudget(prepared, input.max_total_cost);
   const admin = createAdminClient();
   const groupId = newV2Id();
   const now = new Date().toISOString();
   const { error: groupError } = await admin.from("execution_groups").insert({
     id: groupId, organization_id: principal.organizationId, circuit_id: circuit.id, user_id: principal.userId, api_key_id: principal.apiKeyId,
-    idempotency_key: idempotencyKey, request_hash: requestHash, metadata: input.metadata, status: "queued", created_at: now, updated_at: now,
+    idempotency_key: idempotencyKey, request_hash: requestHash, metadata: { ...input.metadata, ...(input.max_total_cost == null ? {} : { approved_max_total_cost: String(input.max_total_cost) }) }, status: "queued", created_at: now, updated_at: now,
   });
   if (groupError) {
     const raced = await existingGroup(principal, idempotencyKey, requestHash);

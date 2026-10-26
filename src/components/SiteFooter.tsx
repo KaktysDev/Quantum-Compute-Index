@@ -5,6 +5,7 @@ import Logo from "./Logo";
 // literal so the footer stays legible on the light subpages, the dark contact
 // page, and the legal pages alike.
 const LINKS = [
+  { href: "/dashboard/experiments", label: "Experiments" },
   { href: "/history", label: "History" },
   { href: "/pricing", label: "Pricing" },
   { href: "/docs", label: "Docs" },

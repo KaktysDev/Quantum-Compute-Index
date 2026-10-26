@@ -8,6 +8,7 @@ import { submitToProvider } from "@/lib/qrouter/execution";
 import { apiError } from "@/lib/qrouter/http";
 import { prepareExecution } from "@/lib/qrouter/pipeline";
 import { loadRoutingContext } from "@/lib/qrouter/routingContext";
+import { normalizeProviderResult } from "@/lib/qrouter/results";
 import { assertTargetAllowed, backendsForPrincipal, requireScope } from "@/lib/qrouter/scopes";
 import { slimJobForClient, slimJobForList, slimJobForOwner } from "@/lib/qrouter/encoding";
 import { publicTranspilation } from "@/lib/qrouter/transpiler";
@@ -100,9 +101,11 @@ export async function POST(request: Request) {
       };
       demoJobs.set(jobId, base);
       try {
-        const submission = await submitToProvider(decision.selected.id, executionAnalysis, input.shots, jobId, prepared.bundles[0]);
+        const bundle = prepared.bundles.find((item) => item.backend_id === decision.selected.id);
+        if (!bundle) throw new Error("The selected backend has no compiled execution bundle.");
+        const submission = await submitToProvider(decision.selected.id, executionAnalysis, input.shots, jobId, bundle, { localDemo: true });
         base.status = submission.status === "completed" ? "completed" : "submitted";
-        base.result = submission.result ?? null;
+        base.result = submission.result ? normalizeProviderResult(decision.selected.id, submission.result, input.shots, prepared.encoding?.selected_bundle?.decode_map) : null;
         base.updated_at = new Date().toISOString();
         base.completed_at = submission.status === "completed" ? base.updated_at : null;
       } catch (error) {

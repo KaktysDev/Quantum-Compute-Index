@@ -43,6 +43,7 @@ export interface ExecutionGroup {
 }
 
 const constraintsSchema = z.object({
+  executionIntent: z.enum(["simulate", "hardware"]).optional(),
   maxCost: z.number().positive().optional(),
   maxQueueSeconds: z.number().int().nonnegative().optional(),
   minFidelity: z.number().min(0).max(1).optional(),
@@ -59,6 +60,7 @@ export const createCircuitSchema = z.object({
 
 export const createExecutionGroupSchema = z.object({
   circuit_id: z.string().uuid(),
+  max_total_cost: z.number().finite().positive().optional(),
   metadata: z.record(z.string().max(64), z.string().max(500)).refine((value) => Object.keys(value).length <= 50, "Metadata is limited to 50 entries.").default({}),
   executions: z.array(z.object({
     key: z.string().trim().min(1).max(64),
