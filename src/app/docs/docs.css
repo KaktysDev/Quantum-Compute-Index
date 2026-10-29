@@ -765,3 +765,12 @@
   .docs-code-example pre { min-height: 320px; font-size: 0.68rem; }
   .docs-table { min-width: 460px; }
 }
+
+/* Public Technical identity, preserving the documentation reader's themes. */
+.docs-shell { --docs-bg: #fff; --docs-accent: #b1370b; --docs-accent-fg: #fff; --docs-accent-dim: #fff0e8; --docs-radius: 0px; --docs-radius-sm: 0px; }
+:root[data-theme="dark"] .docs-shell { --docs-accent: #ff9a70; --docs-accent-fg: #151515; --docs-accent-dim: #33231c; }
+.docs-intro h1 { font-family: var(--font-technical-display), Impact, sans-serif; font-weight: 400; letter-spacing: -0.025em; font-size: clamp(42px, 5vw, 72px); line-height: 1.08; }
+.docs-badge { border-radius: 0; }
+.docs-brand-row .docs-technical-brand { gap: 3px; color: var(--docs-text); font-size: 24px; font-weight: 650; letter-spacing: -0.08em; }
+.docs-technical-brand > span { margin-top: -10px; color: var(--docs-accent); font-size: 14px; letter-spacing: 0; }
+.docs-eyebrow > span { background: var(--docs-accent); }

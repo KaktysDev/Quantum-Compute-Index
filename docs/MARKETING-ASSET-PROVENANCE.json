@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-29",
+  "generation_tool": "Built-in image_gen.imagegen",
+  "synthetic": true,
+  "notice": "All images are AI-generated conceptual illustrations. Industry images do not depict actual customer operations, facilities, equipment installations, or endorsements.",
+  "reference_direction": "Hero: user-approved qrouter-design-directions/technical.png. Industry strip: user-approved bottom three-image section of qrouter-design-directions/editorial.png and the user's attached screenshot of that section.",
+  "assets": [
+    {
+      "filename": "hero-model.webp",
+      "source_path": "/Users/lahoda/.codex/generated_images/01a18747-cd04-7ef1-a8ee-65dcf462ce7e/exec-c83bc7ab-69fe-42fd-8ab2-49f8e2aac256.png",
+      "prompt": "Use case: stylized-concept\nAsset type: final production landing page hero photograph, very wide 16:7 composition, at least 2000 pixels wide.\nPrimary request: A physical architectural graph model on a saturated orange drafting surface. A web of matte white cubic modules and smooth white spherical junctions, joined by slim white rods, branching from left to right. Exactly one continuous selected route through the graph uses black rods and two black junctions. All other connectors and nodes are white.\nScene/backdrop: seamless orange #f25120 studio floor and back wall; fine, subtle pale orange drafting grid lines on the floor. No marks except the regular grid.\nStyle/medium: realistic photographic 3D clay architectural model with tactile white painted surfaces, realistic contact shadows and carefully made physical connections. Crisp editorial product photography.\nComposition/framing: landscape 16:7 panorama, low three-quarter view looking slightly down across the graph; the complete model is comfortably inside the frame, with a little orange space around its edges. Around 12 cubic modules of modestly varied sizes and 8 spherical junctions, connected as a coherent layered branching graph from a larger cube at left through intermediate branches to terminal modules at right. The model spans most of the width. Orange scene fills every edge. Keep each node separated and legible.\nLighting/mood: soft directional studio daylight from upper left; nuanced shadows on orange, clean and precise, elegant engineering model.\nMaterials/textures: matte clay white cubes with lightly bevelled edges and subtle seams; white spheres; slim smooth white and black connecting rods.\nConstraints: no text, no typography, no numbers, no labels, no captions, no annotations, no arrows, no UI, no panels, no logo, no watermark. No floating components, no impossible detached rods, no people. One single image only.",
+      "generation_history": [
+        {
+          "source_path": "/Users/lahoda/.codex/generated_images/01a18747-cd04-7ef1-a8ee-65dcf462ce7e/exec-18c3e7bf-9f2f-4fdb-929d-69ff67daa349.png",
+          "operation": "Initial image generation",
+          "prompt": "Use case: stylized-concept\nAsset type: final production landing page hero photograph, very wide 16:7 composition, at least 2000 pixels wide.\nPrimary request: A physical architectural graph model on a saturated orange drafting surface. A web of matte white cubic modules and smooth white spherical junctions, joined by slim white rods, branching from left to right. Exactly one continuous selected route through the graph uses black rods and two black junctions. All other connectors and nodes are white.\nScene/backdrop: seamless orange #f25120 studio floor and back wall; fine, subtle pale orange drafting grid lines on the floor. No marks except the regular grid.\nStyle/medium: realistic photographic 3D clay architectural model with tactile white painted surfaces, realistic contact shadows and carefully made physical connections. Crisp editorial product photography.\nComposition/framing: landscape 16:7 panorama, low three-quarter view looking slightly down across the graph; the complete model is comfortably inside the frame, with a little orange space around its edges. Around 12 cubic modules of modestly varied sizes and 8 spherical junctions, connected as a coherent layered branching graph from a larger cube at left through intermediate branches to terminal modules at right. The model spans most of the width. Orange scene fills every edge. Keep each node separated and legible.\nLighting/mood: soft directional studio daylight from upper left; nuanced shadows on orange, clean and precise, elegant engineering model.\nMaterials/textures: matte clay white cubes with lightly bevelled edges and subtle seams; white spheres; slim smooth white and black connecting rods.\nConstraints: no text, no typography, no numbers, no labels, no captions, no annotations, no arrows, no UI, no panels, no logo, no watermark. No floating components, no impossible detached rods, no people. One single image only."
+        },
+        {
+          "source_path": "/Users/lahoda/.codex/generated_images/01a18747-cd04-7ef1-a8ee-65dcf462ce7e/exec-c83bc7ab-69fe-42fd-8ab2-49f8e2aac256.png",
+          "operation": "Built-in image edit to make the selected black route continuous",
+          "prompt": "Use case: precise-object-edit\nAsset type: final landing page hero image.\nInput image: edit target. Preserve this composition and every object exactly.\nPrimary request: Make only ONE slim connecting rod black. The rod running diagonally from the first black spherical junction at approximately x27%, y38% to the white cube at approximately x38%, y52% is currently white. Recolor that single rod matte black so that the selected black path is visibly continuous from the large cube at the far left, through the first black sphere, through the centre cubes, through the second black sphere, and into the white cube at the lower right. Keep all other rods their current colours, and keep every sphere and cube its current colour.\nInvariants: same wide 16:7 panorama, same dimensions, same objects, same orange drafting grid floor and backdrop, same shadows, same lighting, same camera position, same material texture. Do not change geometry or add or remove anything. No text, labels, logo, or watermark.\nThis is a very small exact-object colour correction; the entire scene otherwise remains unchanged."
+        }
+      ],
+      "synthetic": true,
+      "optimization": {
+        "operation": "PNG to WebP format conversion only; no semantic image edits during conversion, no cropping, no resizing.",
+        "quality": 88,
+        "method": 6
+      },
+      "purpose": "Static, mobile, and reduced-motion landing page hero fallback",
+      "width": 1895,
+      "height": 830,
+      "bytes": 81230,
+      "source_bytes": 1745471
+    },
+    {
+      "filename": "manufacturing.webp",
+      "source_path": "/Users/lahoda/.codex/generated_images/01a18747-cd04-7ef1-a8ee-65dcf462ce7e/exec-4b8cb3a9-4b13-413a-9837-400d4a23f318.png",
+      "prompt": "Use case: precise-object-edit\nAsset type: standalone production industry photograph for an edge-to-edge three-image website strip.\nInput image 1: edit target, the existing realistic white industrial robotic arm in a factory. Input image 2: visual reference; only the orange robotic arm in the leftmost photograph at the bottom of the screenshot is relevant.\nPrimary request: Repaint the large white surfaces of the robotic arm in input image 1 a rich safety orange, closely matching the orange robotic arm in the bottom-left photo of input image 2. Preserve all dark joint housings, metal bolts, black and orange cable routing, stainless end effector and every other detail of the existing photograph. Slightly warm the lighting and preserve realistic glossy painted-metal reflections.\nInvariants: same robot, same pose, same factory, same machinery, same viewpoint, same realistic materials and same composition. Change only the arm's white painted outer surfaces to orange, and gently warm the overall light. Keep grey machinery and steel worktable neutral. No orange over dark joint panels or cable routing.\nConstraints: output ONLY the edited photograph, edge-to-edge. Absolutely NO text, NO words, NO Manufacturing label, NO arrow, NO heading, NO UI, NO logo, NO watermark, NO border, NO collage. Do not copy any screenshot interface or typography. Conceptual synthetic illustration, not a real customer facility.",
+      "synthetic": true,
+      "optimization": {
+        "operation": "PNG to WebP format conversion only; no semantic image edits during conversion, no cropping, no resizing.",
+        "quality": 88,
+        "method": 6
+      },
+      "purpose": "Conceptual landing page industry illustration",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 225872,
+      "source_bytes": 2247577,
+      "generation_history": [
+        {
+          "source_path": "/Users/lahoda/.codex/generated_images/01a18747-cd04-7ef1-a8ee-65dcf462ce7e/exec-46edeb34-551e-4e8f-b01e-0618f2cad12e.png",
+          "operation": "Initial image generation",
+          "prompt": "Use case: photorealistic-natural\nAsset type: production landing page industry image, landscape 3:2 editorial photograph.\nPrimary request: A realistic industrial robotic arm in a neutral modern factory.\nScene/backdrop: clean practical manufacturing workcell in a spacious factory with steel framing, concrete floor, grey machine panels and restrained safety-orange accents. No people necessary.\nSubject: a single substantial white articulated robotic arm with dark joint housings and visible industrial cable routing, poised precisely over a metal worktable; part of the surrounding factory establishes a credible industrial environment.\nStyle/medium: polished yet natural editorial industrial photography, detailed real materials and mechanics, photographic not futuristic.\nComposition/framing: close medium view at arm height, the robot occupies the centre and left, with enough context to read as a factory. Landscape 3:2 frame. Clean visual hierarchy suitable for a website card.\nLighting/mood: bright soft daylight mixed with neutral factory light, warm neutral colour grade, believable steel reflections and subtle shadows.\nColor palette: off white, charcoal, steel grey, small orange accents.\nConstraints: no words, no labels, no readable displays, no UI, no logos, no watermarks, no science-fiction styling. This is a conceptual synthetic editorial illustration, not a photograph of any real customer operation. One image only."
+        },
+        {
+          "source_path": "/Users/lahoda/.codex/generated_images/01a18747-cd04-7ef1-a8ee-65dcf462ce7e/exec-4b8cb3a9-4b13-413a-9837-400d4a23f318.png",
+          "operation": "Built-in imagegen edit to match the orange arm in the Editorial industry strip",
+          "reference_paths": [
+            "/private/tmp/qrouter-industry-before-editorial-81eqibor/manufacturing.webp",
+            "/Users/lahoda/random/qrouter-design-directions/editorial.png"
+          ],
+          "prompt": "Use case: precise-object-edit\nAsset type: standalone production industry photograph for an edge-to-edge three-image website strip.\nInput image 1: edit target, the existing realistic white industrial robotic arm in a factory. Input image 2: visual reference; only the orange robotic arm in the leftmost photograph at the bottom of the screenshot is relevant.\nPrimary request: Repaint the large white surfaces of the robotic arm in input image 1 a rich safety orange, closely matching the orange robotic arm in the bottom-left photo of input image 2. Preserve all dark joint housings, metal bolts, black and orange cable routing, stainless end effector and every other detail of the existing photograph. Slightly warm the lighting and preserve realistic glossy painted-metal reflections.\nInvariants: same robot, same pose, same factory, same machinery, same viewpoint, same realistic materials and same composition. Change only the arm's white painted outer surfaces to orange, and gently warm the overall light. Keep grey machinery and steel worktable neutral. No orange over dark joint panels or cable routing.\nConstraints: output ONLY the edited photograph, edge-to-edge. Absolutely NO text, NO words, NO Manufacturing label, NO arrow, NO heading, NO UI, NO logo, NO watermark, NO border, NO collage. Do not copy any screenshot interface or typography. Conceptual synthetic illustration, not a real customer facility."
+        }
+      ],
+      "reference_direction": "Approved Editorial bottom industry strip",
+      "previous_web_delivery_backup": "/private/tmp/qrouter-industry-before-editorial-81eqibor/manufacturing.webp",
+      "review": "Visually checked against the Editorial reference. Clean standalone synthetic image with no text, labels, UI, logos or watermark."
+    },
+    {
+      "filename": "networks.webp",
+      "source_path": "/Users/lahoda/.codex/generated_images/01a18747-cd04-7ef1-a8ee-65dcf462ce7e/exec-1ec1b3ef-c7e4-4e45-99aa-7c061d7bb5fc.png",
+      "prompt": "Use case: style-transfer\nAsset type: standalone production industry photograph for an edge-to-edge three-image website strip, landscape 16:9.\nInput image 1: approved visual reference, a full page screenshot. ONLY the middle photograph in the bottom three-photo strip is the reference scene. The text, UI, header, page sections, and other two photographs are not part of the output.\nPrimary request: Recreate that middle Networks photograph as a clean, high-resolution standalone editorial image, preserving its exact composition, mood and subject placement. A dark steel lattice telecommunications tower with tall off-white rectangular cellular antenna panels dominates the centre-right of the frame. The tower extends through the top and bottom edges as in the reference. Layered blue-grey mountain ridges and soft mist fill the lower background. A warm peach and pale apricot sunset sky with delicate high clouds fills the upper background. The distant mountains fall away into atmospheric haze.\nStyle/medium: natural cinematic editorial infrastructure photography with credible engineering detail and realistic weathered metal, gently warm and restrained.\nComposition/framing: match the bottom-centre photo reference, landscape 16:9. Tower approximately at 60% of width, leaving mountains and sky visible on both sides. Hardware seen from a nearby elevated viewpoint rather than an extreme worm's-eye view. Broad mountain layers span the lower half. Match that reference photograph's balance and tonal palette.\nLighting/mood: warm sunset sky behind a slightly darker tower, hazy mountain distance, subtle golden edge light. Muted slate mountains, not a plain blue sky.\nConstraints: output ONLY the single clean photograph, edge-to-edge. Absolutely NO text, NO words, NO Networks label, NO arrow, NO heading, NO UI, NO logo, NO watermark, NO border, NO collage, NO extra panels. Do not include the rest of the screenshot. Conceptual synthetic illustration, not a real customer facility.",
+      "synthetic": true,
+      "optimization": {
+        "operation": "PNG to WebP format conversion only; no semantic image edits during conversion, no cropping, no resizing.",
+        "quality": 88,
+        "method": 6
+      },
+      "purpose": "Conceptual landing page industry illustration",
+      "width": 1672,
+      "height": 941,
+      "bytes": 153000,
+      "source_bytes": 1936253,
+      "generation_history": [
+        {
+          "source_path": "/Users/lahoda/.codex/generated_images/01a18747-cd04-7ef1-a8ee-65dcf462ce7e/exec-8f95e39b-bf71-49f9-a5e1-57994e2efaf2.png",
+          "operation": "Initial image generation",
+          "prompt": "Use case: photorealistic-natural\nAsset type: production landing page industry image, landscape 3:2 editorial photograph.\nPrimary request: A close-up view of telecommunications tower antennas against a clear sky.\nSubject: realistic pale grey rectangular cellular antenna panels, steel mounting brackets, tidy weatherproof cables, and a few compact microwave dishes on a robust telecom mast.\nScene/backdrop: clear pale blue sky on a warm sunny day; only the tower infrastructure and sky in frame.\nStyle/medium: realistic architectural and infrastructure editorial photography, rich but natural detail, no exaggerated technology effects.\nComposition/framing: close view from below that shows the antennas' scale and engineering detail; clear readable silhouette, tower hardware fills the central two thirds of the landscape 3:2 image, a little breathing room of blue sky around it.\nLighting/mood: warm natural daylight, clean highlights, soft shadows, calm optimistic mood.\nColor palette: pale blue, warm off-white, grey and charcoal metal.\nConstraints: no text, no logos, no brand names, no readable labels, no UI, no watermark, no glowing data lines or abstract network graphics. Conceptual synthetic editorial illustration, not an image of any real customer operation. One image only."
+        },
+        {
+          "source_path": "/Users/lahoda/.codex/generated_images/01a18747-cd04-7ef1-a8ee-65dcf462ce7e/exec-1ec1b3ef-c7e4-4e45-99aa-7c061d7bb5fc.png",
+          "operation": "Built-in imagegen reference recreation of the approved Editorial industry photograph without interface or text",
+          "reference_paths": [
+            "/Users/lahoda/random/qrouter-design-directions/editorial.png"
+          ],
+          "prompt": "Use case: style-transfer\nAsset type: standalone production industry photograph for an edge-to-edge three-image website strip, landscape 16:9.\nInput image 1: approved visual reference, a full page screenshot. ONLY the middle photograph in the bottom three-photo strip is the reference scene. The text, UI, header, page sections, and other two photographs are not part of the output.\nPrimary request: Recreate that middle Networks photograph as a clean, high-resolution standalone editorial image, preserving its exact composition, mood and subject placement. A dark steel lattice telecommunications tower with tall off-white rectangular cellular antenna panels dominates the centre-right of the frame. The tower extends through the top and bottom edges as in the reference. Layered blue-grey mountain ridges and soft mist fill the lower background. A warm peach and pale apricot sunset sky with delicate high clouds fills the upper background. The distant mountains fall away into atmospheric haze.\nStyle/medium: natural cinematic editorial infrastructure photography with credible engineering detail and realistic weathered metal, gently warm and restrained.\nComposition/framing: match the bottom-centre photo reference, landscape 16:9. Tower approximately at 60% of width, leaving mountains and sky visible on both sides. Hardware seen from a nearby elevated viewpoint rather than an extreme worm's-eye view. Broad mountain layers span the lower half. Match that reference photograph's balance and tonal palette.\nLighting/mood: warm sunset sky behind a slightly darker tower, hazy mountain distance, subtle golden edge light. Muted slate mountains, not a plain blue sky.\nConstraints: output ONLY the single clean photograph, edge-to-edge. Absolutely NO text, NO words, NO Networks label, NO arrow, NO heading, NO UI, NO logo, NO watermark, NO border, NO collage, NO extra panels. Do not include the rest of the screenshot. Conceptual synthetic illustration, not a real customer facility."
+        }
+      ],
+      "reference_direction": "Approved Editorial bottom industry strip",
+      "previous_web_delivery_backup": "/private/tmp/qrouter-industry-before-editorial-81eqibor/networks.webp",
+      "review": "Visually checked against the Editorial reference. Clean standalone synthetic image with no text, labels, UI, logos or watermark."
+    },
+    {
+      "filename": "energy.webp",
+      "source_path": "/Users/lahoda/.codex/generated_images/01a18747-cd04-7ef1-a8ee-65dcf462ce7e/exec-4756414b-622a-4d70-98f4-0bec39b15ca0.png",
+      "prompt": "Use case: style-transfer\nAsset type: standalone production industry photograph for an edge-to-edge three-image website strip, landscape 16:9.\nInput image 1: approved visual reference, a full page screenshot. ONLY the rightmost photograph in the bottom three-photo strip is the reference scene. The text, UI, header, page sections and other two photographs are not part of the output.\nPrimary request: Recreate that rightmost Energy photograph as a clean, high-resolution standalone editorial image, preserving its exact composition, mood and subject placement. Elegant white three-bladed wind turbines stand on a rugged mountain ridge at sunset. One large turbine at about 64% of frame width, its hub in the upper-middle frame and tall mast descending nearly to the bottom, with two smaller turbines receding along the ridge to the right. A narrow light gravel maintenance road curves along the ridge toward the turbines. Mountain layers and valleys dissolve into warm mist in the distance.\nStyle/medium: natural cinematic editorial landscape and infrastructure photography, plausible scale and realistic turbine engineering.\nComposition/framing: match the bottom-right photo reference, landscape 16:9. Rugged dark olive and brown foreground ridge, misty slate and mauve mountains receding across the left half and horizon. The largest turbine's upper blade may pass through the top edge exactly as in the reference; keep its hub clearly visible. Smaller turbines to the right create depth.\nLighting/mood: luminous warm peach, apricot and pale gold sunset sky; soft low sun haze and warm mist between mountain layers. Moody darker foreground with gently warm highlights.\nConstraints: output ONLY the single clean photograph, edge-to-edge. Absolutely NO text, NO words, NO Energy label, NO arrow, NO heading, NO UI, NO logo, NO watermark, NO border, NO collage, NO extra panels. NO battery containers, NO plains, NO city. Do not include the rest of the screenshot. Conceptual synthetic illustration, not a real customer facility.",
+      "synthetic": true,
+      "optimization": {
+        "operation": "PNG to WebP format conversion only; no semantic image edits during conversion, no cropping, no resizing.",
+        "quality": 88,
+        "method": 6
+      },
+      "purpose": "Conceptual landing page industry illustration",
+      "width": 1672,
+      "height": 941,
+      "bytes": 150942,
+      "source_bytes": 1997833,
+      "generation_history": [
+        {
+          "source_path": "/Users/lahoda/.codex/generated_images/01a18747-cd04-7ef1-a8ee-65dcf462ce7e/exec-c209d31e-c49d-4c24-9c8d-181e761d808e.png",
+          "operation": "Initial image generation",
+          "prompt": "Use case: photorealistic-natural\nAsset type: production landing page industry image, landscape 3:2 editorial photograph.\nPrimary request: Modern clean-energy infrastructure outdoors: white wind turbines and battery storage containers.\nScene/backdrop: open dry grassy landscape with low hills on the horizon; a neat line of large white grid-scale battery containers sits on level gravel in the foreground, with several elegant white three-bladed wind turbines behind.\nSubject: credible clean-energy equipment, container-scale battery storage enclosures with subtle doors and vents, a few wind turbines receding into the landscape.\nStyle/medium: realistic editorial infrastructure photography, clean and restrained, natural materials, plausible scale and construction.\nComposition/framing: broad eye-level landscape view in a 3:2 frame, battery containers across lower half and complete turbine rotors visible above against sky. Keep all main infrastructure comfortably inside frame.\nLighting/mood: warm neutral late-afternoon daylight, pale blue sky, soft high cloud, quiet professional mood; no dramatic orange sunset.\nColor palette: off white, pale grey, muted warm earth, soft pale blue sky.\nConstraints: no text, no logos, no brand names, no readable labels, no UI, no watermark, no graphic overlay. Conceptual synthetic editorial illustration, not a photograph of any real customer operation. One image only."
+        },
+        {
+          "source_path": "/Users/lahoda/.codex/generated_images/01a18747-cd04-7ef1-a8ee-65dcf462ce7e/exec-4756414b-622a-4d70-98f4-0bec39b15ca0.png",
+          "operation": "Built-in imagegen reference recreation of the approved Editorial industry photograph without interface or text",
+          "reference_paths": [
+            "/Users/lahoda/random/qrouter-design-directions/editorial.png"
+          ],
+          "prompt": "Use case: style-transfer\nAsset type: standalone production industry photograph for an edge-to-edge three-image website strip, landscape 16:9.\nInput image 1: approved visual reference, a full page screenshot. ONLY the rightmost photograph in the bottom three-photo strip is the reference scene. The text, UI, header, page sections and other two photographs are not part of the output.\nPrimary request: Recreate that rightmost Energy photograph as a clean, high-resolution standalone editorial image, preserving its exact composition, mood and subject placement. Elegant white three-bladed wind turbines stand on a rugged mountain ridge at sunset. One large turbine at about 64% of frame width, its hub in the upper-middle frame and tall mast descending nearly to the bottom, with two smaller turbines receding along the ridge to the right. A narrow light gravel maintenance road curves along the ridge toward the turbines. Mountain layers and valleys dissolve into warm mist in the distance.\nStyle/medium: natural cinematic editorial landscape and infrastructure photography, plausible scale and realistic turbine engineering.\nComposition/framing: match the bottom-right photo reference, landscape 16:9. Rugged dark olive and brown foreground ridge, misty slate and mauve mountains receding across the left half and horizon. The largest turbine's upper blade may pass through the top edge exactly as in the reference; keep its hub clearly visible. Smaller turbines to the right create depth.\nLighting/mood: luminous warm peach, apricot and pale gold sunset sky; soft low sun haze and warm mist between mountain layers. Moody darker foreground with gently warm highlights.\nConstraints: output ONLY the single clean photograph, edge-to-edge. Absolutely NO text, NO words, NO Energy label, NO arrow, NO heading, NO UI, NO logo, NO watermark, NO border, NO collage, NO extra panels. NO battery containers, NO plains, NO city. Do not include the rest of the screenshot. Conceptual synthetic illustration, not a real customer facility."
+        }
+      ],
+      "reference_direction": "Approved Editorial bottom industry strip",
+      "previous_web_delivery_backup": "/private/tmp/qrouter-industry-before-editorial-81eqibor/energy.webp",
+      "review": "Visually checked against the Editorial reference. Clean standalone synthetic image with no text, labels, UI, logos or watermark."
+    }
+  ],
+  "updated_at": "2026-10-29",
+  "previous_industry_delivery_backup": "/private/tmp/qrouter-industry-before-editorial-81eqibor"
+}

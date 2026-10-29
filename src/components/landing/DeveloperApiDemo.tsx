@@ -31,7 +31,7 @@ export default function DeveloperApiDemo() {
         <p className="ql-kicker">EXECUTION API</p>
         <h2>Keep your circuits.<br />Make the execution reviewable.</h2>
         <p>Use the experiment workspace for the campaign, or integrate the underlying execution API with your own tools. Start with a compile-and-quote preview that submits no provider job.</p>
-        <div className="ql-cta-row"><Link href="/dashboard/experiments" className="ql-btn primary">Open experiments</Link><Link href="/docs" className="ql-btn ghost">API reference</Link></div>
+        <div className="ql-cta-row"><Link href="/dashboard/experiments" className="ql-btn primary">Open experiments</Link></div>
       </header>
       <div className="ql-code-demo">
         <div className="ql-code-tabs" role="tablist" aria-label="Code example language">

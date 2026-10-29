@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, BookOpen } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import MagnetField from "@/components/routing/MagnetField";
 import RoutingDiagram from "@/components/routing/RoutingDiagram";
 import { ROUTABLE_PROVIDERS } from "@/lib/qrouter/providers";
@@ -43,9 +43,7 @@ export default function RoutingPage() {
           <RoutingDiagram providers={TARGETS} />
 
           <div className="rt-actions">
-            <Link className="rt-btn rt-btn-quiet" href="/docs">
-              <BookOpen size={15} /> Read docs
-            </Link>
+
             <Link className="rt-btn rt-btn-loud" href="/dashboard/deploy">
               Start routing <ArrowRight size={15} />
             </Link>

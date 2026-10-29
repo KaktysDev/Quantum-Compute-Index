@@ -529,3 +529,7 @@
     grid-template-columns: 2.1rem 1fr;
   }
 }
+
+/* Legal prose is unchanged; the public frame follows the Technical identity. */
+:root[data-theme="dark"] .qt-site .legal-shell, .qt-site .legal-shell { --bg: #fff; --surface: #fff; --surface-raised: #f5f5f2; --fg: #151515; --muted: #646464; --muted-dim: #717171; --line: #e3e3df; --accent: #b1370b; --legal-line-soft: #ecece8; --legal-accent-soft: #fff0e8; --legal-grid: transparent; --legal-todo-bg: #fdf5e0; --legal-todo-line: #e0c98d; --legal-todo-fg: #7a5904; color-scheme: light; background-image: none; }
+.qt-site .legal-title { font-family: var(--font-technical-display), Impact, sans-serif; font-weight: 400; letter-spacing: -0.025em; }

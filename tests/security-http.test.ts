@@ -12,6 +12,11 @@ import nextConfig from "../next.config.mjs";
 
 const supabase = vi.hoisted(() => ({ writeError: null as { message: string; code?: string } | null }));
 
+vi.mock("@/lib/contact/email", () => ({
+  isContactEmailConfigured: () => true,
+  sendContactEmail: async () => {},
+}));
+
 vi.mock("@/lib/supabase/config", () => ({
   SUPABASE_URL: "https://mocked.supabase.co",
   SUPABASE_ANON_KEY: "mocked-anon-key-long-enough-to-pass",

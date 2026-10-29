@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { ArrowRight, KeyRound, LockKeyhole, Terminal } from "lucide-react";
+import { KeyRound, LockKeyhole, Terminal } from "lucide-react";
 import ApiKeyManager from "@/components/ApiKeyManager";
 import { PUBLIC_CONFIG } from "@/lib/publicConfig";
 
@@ -45,9 +44,7 @@ export default function ApiKeysPage() {
             <h2>Use your key</h2>
             <small>From nothing to a running job, in three steps</small>
           </div>
-          <Link href="/docs#quickstart">
-            Full guide <ArrowRight size={12} />
-          </Link>
+
         </div>
 
         <ol className="api-steps">
@@ -165,9 +162,7 @@ Quote  $2.14 · 1024 shots · ~4 min queue`}</i>
               <dd>live or test</dd>
             </div>
           </dl>
-          <Link className="console-secondary" href="/docs">
-            Full API reference <ArrowRight size={13} />
-          </Link>
+
         </section>
       </div>
     </div>

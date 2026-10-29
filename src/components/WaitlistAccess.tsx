@@ -68,7 +68,7 @@ export default function WaitlistAccess({ unauthorized = false }: { unauthorized?
     <section className="access-form">
       <p className="access-kicker">PRIVATE PILOT</p>
       <h1>Join the waitlist</h1>
-      <p className="access-lede">Tell us how you work with quantum systems. We&apos;re onboarding a small group of developers and researchers first.</p>
+      <p className="access-lede">Tell us about your work. We&apos;re onboarding a small early-access group.</p>
       {unauthorized && <div className="access-notice">That Google account does not have console access. Join the waitlist below.</div>}
       {error && <div className="access-error" role="alert">{error}</div>}
 

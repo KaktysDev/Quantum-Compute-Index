@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import LandingNav from "@/components/landing/LandingNav";
-import SiteFooter from "@/components/SiteFooter";
+import TechnicalSite from "@/components/landing/TechnicalSite";
 
 export type LegalSection = {
   /** Anchor target. Keep these stable — other pages deep-link to them. */
@@ -47,9 +46,8 @@ export default function LegalPage({
   sections: LegalSection[];
 }) {
   return (
-    <>
-      <LandingNav />
-      <main className="legal-shell">
+    <TechnicalSite>
+      <main className="legal-shell" id="main-content">
         <div className="legal-wrap">
           <header className="legal-header">
             <p className="legal-eyebrow">
@@ -97,15 +95,13 @@ export default function LegalPage({
                   <Link href="/terms">Terms of Service</Link>
                   <Link href="/privacy">Privacy Policy</Link>
                   <Link href="/contact">Contact us</Link>
-                  <Link href="/docs">Documentation</Link>
                 </nav>
               </div>
             </article>
           </div>
 
-          <SiteFooter />
         </div>
       </main>
-    </>
+    </TechnicalSite>
   );
 }

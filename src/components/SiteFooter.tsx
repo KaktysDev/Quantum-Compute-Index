@@ -1,37 +1,21 @@
 import Link from "next/link";
-import Logo from "./Logo";
-
-// Rendered on every public subpage. The hover color reads --fg rather than a
-// literal so the footer stays legible on the light subpages, the dark contact
-// page, and the legal pages alike.
-const LINKS = [
-  { href: "/dashboard/experiments", label: "Experiments" },
-  { href: "/history", label: "History" },
-  { href: "/pricing", label: "Pricing" },
-  { href: "/docs", label: "Docs" },
-  { href: "/contact", label: "Contact" },
-  { href: "/terms", label: "Terms" },
-  { href: "/privacy", label: "Privacy" },
-] as const;
+import { ArrowUpRight } from "lucide-react";
 
 export default function SiteFooter() {
   return (
-    <footer className="qci-site-footer">
-      <Link href="/" aria-label="QRouter home">
-        <Logo size={22} />
-      </Link>
-      <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2" aria-label="Footer">
-        {LINKS.map((link) => (
-          <Link
-            key={link.href}
-            href={link.href}
-            className="text-xs font-medium text-[var(--muted)] transition-colors hover:text-[var(--fg)]"
-          >
-            {link.label}
-          </Link>
-        ))}
-      </nav>
-      <span className="mono-label">© {new Date().getFullYear()} QRouter</span>
+    <footer className="qt-footer">
+      <div className="qt-footer-top">
+        <Link href="/" className="qt-wordmark" aria-label="QRouter home">QRouter<span aria-hidden="true">↗</span></Link>
+        <p>Quantum, where it fits.</p>
+        <Link className="qt-text-link" href="/contact">Build with us <ArrowUpRight size={16} /></Link>
+      </div>
+      <div className="qt-footer-bottom">
+        <span>© 2026 QRouter</span>
+        <nav aria-label="Footer navigation">
+          <Link href="/research">Research</Link><Link href="/pricing">Value</Link><Link href="/contact">Contact</Link><Link href="/#supporters">Our network</Link><Link href="/terms">Terms</Link><Link href="/privacy">Privacy</Link>
+        </nav>
+        <span>Built around the evidence.</span>
+      </div>
     </footer>
   );
 }

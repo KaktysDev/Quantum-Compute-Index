@@ -328,7 +328,7 @@ export default function GitHubManager() {
 
         {!connected && github && !github.configured && (
           <p className="repo-setup-note">
-            <ShieldCheck size={13} /> This deployment still needs GitHub App credentials. <Link href="/docs#github">Open setup guide</Link>
+            <ShieldCheck size={13} /> This deployment still needs GitHub App credentials.
           </p>
         )}
 

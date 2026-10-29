@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isContactEmailConfigured, sendContactEmail } from "@/lib/contact/email";
 import { logRedactedError } from "@/lib/security/log";
 import { guardPublicForm } from "@/lib/security/public-form";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -12,10 +13,6 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Public: submit the contact / "Request access" form. */
 export async function POST(req: Request) {
-  if (!isSupabaseConfigured()) {
-    return NextResponse.json({ error: "Supabase not configured" }, { status: 503 });
-  }
-
   let body: { name?: string; email?: string; phone?: string; message?: string };
   try {
     body = await req.json();
@@ -23,6 +20,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
+  if (!body || typeof body !== "object" || Array.isArray(body) ||
+    [body.name, body.email, body.phone, body.message].some(value => typeof value !== "string")) {
+    return NextResponse.json({ error: "All fields must be text." }, { status: 400 });
+  }
   const name = (body.name ?? "").trim();
   const email = (body.email ?? "").trim();
   const phone = (body.phone ?? "").trim();
@@ -53,21 +54,28 @@ export async function POST(req: Request) {
   const limited = await guardPublicForm(req, "contact");
   if (limited) return limited;
 
-  // Written with the service role (RLS keeps the table private to viewers).
-  let admin;
-  try {
-    admin = createAdminClient();
-  } catch {
-    return NextResponse.json({ error: "Server not configured" }, { status: 500 });
+  if (!isContactEmailConfigured()) {
+    return NextResponse.json({ error: "The contact form is temporarily unavailable. Email lagodaoleg1357@gmail.com directly." }, { status: 503 });
   }
 
-  const { error } = await admin
-    .from("contact_submissions")
-    .insert({ name, email, phone, message });
-  if (error) {
-    // Anonymous caller: the Postgres text stays server-side.
-    logRedactedError("contact submission failed", error);
-    return NextResponse.json({ error: "We could not save your message. Please try again." }, { status: 500 });
+  // Preserve the private dashboard inbox when the database is configured.
+  // Email-only deployments do not require a Supabase account.
+  if (isSupabaseConfigured()) {
+    let admin;
+    try { admin = createAdminClient(); }
+    catch { return NextResponse.json({ error: "Server not configured" }, { status: 503 }); }
+    const { error } = await admin.from("contact_submissions").insert({ name, email, phone, message });
+    if (error) {
+      logRedactedError("contact submission failed", error);
+      return NextResponse.json({ error: "We could not save your message. Please try again." }, { status: 500 });
+    }
+  }
+  try {
+    await sendContactEmail({ name, email, phone, message });
+  } catch {
+    // A timeout can happen after provider acceptance; do not claim inbox delivery.
+    logRedactedError("contact email failed", new Error("Email delivery was not confirmed"));
+    return NextResponse.json({ error: "Email delivery could not be confirmed. Please email lagodaoleg1357@gmail.com directly." }, { status: 502 });
   }
   return NextResponse.json({ ok: true });
 }

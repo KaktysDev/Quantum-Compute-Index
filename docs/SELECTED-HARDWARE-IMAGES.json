@@ -1,0 +1,16 @@
+{
+  "source": "Exact user-selected image attachments",
+  "synthetic": true,
+  "assets": [
+    {
+      "file": "public/landing/cryogenic-hardware.webp",
+      "source_path": "/Users/lahoda/Downloads/ChatGPT Image Oct 29, 2026, 12_22_11 PM.png",
+      "conversion": "PNG to WebP quality 92; no cropping, resizing or semantic edits"
+    },
+    {
+      "file": "public/landing/quantum-processor.webp",
+      "source_path": "/Users/lahoda/Downloads/ChatGPT Image Oct 29, 2026, 12_22_22 PM.png",
+      "conversion": "PNG to WebP quality 92; no cropping, resizing or semantic edits"
+    }
+  ]
+}

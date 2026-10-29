@@ -18,7 +18,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   Activity,
   BarChart3,
-  BookOpen,
   Cpu,
   GitBranch,
   KeyRound,
@@ -69,7 +68,6 @@ const GROUPS: NavGroup[] = [
 ];
 
 const HELP: NavItem[] = [
-  { href: "/docs", label: "Documentation", icon: BookOpen },
   { href: "/dashboard/qci", label: "Index research", icon: LineChart },
   { href: "/dashboard/support", label: "Support", icon: LifeBuoy },
 ];

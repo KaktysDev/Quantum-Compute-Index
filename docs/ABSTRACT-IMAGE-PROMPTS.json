@@ -1,0 +1,20 @@
+{
+  "generation_tool": "Built-in image_gen.imagegen",
+  "approved_by_user": true,
+  "assets": [
+    {
+      "title": "Routing",
+      "prompt": "Use case: stylized-concept. Square premium 3D editorial brand image for QRouter, a software platform evaluating and routing computational workloads. The abstraction must visibly communicate a routing decision. On a warm ivory surface, one continuous translucent burnt-orange glass ribbon enters from the foreground, threads through a small central ivory ceramic junction with three clearly separated exit channels, and continues through exactly ONE chosen exit toward the back right. The other two channels remain unoccupied ivory ceramic grooves branching away to different endpoints. Make the incoming path, junction, three possibilities and selected outgoing path visually easy to follow, not tangled. Simple precise routing architecture, a coherent connected sculpture with a clear silhouette and generous breathing space, tactile matte ceramic, realistic orange glass refraction and warm soft natural shadows. Three-quarter top-down editorial product photography. Every important part sharp, no excessive depth-of-field blur. No text, labels, logos, people, literal computers, unrelated rings, atom icons or watermark. Convey one workload being directed onto one suitable route, without suggesting a real measured result. Sophisticated restrained warm white, burnt orange and subtle charcoal palette.",
+      "file": "public/landing/abstract-routing.webp",
+      "synthetic": true,
+      "conversion": "PNG to WebP, quality 92; no resizing or semantic edits"
+    },
+    {
+      "title": "Path through constraints",
+      "prompt": "Use case: stylized-concept. Square premium abstract 3D image for a white-and-orange computational optimization software website. The sculpture must communicate finding a valid route around obstacles, not just decoration. On an off-white ceramic rectangular base, five elegant matte ivory rectangular barriers create a small sparse maze, with clear start and finish at opposing edges. One continuous translucent burnt-orange glass ribbon follows a clean feasible path from start to finish, turning naturally through the gaps without crossing any barrier. Two faint shallow empty grooves indicate alternative paths that terminate against barriers. Visually coherent, simple enough to understand at thumbnail size, deliberate architectural geometry. Three-quarter high-angle view with entire compact layout in frame, warm directional daylight, tactile ceramic, clear sharp glass edges, physically realistic refraction, shadows and subtle caustic highlights. Beautiful industrial-design still life in cream, warm white and amber orange, entirely in focus, spacious composition. No numbers, arrows, written labels, brand names, watermark, random rings, ball-and-stick molecules or literal computing hardware. Illustrative decision-making concept, not a scientific benchmark.",
+      "file": "public/landing/abstract-constraints.webp",
+      "synthetic": true,
+      "conversion": "PNG to WebP, quality 92; no resizing or semantic edits"
+    }
+  ]
+}

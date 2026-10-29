@@ -1,0 +1,102 @@
+{
+  "schema_version": "qrouter-public-research-summary/1",
+  "evidence_date": "2026-10-28",
+  "timezone": "America/New_York",
+  "publication_scope": "QRouter-reported research snapshot; not an independent certification or a complete signed execution receipt",
+  "customer_pilots": 0,
+  "quantum_business_advantage_established": false,
+  "operational_savings_established": false,
+  "manufacturing": {
+    "source": "https://arxiv.org/abs/2202.03028",
+    "dataset_commit": "965fb560ad7f06278f71ea361816a2d8ac19fdcb",
+    "raw_sha256": "e44e2b30f84a3b80da3800c02e9b18cb9582b77157ce5525bc592f8cf9e3a489",
+    "batch_id": "661c4817-8555-47d0-9814-de824bcad992",
+    "protocol": "bmw-pvc-quark-directed/1",
+    "instance": {
+      "raw_seams": 17,
+      "filtered_seams": 16,
+      "raw_rows": 136116
+    },
+    "objective": {
+      "direction": "minimize",
+      "unit": "original source cost",
+      "physical_unit": "undocumented"
+    },
+    "methods": [
+      {
+        "method": "Reconstructed upstream greedy proposal, independently rescored",
+        "kind": "classical",
+        "objective": 47.692968
+      },
+      {
+        "method": "First-cost nearest neighbor",
+        "kind": "classical",
+        "objective": 45.643141
+      },
+      {
+        "method": "Bounded order/state search",
+        "kind": "classical",
+        "objective": 41.865244
+      }
+    ],
+    "relative_reduction_percent": 12.21925211280624,
+    "verification": "Every proposed route in the retained batch passed a separate original-row checker.",
+    "corrections": [
+      "Original bracketed-row parsing",
+      "Directed last-to-home closure",
+      "Largest subset includes all filtered seams"
+    ],
+    "modeling_limits": [
+      "Robot and l dimensions are projected away.",
+      "Scoring takes the first matching original projected row.",
+      "Missing transitions retain the finite upstream objective penalty.",
+      "All three displayed routes used zero artificial transitions."
+    ],
+    "global_optimum_known": false,
+    "human_semantic_acceptance": false,
+    "source_execution_parity": false,
+    "runtime_speedup_established": false,
+    "quantum_method_executed": false,
+    "factory_feasibility_established": false
+  },
+  "networks": {
+    "source": "https://github.com/Telecominfraproject/oopt-gnpy/tree/3b0cf09ce8375f3cfbf6ebfd2548957dfb767390",
+    "dataset_commit": "3b0cf09ce8375f3cfbf6ebfd2548957dfb767390",
+    "batch_id": "369aa577-e13d-4aac-83bd-512e46c7207c",
+    "reference_completed": true,
+    "acceptance": "failed",
+    "counts": {
+      "original_requests": 8,
+      "native_result_records": 7,
+      "independent_checks": 116,
+      "passed_checks": 115,
+      "failed_checks": 1
+    },
+    "failed_check": {
+      "id": "disjoint:3",
+      "request_ids": [
+        "3",
+        "1"
+      ],
+      "shared_site": "Lannion_CAS",
+      "shared_physical_fibers": [],
+      "rule": "No shared physical fibers or sites, except sites that are endpoints of both requests."
+    },
+    "source_semantic_parity": "unestablished",
+    "human_semantic_acceptance": false,
+    "optical_physics": "external reference only",
+    "allocated_frequency_quality_validation": "not independently established",
+    "quantum_method_executed": false,
+    "limitations": [
+      "The declared site rule is a QRouter research interpretation, not an established upstream or customer requirement.",
+      "This is a fixed public example, not Orange's private production network.",
+      "The audit count is not a business-readiness score."
+    ]
+  },
+  "energy": {
+    "source": "https://github.com/IBM-EON/mitigating-covariant-quantum-kernels/blob/3108071d9ddfb54668d3edaff1688f9ad3037e5f/real-data-raw/README.md",
+    "stage": "documentation intake only",
+    "numerical_comparison_completed": false,
+    "blocker": "The public raw-data documentation says original prices were removed for copyright and replaced with X."
+  }
+}

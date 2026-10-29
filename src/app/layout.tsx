@@ -6,11 +6,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   // Needed so per-page canonical URLs and Open Graph assets resolve absolutely.
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://qrouter.app"),
-  title: "QRouter — Quantum Experiments You Can Review",
-  description: "Plan private quantum experiments, approve a budget, and keep inputs, execution records, and result evidence together.",
+  title: "QRouter — Quantum, Where It Fits",
+  description: "Explore quantum methods for your business software. Compare against classical computing and keep the evidence behind the decision.",
   openGraph: {
-    title: "QRouter — Quantum Experiments You Can Review",
-    description: "A reviewable workflow for quantum experiments and their evidence.",
+    title: "QRouter — Quantum, Where It Fits",
+    description: "Business workloads, classical baselines and evidence you can review.",
   },
 };
 
@@ -18,7 +18,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`} data-scroll-behavior="smooth" suppressHydrationWarning>
       <head>
         {/* Replay the saved appearance choice before first paint, so switching
             themes never flashes the previous one. Light is the default. */}

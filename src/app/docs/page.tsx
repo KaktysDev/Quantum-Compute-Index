@@ -23,8 +23,8 @@ import {
 } from "lucide-react";
 import DocsCodeExamples from "@/components/DocsCodeExamples";
 import DocsV2CodeExamples from "@/components/docs/DocsV2CodeExamples";
-import Logo from "@/components/Logo";
 import ThemeToggle from "@/components/ThemeToggle";
+import { technicalFont } from "@/components/landing/technical-font";
 import { PUBLIC_CONFIG } from "@/lib/publicConfig";
 import "./docs.css";
 
@@ -115,15 +115,16 @@ const groupStatuses = [
 
 export default function DocsPage() {
   return (
-    <div className="docs-shell">
+    <div className={"docs-shell " + technicalFont.variable}>
       <aside className="docs-sidebar">
         <div className="docs-brand-row">
-          <Link href="/" aria-label="QRouter home"><Logo size={26} /></Link>
+          <Link href="/" className="docs-technical-brand" aria-label="QRouter home">QRouter<span aria-hidden="true">↗</span></Link>
           <span className="docs-badge">Docs</span>
         </div>
         <nav className="docs-toc" aria-label="Documentation">
           <div>
             <p>Start here</p>
+            <a href="#assessments">Workload assessments</a>
             <a href="#experiments">Experiment campaigns</a>
             <a href="#quickstart">Run your first job</a>
             <a href="#cli-more">More CLI commands</a>
@@ -185,12 +186,18 @@ export default function DocsPage() {
       <main className="docs-main">
         <section className="docs-intro">
           <p className="docs-eyebrow"><span /> QRouter documentation</p>
-          <h1>Connect your experiment to its evidence.</h1>
-          <p>Start with a question, a circuit, a reference, and a budget. The experiment workspace connects those inputs to execution records and result assessments. The underlying execution APIs remain available for teams integrating their own tools.</p>
+          <h1>Workloads.<br />Experiments. Evidence.</h1>
+          <p>Explore the local assessment prototype and public research. Use the execution APIs below for circuit experiments.</p>
           <div className="docs-actions">
-            <Link href="/dashboard/experiments">Open experiments <ArrowRight size={14} /></Link>
+            <Link href="/research">Explore the research <ArrowRight size={14} /></Link>
             <a href="#http">Or call the API <Code2 size={14} /></a>
           </div>
+        </section>
+
+        <section className="docs-section" id="assessments">
+          <div className="docs-section-title"><FileJson size={17} /><div><h2>Workload assessments</h2><p>A local research prototype for reviewed workloads and independent result checks.</p></div></div>
+          <p className="docs-copy-text">The prototype uses pinned inputs, approved budgets and signed execution records. Classical admission, quantum suitability and integration readiness are separate decisions.</p>
+          <div className="docs-callout"><ShieldCheck size={16} /><p>Autonomous discovery and production integrations remain in development. <Link href="/research">Read the current evidence and limits.</Link></p></div>
         </section>
 
         <section className="docs-section" id="experiments">
